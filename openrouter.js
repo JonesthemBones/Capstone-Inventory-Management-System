@@ -196,18 +196,21 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     continue;
                 }
 
-                // Check if product already exists
-                const { data: existingProducts } = await supabaseClient
+                // Normalize product name for comparison (lowercase, trim extra spaces)
+                const normalizedName = productName.toLowerCase().replace(/\s+/g, ' ');
+
+                // Check if product already exists (case-insensitive)
+                const { data: allProducts } = await supabaseClient
                     .from('products')
-                    .select('product_id')
-                    .eq('product_name', productName)
-                    .limit(1);
+                    .select('product_id, product_name');
+
+                const existingProduct = allProducts?.find(p => 
+                    p.product_name.toLowerCase().replace(/\s+/g, ' ') === normalizedName
+                ) || null;
 
                 let productId;
                 let isNew = false;
                 let previousQuantity = 0;
-
-                const existingProduct = existingProducts && existingProducts.length > 0 ? existingProducts[0] : null;
 
                 if (existingProduct) {
                     // Product exists - update existing stock
