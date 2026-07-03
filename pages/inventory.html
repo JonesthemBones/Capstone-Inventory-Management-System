@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management - Inventory System</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/modal.css">
+    <link rel="stylesheet" href="../styles/help.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/help.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+    <script src="../scripts/mobile-responsive.js"></script>
+
+    <div class="app-container">
+        <main class="main-content">
+            <div class="page active">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Inventory Management</h1>
+                        <p class="page-subtitle">Manage your stock items and monitor inventory levels</p>
+                    </div>
+                </div>
+
+                <div class="table-section">
+                    <div class="table-header">
+                        <div>
+                            <h3 class="table-title">Inventory Items</h3>
+                            <p class="table-subtitle" id="inventory-count">0 items in inventory</p>
+                        </div>
+                        <div class="table-actions">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="inventory-search" placeholder="Search items...">
+                            </div>
+                            <select id="status-filter" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">
+                                <option value="">All Status</option>
+                                <option value="in_stock">In Stock</option>
+                                <option value="low_stock">Low Stock</option>
+                                <option value="out_of_stock">Out of Stock</option>
+                            </select>
+                            <button class="btn btn-primary role-requires-staff-or-admin" id="add-item-btn">
+                                <i class="fas fa-plus"></i>
+                                Add Item
+                            </button>
+                            <button class="btn role-requires-staff-or-admin" id="create-outbound-btn" style="background-color: #059669; color: white; border-color: #059669;">
+                                <i class="fas fa-shipping-fast"></i>
+                                Create Outbound
+                            </button>
+                            <button class="btn" id="export-csv-btn" style="background-color: #10b981; color: white; border-color: #10b981;">
+                                <i class="fas fa-file-csv"></i>
+                                Export CSV
+                            </button>
+                            <button class="btn role-backup-restore" id="export-backup-btn" style="background-color: #0891b2; color: white; border-color: #0891b2;">
+                                <i class="fas fa-download"></i>
+                                Export Backup
+                            </button>
+                            <button class="btn role-backup-restore" id="import-restore-btn" style="background-color: #7c3aed; color: white; border-color: #7c3aed;">
+                                <i class="fas fa-upload"></i>
+                                Restore Backup
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Product Name</th>
+                                    <th>Product Code</th>
+                                    <th>Unit</th>
+                                    <th>Quantity</th>
+                                    <th>Status</th>
+                                    <th>Unit Price</th>
+                                    <th>Selling Price</th>
+                                    <th>Total Value</th>
+                                    <th style="min-width: 120px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Product Modal -->
+    <div id="product-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add New Product</h2>
+                <button class="modal-close" id="close-product-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="product-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="product-name">Product Name *</label>
+                        <input type="text" id="product-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-code">Product Code *</label>
+                        <input type="text" id="product-code" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-unit">Unit of Measure *</label>
+                        <select id="product-unit" required>
+                            <option value="">Select Unit</option>
+                            <option value="pcs">Pieces (pcs)</option>
+                            <option value="kg">Kilogram (kg)</option>
+                            <option value="g">Gram (g)</option>
+                            <option value="l">Liter (l)</option>
+                            <option value="ml">Milliliter (ml)</option>
+                            <option value="box">Box</option>
+                            <option value="pack">Pack</option>
+                            <option value="bottle">Bottle</option>
+                            <option value="can">Can</option>
+                            <option value="dozen">Dozen</option>
+                            <option value="meter">Meter (m)</option>
+                            <option value="feet">Feet (ft)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-quantity">Initial Quantity *</label>
+                        <input type="number" id="product-quantity" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-price">Unit Price *</label>
+                        <input type="number" id="product-price" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="selling-price">Selling Price *</label>
+                        <input type="number" id="selling-price" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reorder-level">Reorder Level *</label>
+                        <input type="number" id="reorder-level" min="0" value="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="maximum-stock">Maximum Stock</label>
+                        <input type="number" id="maximum-stock" min="0" value="1000">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="product-description">Description</label>
+                    <textarea id="product-description" rows="3"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn" id="cancel-product-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Stock Adjustment Modal -->
+    <div id="stock-adjustment-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h2>Adjust Stock Quantity</h2>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+                        <strong id="stock-product-name"></strong> 
+                        <span style="color: var(--text-muted);">•</span> 
+                        <span id="stock-product-code"></span>
+                    </p>
+                </div>
+                <button class="modal-close" id="close-stock-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="stock-adjustment-form">
+                <div class="stock-info-card">
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                        <i class="fas fa-info-circle"></i> Update the current stock quantity for this product
+                    </p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="stock-quantity">
+                        Current Quantity *
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 400;">(Total stock available)</span>
+                    </label>
+                    <input type="number" id="stock-quantity" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="stock-notes">Notes / Reason for Adjustment</label>
+                    <textarea id="stock-notes" rows="3" placeholder="e.g., Physical count adjustment, damaged items, etc."></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn" id="cancel-stock-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i>
+                        Save Adjustment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Outbound Modal -->
+    <div id="outbound-modal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>Create Outbound Transaction</h2>
+                <button class="modal-close" id="close-outbound-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="outbound-form">
+                <!-- Transaction Details -->
+                <div style="padding: 24px; border-bottom: 1px solid var(--border-color);">
+                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Transaction Details</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="reference-type">Reference Type *</label>
+                            <select id="reference-type" required>
+                                <option value="">Select Reference Type</option>
+                                <option value="sales_order">Sales Order</option>
+                                <option value="transfer">Transfer</option>
+                                <option value="return">Return</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="reference-id">Reference ID / Number *</label>
+                            <input type="text" id="reference-id" required placeholder="e.g., SO-2025-001">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Items Section -->
+                <div style="padding: 24px; border-bottom: 1px solid var(--border-color);">
+                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Select Products to Dispatch</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="product-select">Select Product *</label>
+                            <select id="product-select">
+                                <option value="">Select Product</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="outbound-quantity">Quantity to Dispatch *</label>
+                            <input type="number" id="outbound-quantity" min="1" placeholder="Enter quantity">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end; grid-column: span 2;">
+                            <button type="button" id="add-outbound-item-btn" class="btn btn-primary" style="width: 100%;">
+                                <i class="fas fa-plus"></i>
+                                Add Product to List
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Selected Items Table -->
+                    <div id="selected-items-container" style="margin-top: 20px; display: none;">
+                        <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Products to Dispatch</h4>
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Product Code</th>
+                                        <th>Product Name</th>
+                                        <th>Current Stock</th>
+                                        <th>Dispatch Quantity</th>
+                                        <th>Remaining Stock</th>
+                                        <th>Unit Price</th>
+                                        <th>Total Value</th>
+                                        <th style="min-width: 80px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="selected-items-tbody">
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                            <div>
+                                <strong style="font-size: 14px; color: var(--text-secondary);">Total Items: <span id="total-items-count">0</span></strong>
+                            </div>
+                            <div>
+                                <strong style="font-size: 16px;">Total Value: <span id="total-order-value">₱0.00</span></strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Notes -->
+                <div style="padding: 24px;">
+                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Additional Information</h3>
+                    <div class="form-group">
+                        <label for="outbound-notes">Notes (Optional)</label>
+                        <textarea id="outbound-notes" rows="3" placeholder="Add any notes about this outbound transaction..."></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn" id="cancel-outbound-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-shipping-fast"></i>
+                        Process Outbound
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Restore Backup Modal -->
+    <div id="restore-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Restore Inventory Backup</h2>
+                <button class="modal-close" id="close-restore-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div style="padding: 24px;">
+                <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                    <p style="color: #92400e; font-size: 14px; margin: 0;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Warning:</strong> This will restore inventory data from your backup file. Choose your restore option carefully.
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <label for="backup-file">Select Backup File *</label>
+                    <input type="file" id="backup-file" accept=".json,.csv" required style="padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; width: 100%;">
+                </div>
+
+                <div class="form-group">
+                    <label for="restore-mode">Restore Mode *</label>
+                    <select id="restore-mode" required style="padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; width: 100%;">
+                        <option value="">Select restore mode...</option>
+                        <option value="merge">Merge - Update existing products and add new ones</option>
+                        <option value="replace">Replace - Delete all existing products and restore from backup</option>
+                        <option value="add-only">Add Only - Only add new products, skip existing ones</option>
+                    </select>
+                </div>
+
+                <div id="backup-preview" style="display: none; margin-top: 20px; padding: 16px; background-color: var(--bg-secondary); border-radius: 8px;">
+                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Backup File Preview</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 13px;">
+                        <div>
+                            <span style="color: var(--text-secondary);">Total Products:</span>
+                            <strong id="preview-count">0</strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary);">Backup Date:</span>
+                            <strong id="preview-date">N/A</strong>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary);">File Format:</span>
+                            <strong id="preview-format">N/A</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 24px;">
+                    <button type="button" class="btn" id="cancel-restore-btn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirm-restore-btn" disabled>
+                        <i class="fas fa-upload"></i>
+                        Restore Backup
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="help-button" onclick="openHelp()">
+        <i class="fas fa-question" style="font-size: 20px;"></i>
+    </button>
+
+    <!-- Help Modal -->
+    <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
+        <div class="help-content">
+            <div class="help-header">
+                <h2>Inventory Management Guide</h2>
+                <button class="close-help" onclick="closeHelp()">&times;</button>
+            </div>
+            <div class="help-body">
+                <p>To track, update, and manage the stock items.</p>
+                <br>
+                <div class="help-section">
+                    
+                    <h3>Overview</h3>
+                    <ul>
+                        <li>
+                            This module lists all store items with their details including stock levels, unit prices, and status.
+                        </li>            
+                    </ul>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Search & Filter</h3>
+                    <ul>
+                        <li>
+                            Use the search bar to quickly find products, or use the filter by status to view items based on stock levels.
+                        </li>                       
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Actions</h3>
+                    <ul>
+                       <li>
+                        The action buttons allow you to view product history, edit details, or delete items.
+                       </li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Add or Update Items</h3>
+                    <ul>
+                        <li>
+                            To add a new product, click "Add Item" and fill out the form. To update stock, use the "Create Outbound" feature and specify the quantity to dispatch.
+                        </li>
+                    </ul>
+                </div>
+                <div class="help-section">
+                    <h3>Status Indicators</h3>
+                    <ul>
+                        <li>
+                            Colored badges indicate stock status: Green for In Stock, Yellow for Low Stock, and Red for Out of Stock.
+                        </li>
+                    </ul>
+                </div>
+                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️Always record stock movement with the audit trail. Also, ensure all quantity updates are accurate and reviewed for compliance.⚠️</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="../scripts/inventory.js"></script>
+    <script src="../scripts/outbound.js"></script>
+</body>
+</html>

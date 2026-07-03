@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Inventory System</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/help.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/supabase_check.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/help.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+    <script src="../scripts/mobile-responsive.js"></script>
+    
+    <div class="app-container">
+        <main class="main-content">
+            <div class="page active">
+                <div class="page-header">
+                    <h1 class="page-title">Dashboard</h1>
+                    <p class="page-subtitle">Sales statistics, trends, and stock forecasting</p>
+                    <div id="supabase-status" style="margin-top:8px;font-size:13px;display:flex;align-items:center;gap:8px;">
+                        <span style="width:10px;height:10px;border-radius:50%;background:#bbb;display:inline-block" id="supabase-status-dot"></span>
+                        <span id="supabase-status-text" style="color:var(--text-secondary);">Checking Supabase...</span>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div class="stat-title">Total Products</div>
+                            <div class="stat-icon" style="background-color: #dbeafe;">
+                                <i class="fas fa-box" style="color: #2563eb;"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="total-products">0</div>
+                        <div class="stat-change neutral">
+                            <span>Total inventory items</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div class="stat-title">In Stock</div>
+                            <div class="stat-icon" style="background-color: #d1fae5;">
+                                <i class="fas fa-check-circle" style="color: #10b981;"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="in-stock">0</div>
+                        <div class="stat-change positive">
+                            <span>Items above minimum</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div class="stat-title">Low Stock</div>
+                            <div class="stat-icon" style="background-color: #fef3c7;">
+                                <i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="low-stock">0</div>
+                        <div class="stat-change negative">
+                            <span>Items need reordering</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <div class="stat-title">Total Value</div>
+                            <div class="stat-icon" style="background-color: #dbeafe;">
+                                <i class="fas fa-peso-sign" style="color: #2563eb;"></i>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="total-value">₱0.00</div>
+                        <div class="stat-change neutral">
+                            <span>Current inventory value</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3 class="chart-title">Sales Trends</h3>
+                            <p class="chart-subtitle">Monthly sales performance</p>
+                        </div>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="salesTrendChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3 class="chart-title">Stock Distribution</h3>
+                            <p class="chart-subtitle">Products by status</p>
+                        </div>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="stockDistributionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3 class="chart-title">Top Products by Value</h3>
+                            <p class="chart-subtitle">Highest inventory value items</p>
+                        </div>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3 class="chart-title">Recent Activity</h3>
+                            <p class="chart-subtitle">Latest inventory updates</p>
+                        </div>
+                        <div id="recent-activity" style="max-height: 300px; overflow-y: auto;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alerts-section">
+                    <div class="alerts-header">
+                        <h3 class="alerts-title">Low Stock Alerts</h3>
+                        <span class="badge" id="alert-count">0</span>
+                    </div>
+                    <div id="low-stock-alerts">
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <button class="help-button" onclick="openHelp()">
+        <i class="fas fa-question" style="font-size: 20px;"></i>
+    </button>
+
+    <!-- Help Modal -->
+    <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
+        <div class="help-content">
+            <div class="help-header">
+                <h2>Dashboard Guide</h2>
+                <button class="close-help" onclick="closeHelp()">&times;</button>
+            </div>
+            <div class="help-body">
+                <p>To view overall inventory status, alerts, and performance metrics at a glance.</p>
+                <br>
+                <div class="help-section">
+                    
+                    <h3>Overview</h3>
+                    <ul>
+                        <li>
+                            The dashboard presents the total product count, which items are in stock or low stock, and total inventory value.
+                        </li>            
+                    </ul>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Sales Trends</h3>
+                    <ul>
+                        <li>
+                            Review monthly performance of products sold to track demand patterns.
+                        </li>                       
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Stock Distribution</h3>
+                    <ul>
+                       <li>
+                        Visual summary of items in stock, low stock, and out-of-stock which helps identify inventory health.
+                       </li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Top Products by Value</h3>
+                    <ul>
+                        <li>
+                            Identify leading products contributing most to inventory value for better stock prioritization.
+                        </li>
+                    </ul>
+                </div>
+                <div class="help-section">
+                    <h3>Recent Activity</h3>
+                    <ul>
+                        <li>
+                            Monitor the last changes to stock levels, receipt processing, or system actions for tracking purposes.
+                        </li>
+                    </ul>
+                </div>
+                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️Regularly check the dashboard for critical alerts and use trend data for informed decision-making.⚠️</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="../scripts/dashboard.js"></script>
+    <script>
+        (async () => {
+            try {
+                if (window.supabaseCheck && window.supabaseClient) {
+                    const res = await window.supabaseCheck.checkSupabaseConnection();
+                    const dot = document.getElementById('supabase-status-dot');
+                    const txt = document.getElementById('supabase-status-text');
+                    if (res && res.ok) {
+                        dot.style.background = '#10b981';
+                        txt.textContent = 'Connected to Supabase';
+                    } else {
+                        dot.style.background = '#ef4444';
+                        txt.textContent = 'Supabase unreachable';
+                    }
+                }
+            } catch (e) {
+                const dot = document.getElementById('supabase-status-dot');
+                const txt = document.getElementById('supabase-status-text');
+                if (dot) dot.style.background = '#ef4444';
+                if (txt) txt.textContent = 'Connection failed';
+                console.error('Supabase check failed', e);
+            }
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,675 @@
+/* Dark Mode Toggle Button */
+.dark-mode-toggle {
+    position: fixed;
+    bottom: 24px;
+    right: 80px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: black;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    z-index: 999;
+}
+
+.dark-mode-toggle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode-toggle:active {
+    transform: scale(0.95);
+}
+
+/* Root Variables for Light Mode (Default) */
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --bg-tertiary: #fafafa;
+    --bg-white: #ffffff;
+    --bg-light: #f9fafb;
+    --bg-gray: #f3f4f6;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-tertiary: #999999;
+    --text-muted: #9ca3af;
+    --border-color: #e0e0e0;
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.1);
+    --input-bg: #ffffff;
+    --input-border: #ddd;
+    --card-bg: #ffffff;
+    --sidebar-bg: #2c3e50;
+    --primary: #3b82f6;
+    --primary-color: #3b82f6;
+    --accent-color: #4CAF50;
+    --accent-hover: #45a049;
+    --danger-color: #f44336;
+    --danger: #ef4444;
+    --warning-color: #ff9800;
+    --warning: #f59e0b;
+    --info-color: #2196F3;
+    --success: #10b981;
+}
+
+/* Dark Mode Variables */
+.dark-mode {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-white: #1e293b;
+    --bg-light: #334155;
+    --bg-gray: #1e293b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-tertiary: #94a3b8;
+    --text-muted: #64748b;
+    --border-color: #334155;
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.6);
+    --input-bg: #1e293b;
+    --input-border: #334155;
+    --card-bg: #1e293b;
+    --sidebar-bg: #0f172a;
+    --primary: #60a5fa;
+    --primary-color: #60a5fa;
+    --accent-color: #4ade80;
+    --accent-hover: #22c55e;
+    --danger-color: #f87171;
+    --danger: #ef4444;
+    --warning-color: #fbbf24;
+    --warning: #f59e0b;
+    --info-color: #38bdf8;
+    --success: #10b981;
+}
+
+/* ===============================================
+   GLOBAL STYLES
+   =============================================== */
+
+.dark-mode body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.dark-mode * {
+    border-color: var(--border-color);
+}
+
+/* ===============================================
+   APP CONTAINER & LAYOUT
+   =============================================== */
+
+.dark-mode .app-container {
+    background-color: var(--bg-primary);
+}
+
+.dark-mode .main-content {
+    background-color: var(--bg-primary);
+}
+
+.dark-mode .page {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* ===============================================
+   PAGE HEADERS
+   =============================================== */
+
+.dark-mode .page-header {
+    background-color: transparent;
+}
+
+.dark-mode .page-title {
+    color: var(--text-primary);
+}
+
+.dark-mode .page-subtitle {
+    color: var(--text-secondary);
+}
+
+/* ===============================================
+   CARDS & SECTIONS
+   =============================================== */
+
+.dark-mode .card,
+.dark-mode .stat-card,
+.dark-mode .chart-card,
+.dark-mode .upload-section,
+.dark-mode .filter-section,
+.dark-mode .table-section,
+.dark-mode .alerts-section {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+}
+
+.dark-mode .filter-title,
+.dark-mode .table-title,
+.dark-mode .chart-title,
+.dark-mode .alerts-title {
+    color: var(--text-primary);
+}
+
+.dark-mode .filter-subtitle,
+.dark-mode .table-subtitle,
+.dark-mode .chart-subtitle {
+    color: var(--text-secondary);
+}
+
+/* ===============================================
+   FORMS & INPUTS
+   =============================================== */
+
+.dark-mode input,
+.dark-mode select,
+.dark-mode textarea {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+.dark-mode input::placeholder,
+.dark-mode textarea::placeholder {
+    color: var(--text-tertiary);
+}
+
+.dark-mode input:focus,
+.dark-mode select:focus,
+.dark-mode textarea:focus {
+    border-color: var(--primary-color);
+    background-color: var(--bg-tertiary);
+}
+
+.dark-mode .form-label,
+.dark-mode label {
+    color: var(--text-primary);
+}
+
+.dark-mode .form-input {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+.dark-mode .input-wrapper {
+    background-color: transparent;
+}
+
+.dark-mode .input-icon {
+    color: var(--text-secondary);
+}
+
+.dark-mode .search-box input {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+.dark-mode .search-input-wrapper input {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+}
+
+/* ===============================================
+   TABLES
+   =============================================== */
+
+.dark-mode table,
+.dark-mode .data-table,
+.dark-mode .audit-table {
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+}
+
+.dark-mode th,
+.dark-mode thead tr {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.dark-mode td {
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.dark-mode tbody tr {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dark-mode tbody tr:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.dark-mode .table-scroll {
+    background-color: var(--card-bg);
+}
+
+.dark-mode .loading-cell {
+    color: var(--text-secondary);
+}
+
+/* ===============================================
+   BUTTONS
+   =============================================== */
+
+.dark-mode .btn {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.dark-mode .btn-primary {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+}
+
+.dark-mode .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
+}
+
+/* ===============================================
+   BADGES & STATUS INDICATORS
+   =============================================== */
+
+.dark-mode .badge {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.dark-mode .badge-success {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #4ade80;
+}
+
+.dark-mode .badge-warning {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+}
+
+.dark-mode .badge-danger {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+/*.dark-mode .status-badge {
+    background-color: var(--bg-tertiary);
+}*/
+
+/* ===============================================
+   MODALS
+   =============================================== */
+
+.dark-mode .modal {
+    background-color: rgba(0, 0, 0, 0.85);
+}
+
+.dark-mode .modal-content {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+}
+
+.dark-mode .modal-header {
+    border-bottom-color: var(--border-color);
+    background-color: var(--card-bg);
+}
+
+.dark-mode .modal-header h2 {
+    color: var(--text-primary);
+}
+
+.dark-mode .modal-body {
+    color: var(--text-secondary);
+}
+
+.dark-mode .modal-close {
+    color: var(--text-secondary);
+    background-color: transparent;
+}
+
+.dark-mode .modal-close:hover {
+    background-color: var(--bg-secondary);
+}
+
+.dark-mode .modal-actions {
+    border-top-color: var(--border-color);
+}
+
+/* ===============================================
+   AUTH PAGES
+   =============================================== */
+
+.dark-mode .auth-card {
+    background-color: var(--card-bg);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border-color);
+}
+
+.dark-mode .logo-icon {
+    background-color: #cbd5e1;
+    color: #0f172a;
+}
+
+.dark-mode .logo-icon i {
+    color: #0f172a;
+}
+
+.dark-mode .auth-title {
+    color: var(--text-primary);
+}
+
+.dark-mode .auth-subtitle {
+    color: var(--text-secondary);
+}
+
+.dark-mode .auth-footer {
+    color: var(--text-secondary);
+}
+
+.dark-mode .link {
+    color: var(--primary-color);
+}
+
+.dark-mode .link:hover {
+    color: var(--accent-color);
+}
+
+.dark-mode .privacy-link {
+    color: var(--primary-color);
+}
+
+.dark-mode .checkbox-wrapper label,
+.dark-mode .privacy-checkbox-wrapper label {
+    color: var(--text-secondary);
+}
+
+/* Privacy Modal */
+.dark-mode .privacy-modal,
+.dark-mode .help-modal {
+    background-color: rgba(0, 0, 0, 0.85);
+}
+
+.dark-mode .privacy-content,
+.dark-mode .help-content {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+}
+
+.dark-mode .privacy-header,
+.dark-mode .help-header {
+    border-bottom-color: var(--border-color);
+    background-color: var(--card-bg);
+}
+
+.dark-mode .privacy-header h2,
+.dark-mode .help-header h2 {
+    color: var(--text-primary);
+}
+
+.dark-mode .privacy-body,
+.dark-mode .help-body {
+    color: var(--text-secondary);
+}
+
+.dark-mode .privacy-body h3,
+.dark-mode .help-body h3,
+.dark-mode .help-section h3 {
+    color: var(--primary-color);
+}
+
+.dark-mode .privacy-body p,
+.dark-mode .privacy-body li,
+.dark-mode .help-body p,
+.dark-mode .help-body li {
+    color: var(--text-secondary);
+}
+
+.dark-mode .close-privacy,
+.dark-mode .close-help {
+    color: var(--text-secondary);
+}
+
+.dark-mode .close-privacy:hover,
+.dark-mode .close-help:hover {
+    background-color: var(--bg-secondary);
+}
+
+.dark-mode .privacy-footer {
+    border-top-color: var(--border-color);
+    background-color: var(--card-bg);
+}
+
+.dark-mode .privacy-footer button {
+    background-color: var(--primary-color);
+}
+
+/* ===============================================
+   DROPZONE & FILE UPLOAD
+   =============================================== */
+
+.dark-mode .dropzone {
+    background-color: var(--bg-secondary);
+    border: 2px dashed var(--border-color);
+    color: var(--text-secondary);
+}
+
+.dark-mode .dropzone:hover {
+    border-color: var(--primary-color);
+    background-color: var(--bg-tertiary);
+}
+
+.dark-mode #selected-file-info {
+    background-color: var(--bg-secondary);
+}
+
+/* ===============================================
+   TABS
+   =============================================== */
+
+.dark-mode .tabs-container {
+    border-bottom-color: var(--border-color);
+}
+
+.dark-mode .tab-button {
+    color: var(--text-secondary);
+    background-color: transparent;
+}
+
+.dark-mode .tab-button:hover {
+    color: var(--primary-color);
+    background-color: rgba(96, 165, 250, 0.1);
+}
+
+.dark-mode .tab-button.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+/* ===============================================
+   PAGINATION
+   =============================================== */
+
+.dark-mode .pagination-wrapper {
+    background-color: var(--card-bg);
+    border-top: 1px solid var(--border-color);
+}
+
+.dark-mode .pagination-info {
+    color: var(--text-secondary);
+}
+
+.dark-mode .page-indicator {
+    color: var(--text-secondary);
+}
+
+.dark-mode .pagination-controls button {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.dark-mode .pagination-controls button:hover:not(:disabled) {
+    background-color: var(--bg-tertiary);
+}
+
+.dark-mode .pagination-controls button:disabled {
+    opacity: 0.4;
+}
+
+/* ===============================================
+   STATS & CHARTS
+   =============================================== */
+
+.dark-mode .stats-grid,
+.dark-mode .charts-grid {
+    background-color: transparent;
+}
+
+.dark-mode .stat-value {
+    color: var(--text-primary);
+}
+
+.dark-mode .stat-change {
+    color: var(--text-secondary);
+}
+
+/* ===============================================
+   SIDEBAR (if you have one)
+   =============================================== */
+
+.dark-mode .sidebar {
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+}
+
+.dark-mode .sidebar-item {
+    color: var(--text-secondary);
+}
+
+.dark-mode .sidebar-item:hover {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.dark-mode .sidebar-item.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+/* ===============================================
+   HELP BUTTON
+   =============================================== */
+
+.dark-mode .help-button {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #2563eb 100%);
+}
+
+/* ===============================================
+   ALERTS & NOTIFICATIONS
+   =============================================== */
+
+.dark-mode .alert {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.dark-mode .alert-success {
+    background-color: rgba(16, 185, 129, 0.1);
+    border-color: var(--success);
+    color: #4ade80;
+}
+
+.dark-mode .alert-warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    border-color: var(--warning);
+    color: #fbbf24;
+}
+
+.dark-mode .alert-danger {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: var(--danger);
+    color: #f87171;
+}
+
+/* ===============================================
+   QUICK REPORT CARDS
+   =============================================== */
+
+.dark-mode .quick-report-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+}
+
+.dark-mode .quick-report-card:hover {
+    border-color: var(--primary-color);
+    background-color: var(--bg-secondary);
+}
+
+.dark-mode .quick-report-card h4 {
+    color: var(--text-primary);
+}
+
+.dark-mode .quick-report-card p {
+    color: var(--text-secondary);
+}
+
+/* ===============================================
+   STOCK INFO CARD
+   =============================================== */
+
+.dark-mode .stock-info-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+
+/* ===============================================
+   OTP INPUTS
+   =============================================== */
+
+.dark-mode .otp-input {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+.dark-mode .otp-input:focus {
+    border-color: var(--primary-color);
+}
+
+.dark-mode .resend-text {
+    color: var(--text-secondary);
+}
+
+/* ===============================================
+   PASSWORD HINTS
+   =============================================== */
+
+.dark-mode .password-hint {
+    color: var(--text-tertiary);
+}
+
+/* ===============================================
+   SMOOTH TRANSITIONS
+   =============================================== */
+
+body, body * {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Prevent transition on page load */
+.preload * {
+    transition: none !important;
+}

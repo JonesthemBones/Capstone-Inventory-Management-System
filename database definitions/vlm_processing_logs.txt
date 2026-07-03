@@ -1,0 +1,11 @@
+CREATE TABLE vlm_processing_logs (
+    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    image_id UUID NOT NULL REFERENCES receipt_images(image_id) ON DELETE CASCADE,
+    
+    processing_status VARCHAR(50), -- started, completed, failed
+    attempt_number INT,
+    response_time_ms INT,
+    error_message TEXT,
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

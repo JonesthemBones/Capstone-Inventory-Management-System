@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports - Inventory System</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/help.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/help.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+    <script src="../scripts/mobile-responsive.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    
+    <div class="app-container">
+        <main class="main-content">
+            <div class="page active">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">
+                            <i class="fas fa-file-alt"></i> Reports Generation
+                        </h1>
+                        <p class="page-subtitle">Generate and export detailed reports in PDF format</p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px;">
+                    <!-- Configure Report Section -->
+                    <div style="background: var(--bg-white); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+                        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Configure Report</h3>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;">Select report type and date range to generate</p>
+
+                        <div class="form-group" style="margin-bottom: 24px;">
+                            <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px;">Report Type</label>
+                            <select id="report-type" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;">
+                                <option value="complete">Complete Inventory Report</option>
+                                <option value="low-stock">Low Stock Alert Report</option>
+                                <option value="valuation">Inventory Valuation Report</option>
+                                <option value="movement">Stock Movement Report</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 24px;">
+                            <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px;">Date Range (Optional)</label>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block;">From</label>
+                                    <input type="date" id="date-from" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block;">To</label>
+                                    <input type="date" id="date-to" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" id="generate-report-btn" style="width: 100%; justify-content: center; padding: 12px;">
+                            <i class="fas fa-download"></i>
+                            Generate & Download PDF
+                        </button>
+                    </div>
+
+                    <!-- Report Preview Section -->
+                    <div style="background: var(--bg-white); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+                        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Report Preview</h3>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;">What will be included</p>
+
+                        <div id="report-preview" style="display: flex; flex-direction: column; gap: 16px;">
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <i class="fas fa-file-alt" style="color: var(--primary-color); margin-top: 2px;"></i>
+                                <div>
+                                    <p style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Complete inventory listing</p>
+                                    <p style="font-size: 12px; color: var(--text-secondary);">All products with quantities and values</p>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <i class="fas fa-chart-bar" style="color: var(--primary-color); margin-top: 2px;"></i>
+                                <div>
+                                    <p style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Stock status indicators</p>
+                                    <p style="font-size: 12px; color: var(--text-secondary);">In stock, low stock, out of stock</p>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: start; gap: 12px;">
+                                <i class="fas fa-peso-sign" style="color: var(--primary-color); margin-top: 2px;"></i>
+                                <div>
+                                    <p style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Total inventory value</p>
+                                    <p style="font-size: 12px; color: var(--text-secondary);">Summary of total stock worth</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Reports Section -->
+                <div style="background: var(--bg-white); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Quick Reports</h3>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;">Generate commonly used reports instantly</p>
+
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                        <div class="quick-report-card" data-type="complete" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-file-alt" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Current Inventory</h4>
+                            <p style="font-size: 12px; color: var(--text-secondary);">Complete stock status</p>
+                        </div>
+                        <div class="quick-report-card" data-type="low-stock" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 32px; color: var(--warning); margin-bottom: 12px;"></i>
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Low Stock Alert</h4>
+                            <p style="font-size: 12px; color: var(--text-secondary);">Items to reorder</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <button class="help-button" onclick="openHelp()">
+        <i class="fas fa-question" style="font-size: 20px;"></i>
+    </button>
+
+    <!-- Help Modal -->
+    <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
+        <div class="help-content">
+            <div class="help-header">
+                <h2>Receipt Generation Guide</h2>
+                <button class="close-help" onclick="closeHelp()">&times;</button>
+            </div>
+            <div class="help-body">
+                <p>To create, export, and review detailed inventory performance reports.</p>
+                <br>
+                <div class="help-section">
+                    
+                    <h3>Overview</h3>
+                    <ul>
+                        <li>
+                            This page lets you generate a complete summary reports of inventory, sales, category distribution, and stock movements. You can customize the type of report and date range as wanted.
+                        </li>            
+                    </ul>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Report Preview</h3>
+                    <ul>
+                        <li>
+                            You can review which data will be included in the report based on your selected options before generating the PDF.
+                        </li>                       
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Quick Reports</h3>
+                    <ul>
+                       <li>
+                        You can instantly produce commonly used reports like Current Inventory and Low Stock Alerts by clicking the respective cards.
+                       </li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Download and Export</h3>
+                    <ul>
+                        <li>
+                           Reports can be generated as PDF files and exported for record-keeping, management review, or audit purposes.
+                        </li>
+                    </ul>
+                </div>
+                <div class="help-section">
+                    <h3>Recent Reports</h3>
+                    <ul>
+                        <li>
+                            You can view a history of recently generated reports for quick access and re-download if needed.
+                        </li>
+                    </ul>
+                </div>
+                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️Regularly generate inventory and outbound activity reports to maintain accurate records and support decision-making.⚠️</p>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .quick-report-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-color: var(--primary-color);
+        }
+
+        .report-history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .report-history-item:hover {
+            background-color: var(--bg-light);
+        }
+    </style>
+
+    <script src="../scripts/reports.js"></script>
+</body>
+</html>

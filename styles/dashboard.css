@@ -1,0 +1,226 @@
+/* Additional Dashboard-specific styles */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background-color: var(--danger);
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.alerts-section {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 24px;
+    margin-top: 32px;
+}
+
+.alerts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.alerts-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.alert-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.alert-item:hover {
+    background-color: var(--bg-light);
+}
+
+.alert-item:last-child {
+    margin-bottom: 0;
+}
+
+.alert-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #fef3c7;
+    color: var(--warning);
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.alert-content {
+    flex: 1;
+}
+
+.alert-product {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.alert-details {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.alert-stock {
+    font-weight: 600;
+    color: var(--danger);
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.activity-icon.inbound {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.activity-icon.outbound {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+.activity-content {
+    flex: 1;
+}
+
+.activity-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 2px;
+}
+
+.activity-details {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.activity-time {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 48px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.empty-state p {
+    font-size: 14px;
+}
+
+/* Chart hover effects */
+.chart-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chart-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Stat card animations */
+.stat-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Loading states */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.loading i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1280px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 1024px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stat-value {
+        font-size: 24px;
+    }
+    
+    .chart-card {
+        padding: 16px;
+    }
+}

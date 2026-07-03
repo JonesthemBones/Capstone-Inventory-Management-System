@@ -1,0 +1,232 @@
+/* Category-specific styles */
+
+/* Ensure modal is properly styled */
+#category-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+}
+
+#category-modal.active {
+    display: flex !important;
+}
+
+.product-count-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    background-color: #e0e7ff;
+    color: #4338ca;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Enhanced table styles for categories */
+.data-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.data-table tbody tr:hover {
+    background-color: var(--bg-light);
+}
+
+/* Category icon styling */
+.data-table td .fa-folder {
+    font-size: 16px;
+}
+
+/* Modal enhancements for category form */
+#category-modal .modal-content {
+    max-width: 600px;
+    width: 90%;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+#category-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#category-modal .modal-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+#category-modal .modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+#category-modal .modal-close:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+}
+
+#category-modal form {
+    padding: 24px;
+}
+
+#category-modal .form-group {
+    margin-bottom: 20px;
+}
+
+#category-modal .form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+#category-modal .form-group input,
+#category-modal .form-group select,
+#category-modal .form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--text-primary);
+    background-color: var(--bg-white);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    font-family: inherit;
+}
+
+#category-modal .form-group input:focus,
+#category-modal .form-group select:focus,
+#category-modal .form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+#category-modal .form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+#category-modal .form-group input::placeholder,
+#category-modal .form-group textarea::placeholder {
+    color: var(--text-muted);
+}
+
+#category-modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 24px;
+}
+
+#category-modal .modal-actions .btn {
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
+/* Empty state styling */
+.data-table tbody td[colspan] {
+    text-align: center;
+    padding: 60px 40px !important;
+    color: var(--text-secondary);
+}
+
+.data-table tbody td[colspan]::before {
+    content: '\f07c';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 400;
+    display: block;
+    font-size: 48px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+/* Action buttons hover effects */
+.action-btns {
+    display: flex;
+    gap: 4px;
+}
+
+.icon-btn {
+    position: relative;
+    transition: all 0.15s ease;
+}
+
+.icon-btn:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background-color: var(--text-primary);
+    color: white;
+    font-size: 11px;
+    border-radius: 4px;
+    white-space: nowrap;
+    margin-bottom: 4px;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+/* Status indicator for active/inactive categories */
+.category-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.category-status::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--success);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .search-box {
+        width: 100%;
+    }
+    
+    .data-table {
+        font-size: 12px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 10px 8px;
+    }
+}

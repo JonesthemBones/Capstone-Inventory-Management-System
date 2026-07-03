@@ -1,0 +1,1074 @@
+let currentEditingProductId = null;
+let currentAdjustingProductId = null;
+let currentUserRole = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const session = await window.authHelpers.requireAuth();
+    if (!session) return;
+    
+    // Get current user role
+    await loadUserRole();
+    
+    // Apply role-based access controls
+    applyRoleBasedAccess();
+    
+    await loadInventory();
+    setupEventListeners();
+    setupRealtimeSubscriptions();
+});
+
+async function loadUserRole() {
+    try {
+        // Wait for window.currentUserRole to be set by sidebar.js
+        let attempts = 0;
+        while (!window.currentUserRole && attempts < 20) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+        
+        currentUserRole = window.currentUserRole || 'staff';
+        console.log('Current user role:', currentUserRole);
+    } catch (error) {
+        console.error('Error loading user role:', error);
+        currentUserRole = 'staff';
+    }
+}
+
+function applyRoleBasedAccess() {
+    // Hide backup/restore buttons for staff and cashier roles
+    if (currentUserRole === 'staff' || currentUserRole === 'cashier') {
+        const backupRestoreButtons = document.querySelectorAll('.role-backup-restore');
+        backupRestoreButtons.forEach(btn => {
+            btn.style.display = 'none';
+        });
+    }
+    
+    // For cashiers: hide buttons that require staff or admin access
+    if (currentUserRole === 'cashier') {
+        const staffButtons = document.querySelectorAll('.role-requires-staff-or-admin');
+        staffButtons.forEach(btn => {
+            btn.style.display = 'none';
+        });
+    }
+}
+
+async function loadInventory(filters = {}) {
+    try {
+        console.log('Starting inventory load...');
+        let query = supabaseClient
+        .from('products')
+        .select(`
+            *,
+            inventory_stock!inventory_stock_product_id_fkey(quantity)
+        `)
+        .order('product_name');
+        
+        if (filters.search) {
+            query = query.or(`product_name.ilike.%${filters.search}%,product_code.ilike.%${filters.search}%`);
+        }
+        
+        console.log('Executing query...');
+        const { data: products, error } = await query;
+        
+        if (error) {
+            console.error('Supabase Query Error:', error);
+            throw error;
+        }
+        console.log('Query results:', products);
+
+        let filteredProducts = products || [];
+        if (filters.status) {
+            filteredProducts = filteredProducts.filter(p => {
+                const inventory = p.inventory_stock?.[0] || p.inventory_stock;
+                const qty = inventory?.quantity || 0;
+                if (filters.status === 'in_stock') return qty >= 10;
+                if (filters.status === 'low_stock') return qty > 0 && qty < 10;
+                if (filters.status === 'out_of_stock') return qty === 0;
+                return true;
+            });
+        }
+        
+        displayInventory(filteredProducts);
+        document.getElementById('inventory-count').textContent = 
+            `${filteredProducts.length} items in inventory`;
+        
+    } catch (error) {
+        console.error('Error loading inventory:', error);
+    }
+}
+
+function displayInventory(products) {
+    const tbody = document.getElementById('inventory-table-body');
+    
+    if (!products || products.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    No products found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = products.map(product => {
+        const inventory = product.inventory_stock?.[0] || product.inventory_stock || product.inventory?.[0] || {};
+        const quantity = inventory.quantity || 0;
+        const totalValue = quantity * (product.unit_price || 0);
+        
+        console.log(`Displaying ${product.product_name}:`, {
+            quantity: quantity
+        });
+        
+        let status = 'out_of_stock';
+        let statusClass = 'status-out';
+        let statusText = 'Out of Stock';
+        
+        if (quantity >= 10) {
+            status = 'in_stock';
+            statusClass = 'status-in';
+            statusText = 'In Stock';
+        } else if (quantity > 0) {
+            status = 'low_stock';
+            statusClass = 'status-low';
+            statusText = 'Low Stock';
+        }
+        
+        // Generate action buttons based on role
+        let actionButtons = '';
+        if (currentUserRole === 'cashier') {
+            // Cashiers get no action buttons (read-only view)
+            actionButtons = '<span style="color: var(--text-secondary); font-size: 12px;">View Only</span>';
+        } else {
+            // Staff and admins get full action buttons
+            actionButtons = `
+                <div class="action-btns">
+                    <button class="icon-btn adjust-btn" data-id="${product.product_id}" title="Adjust Stock">
+                        <i class="fas fa-boxes"></i>
+                    </button>
+                    <button class="icon-btn edit-btn" data-id="${product.product_id}" title="Edit Product">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="icon-btn delete delete-btn" data-id="${product.product_id}" title="Delete Product">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+        }
+        
+        return `
+            <tr data-product-id="${product.product_id}">
+                <td><strong>${product.product_name}</strong></td>
+                <td>${product.product_code || 'N/A'}</td>
+                <td>${product.unit_of_measure || 'N/A'}</td>
+                <td><strong>${quantity}</strong></td>
+                <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                <td>${formatCurrency(product.unit_price || 0)}</td>
+                <td>${formatCurrency(product.selling_price || 0)}</td>
+                <td><strong>${formatCurrency(totalValue)}</strong></td>
+                <td>
+                    ${actionButtons}
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Only attach event listeners if the buttons exist (not for cashiers)
+    if (currentUserRole !== 'cashier') {
+        document.querySelectorAll('.adjust-btn').forEach(btn => {
+            btn.addEventListener('click', () => openStockAdjustmentModal(btn.dataset.id));
+        });
+        
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => editProduct(btn.dataset.id));
+        });
+        
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteProduct(btn.dataset.id));
+        });
+    }
+}
+
+function setupEventListeners() {
+    document.getElementById('inventory-search').addEventListener('input', (e) => {
+        const filters = getFilters();
+        filters.search = e.target.value;
+        loadInventory(filters);
+    });
+    
+    document.getElementById('status-filter').addEventListener('change', (e) => {
+        const filters = getFilters();
+        filters.status = e.target.value;
+        loadInventory(filters);
+    });
+
+    document.getElementById('product-form').addEventListener('submit', saveProduct);
+
+    document.getElementById('add-item-btn').addEventListener('click', () => {
+        currentEditingProductId = null;
+        document.getElementById('modal-title').textContent = 'Add New Product';
+        document.getElementById('product-form').reset();
+        const quantityInput = document.getElementById('product-quantity');
+        const quantityGroup = quantityInput.closest('.form-group');
+        quantityGroup.style.display = '';
+        quantityInput.setAttribute('required', 'required');
+        document.getElementById('product-modal').classList.add('active');
+    });
+
+    document.getElementById('close-product-modal').addEventListener('click', () => {
+        document.getElementById('product-modal').classList.remove('active');
+    });
+
+    document.getElementById('cancel-product-btn').addEventListener('click', () => {
+        document.getElementById('product-modal').classList.remove('active');
+    });
+    
+    document.getElementById('stock-adjustment-form').addEventListener('submit', saveStockAdjustment);
+    document.getElementById('close-stock-modal').addEventListener('click', () => {
+        document.getElementById('stock-adjustment-modal').classList.remove('active');
+    });
+    document.getElementById('cancel-stock-btn').addEventListener('click', () => {
+        document.getElementById('stock-adjustment-modal').classList.remove('active');
+    });
+
+    // Export CSV event listener
+    document.getElementById('export-csv-btn').addEventListener('click', exportToCSV);
+    
+    // Backup and Restore event listeners
+    document.getElementById('export-backup-btn').addEventListener('click', exportBackup);
+    document.getElementById('import-restore-btn').addEventListener('click', () => {
+        document.getElementById('restore-modal').classList.add('active');
+    });
+    document.getElementById('close-restore-modal').addEventListener('click', () => {
+        document.getElementById('restore-modal').classList.remove('active');
+        resetRestoreModal();
+    });
+    document.getElementById('cancel-restore-btn').addEventListener('click', () => {
+        document.getElementById('restore-modal').classList.remove('active');
+        resetRestoreModal();
+    });
+    document.getElementById('backup-file').addEventListener('change', handleBackupFileSelect);
+    document.getElementById('restore-mode').addEventListener('change', validateRestoreForm);
+    document.getElementById('confirm-restore-btn').addEventListener('click', restoreBackup);
+}
+
+function getFilters() {
+    return {
+        search: document.getElementById('inventory-search').value,
+        status: document.getElementById('status-filter').value
+    };
+}
+
+async function openStockAdjustmentModal(productId) {
+    try {
+        const { data: product } = await supabaseClient
+            .from('products')
+            .select(`
+                *,
+                inventory_stock!inventory_stock_product_id_fkey(quantity)
+            `)
+            .eq('product_id', productId)
+            .single();
+        
+        if (!product) throw new Error('Product not found');
+        
+        currentAdjustingProductId = productId;
+        const inventory = product.inventory_stock?.[0] || product.inventory_stock || {};
+        const currentQuantity = inventory.quantity || 0;
+        
+        console.log('Loading stock adjustment for:', product.product_name, 'Current quantity:', currentQuantity);
+        
+        document.getElementById('stock-product-name').textContent = product.product_name;
+        document.getElementById('stock-product-code').textContent = product.product_code || 'N/A';
+        document.getElementById('stock-quantity').value = currentQuantity;
+        document.getElementById('stock-notes').value = '';
+        
+        document.getElementById('stock-adjustment-modal').classList.add('active');
+        
+    } catch (error) {
+        console.error('Error loading product for adjustment:', error);
+        alert('Error loading product: ' + error.message);
+    }
+}
+
+async function saveStockAdjustment(e) {
+    e.preventDefault();  
+    const quantity = parseInt(document.getElementById('stock-quantity').value);
+    const notes = document.getElementById('stock-notes').value;
+    
+    try {
+        // Get product with maximum stock limit
+        const { data: product } = await supabaseClient
+            .from('products')
+            .select('maximum_stock, product_name')
+            .eq('product_id', currentAdjustingProductId)
+            .single();
+        
+        // Validate against maximum stock
+        if (product.maximum_stock && quantity > product.maximum_stock) {
+            alert(`❌ Cannot adjust stock!\n\nThe quantity (${quantity}) exceeds the maximum stock limit of ${product.maximum_stock} for ${product.product_name}.\n\nPlease enter a quantity at or below the maximum stock limit.`);
+            return;
+        }
+        
+        const { data: existingStock } = await supabaseClient
+            .from('inventory_stock')
+            .select('quantity, stock_id')
+            .eq('product_id', currentAdjustingProductId)
+            .maybeSingle();
+        
+        let updateError;
+        
+        if (existingStock) {
+            const result = await supabaseClient
+                .from('inventory_stock')
+                .update({
+                    quantity: quantity,
+                    last_restock_date: new Date().toISOString()
+                })
+                .eq('product_id', currentAdjustingProductId);
+
+            updateError = result.error;
+        } else {
+            const result = await supabaseClient
+                .from('inventory_stock')
+                .insert([{
+                    product_id: currentAdjustingProductId,
+                    quantity: quantity,
+                    last_restock_date: new Date().toISOString()
+                }]);
+
+            updateError = result.error;
+        }
+
+        if (updateError) throw updateError;
+        
+        const quantityChange = quantity - (existingStock?.quantity || 0);
+
+        await supabaseClient
+            .from('stock_movements')
+            .insert([{
+                product_id: currentAdjustingProductId,
+                movement_type: 'adjustment',
+                quantity_change: quantityChange,
+                quantity_after: quantity,
+                notes: notes || 'Stock adjustment'
+            }]);
+        
+        document.getElementById('stock-adjustment-modal').classList.remove('active');
+        await loadInventory(getFilters());
+        alert('Stock adjusted successfully!');
+        
+    } catch (error) {
+        console.error('Error adjusting stock:', error);
+        alert('Error adjusting stock: ' + error.message);
+    }
+}
+
+async function saveProduct(e) {
+    e.preventDefault();
+    
+    const productData = {
+        product_name: document.getElementById('product-name').value,
+        product_code: document.getElementById('product-code').value,
+        unit_of_measure: document.getElementById('product-unit').value,
+        unit_price: parseFloat(document.getElementById('product-price').value),
+        selling_price: parseFloat(document.getElementById('selling-price').value),
+        reorder_level: parseInt(document.getElementById('reorder-level').value),
+        maximum_stock: parseInt(document.getElementById('maximum-stock').value) || null,
+        description: document.getElementById('product-description').value || null
+    };
+    
+    const quantity = parseInt(document.getElementById('product-quantity').value);
+    
+    try {
+        let productId;
+        
+        if (currentEditingProductId) {
+            const { error } = await supabaseClient
+                .from('products')
+                .update(productData)
+                .eq('product_id', currentEditingProductId);
+        
+            if (error) throw error;
+            productId = currentEditingProductId;
+            
+        } else {
+            const { data, error } = await supabaseClient
+                .from('products')
+                .insert([productData])
+                .select()
+                .single();
+            
+            if (error) throw error;
+            productId = data.product_id;
+
+            await supabaseClient
+                .from('inventory_stock')
+                .insert([{
+                    product_id: productId,
+                    quantity: quantity,
+                    last_restock_date: new Date().toISOString()
+            }]);
+
+            await supabaseClient
+                .from('stock_movements')
+                .insert([{
+                    product_id: productId,
+                    movement_type: 'inbound',
+                    quantity_change: quantity,
+                    quantity_before: 0,
+                    quantity_after: quantity,
+                    notes: 'Initial stock'
+                }]);
+        }
+        
+        document.getElementById('product-modal').classList.remove('active');
+        await loadInventory(getFilters());
+        alert(currentEditingProductId ? 'Product updated successfully!' : 'Product added successfully!');
+    } catch (error) {
+        console.error('Error saving product:', error);
+        alert('Error saving product: ' + error.message);
+    }
+}
+
+async function editProduct(productId) {
+    try {
+        const { data: product } = await supabaseClient
+            .from('products')
+            .select('*')
+            .eq('product_id', productId)
+            .single();
+        
+        if (!product) throw new Error('Product not found');
+        
+        currentEditingProductId = productId;
+        document.getElementById('modal-title').textContent = 'Edit Product';
+        document.getElementById('product-name').value = product.product_name;
+        document.getElementById('product-code').value = product.product_code || '';
+        document.getElementById('product-unit').value = product.unit_of_measure || '';
+        document.getElementById('product-price').value = product.unit_price || 0;
+        document.getElementById('selling-price').value = product.selling_price || 0;
+        document.getElementById('reorder-level').value = product.reorder_level || 10;
+        document.getElementById('maximum-stock').value = product.maximum_stock || '';
+        document.getElementById('product-description').value = product.description || '';
+        
+        const quantityInput = document.getElementById('product-quantity');
+        const quantityGroup = quantityInput.closest('.form-group');
+        quantityGroup.style.display = 'none';
+        quantityInput.removeAttribute('required');
+        
+        document.getElementById('product-modal').classList.add('active');
+        
+    } catch (error) {
+        console.error('Error loading product:', error);
+        alert('Error loading product: ' + error.message);
+    }
+}
+
+async function deleteProduct(productId) {
+    try {
+        // First, check if the product has any stock
+        const { data: stockData, error: stockError } = await supabaseClient
+            .from('inventory_stock')
+            .select('quantity')
+            .eq('product_id', productId)
+            .maybeSingle();
+        
+        if (stockError) throw stockError;
+        
+        // Check if product has quantity in stock
+        const currentQuantity = stockData?.quantity || 0;
+        
+        if (currentQuantity > 0) {
+            alert(`❌ Cannot delete this product!\n\nThis product still has ${currentQuantity} units in stock.\n\nPlease adjust the stock to 0 before deleting.`);
+            return;
+        }
+        
+        // If no stock, proceed with confirmation
+        if (!confirm('Are you sure you want to delete this product?')) return;
+        
+        const { error } = await supabaseClient
+            .from('products')
+            .delete()
+            .eq('product_id', productId);
+        
+        if (error) throw error;
+        
+        await loadInventory(getFilters());
+        alert('Product deleted successfully!');
+        
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        alert('Error deleting product: ' + error.message);
+    }
+}
+
+function setupRealtimeSubscriptions() {
+    supabaseClient
+        .channel('products_changes')
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'products' },
+            () => loadInventory(getFilters())
+        )
+        .subscribe();
+    
+    supabaseClient
+        .channel('inventory_changes')
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'inventory_stock' },
+            () => loadInventory(getFilters())
+        )
+        .subscribe();
+}
+
+async function exportToCSV() {
+    try {
+        // Show loading indicator
+        const originalText = document.getElementById('export-csv-btn').innerHTML;
+        document.getElementById('export-csv-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+        document.getElementById('export-csv-btn').disabled = true;
+
+        // Fetch all products with their inventory data
+        const { data: products, error } = await supabaseClient
+            .from('products')
+            .select(`
+                *,
+                inventory_stock!inventory_stock_product_id_fkey(quantity, updated_at)
+            `)
+            .order('product_name');
+
+        if (error) throw error;
+
+        // Prepare CSV headers
+        const headers = [
+            'Product Name',
+            'Product Code',
+            'Unit of Measure',
+            'Quantity',
+            'Unit Price',
+            'Selling Price',
+            'Total Value',
+            'Reorder Level',
+            'Maximum Stock',
+            'Status',
+            'Description'
+        ];
+
+        // Prepare CSV rows
+        const rows = products.map(product => {
+            const inventory = product.inventory_stock?.[0] || product.inventory_stock || {};
+            const quantity = inventory.quantity || 0;
+            const totalValue = quantity * (product.unit_price || 0);
+            
+            // Determine status
+            let status = 'Out of Stock';
+            if (quantity >= 10) {
+                status = 'In Stock';
+            } else if (quantity > 0) {
+                status = 'Low Stock';
+            }
+
+            return [
+                product.product_name || '',
+                product.product_code || '',
+                product.unit_of_measure || '',
+                quantity,
+                product.unit_price || 0,
+                product.selling_price || 0,
+                totalValue.toFixed(2),
+                product.reorder_level || 0,
+                product.maximum_stock || '',
+                status,
+                (product.description || '').replace(/"/g, '""') // Escape quotes in description
+            ];
+        });
+
+        // Convert to CSV format
+        const csvContent = [
+            headers.map(h => `"${h}"`).join(','),
+            ...rows.map(row => row.map(cell => {
+                // Handle values that might contain commas or quotes
+                if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))) {
+                    return `"${cell}"`;
+                }
+                return cell;
+            }).join(','))
+        ].join('\n');
+
+        // Create and download CSV file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        link.download = `inventory_export_${timestamp}.csv`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        // Show success message
+        alert(`✅ CSV exported successfully!\n\n${products.length} products exported to file.`);
+
+    } catch (error) {
+        console.error('Error exporting CSV:', error);
+        alert('Error exporting CSV: ' + error.message);
+    } finally {
+        // Reset button
+        document.getElementById('export-csv-btn').innerHTML = '<i class="fas fa-file-csv"></i> Export CSV';
+        document.getElementById('export-csv-btn').disabled = false;
+    }
+}
+
+// ============================================================================
+// BACKUP AND RESTORE FUNCTIONS
+// ============================================================================
+
+let selectedBackupData = null;
+
+async function exportBackup() {
+    try {
+        // Show loading indicator
+        const originalText = document.getElementById('export-backup-btn').innerHTML;
+        document.getElementById('export-backup-btn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+        document.getElementById('export-backup-btn').disabled = true;
+
+        // Fetch all products with their inventory data
+        const { data: products, error } = await supabaseClient
+            .from('products')
+            .select(`
+                *,
+                inventory_stock!inventory_stock_product_id_fkey(quantity, updated_at)
+            `)
+            .order('product_name');
+
+        if (error) throw error;
+
+        // Prepare backup data
+        const backupData = {
+            backup_metadata: {
+                export_date: new Date().toISOString(),
+                total_products: products.length,
+                version: '1.0',
+                system: 'Inventory Management System'
+            },
+            products: products.map(product => {
+                const inventory = product.inventory_stock?.[0] || product.inventory_stock || {};
+                return {
+                    product_name: product.product_name,
+                    product_code: product.product_code,
+                    unit_of_measure: product.unit_of_measure,
+                    unit_price: product.unit_price,
+                    selling_price: product.selling_price,
+                    reorder_level: product.reorder_level,
+                    maximum_stock: product.maximum_stock,
+                    description: product.description,
+                    quantity: inventory.quantity || 0,
+                    created_at: product.created_at,
+                    updated_at: product.updated_at
+                };
+            })
+        };
+
+        // Create and download JSON file
+        const jsonString = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        link.download = `inventory_backup_${timestamp}.json`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        // Show success message
+        alert(`✅ Backup exported successfully!\n\n${products.length} products exported to file.`);
+
+    } catch (error) {
+        console.error('Error exporting backup:', error);
+        alert('Error exporting backup: ' + error.message);
+    } finally {
+        // Reset button
+        document.getElementById('export-backup-btn').innerHTML = '<i class="fas fa-download"></i> Export Backup';
+        document.getElementById('export-backup-btn').disabled = false;
+    }
+}
+
+async function handleBackupFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        selectedBackupData = null;
+        document.getElementById('backup-preview').style.display = 'none';
+        validateRestoreForm();
+        return;
+    }
+
+    try {
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        const fileContent = await file.text();
+        
+        let backupData;
+
+        if (fileExtension === 'json') {
+            backupData = JSON.parse(fileContent);
+            
+            // Validate JSON structure
+            if (!backupData.products || !Array.isArray(backupData.products)) {
+                throw new Error('Invalid backup file format. Missing products array.');
+            }
+
+            // Store backup data
+            selectedBackupData = backupData;
+
+            // Show preview
+            document.getElementById('backup-preview').style.display = 'block';
+            document.getElementById('preview-count').textContent = backupData.products.length;
+            document.getElementById('preview-date').textContent = backupData.backup_metadata?.export_date 
+                ? new Date(backupData.backup_metadata.export_date).toLocaleString()
+                : 'Unknown';
+            document.getElementById('preview-format').textContent = 'JSON';
+
+        } else if (fileExtension === 'csv') {
+            // Parse CSV
+            const lines = fileContent.split('\n').filter(line => line.trim());
+            if (lines.length < 2) {
+                throw new Error('CSV file is empty or invalid.');
+            }
+
+            const headers = lines[0].split(',').map(h => h.trim());
+            const products = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                const product = {};
+                
+                headers.forEach((header, index) => {
+                    let value = values[index] || '';
+                    // Remove quotes if present
+                    value = value.replace(/^["']|["']$/g, '');
+                    
+                    // Convert numeric fields
+                    if (['unit_price', 'selling_price'].includes(header)) {
+                        product[header] = parseFloat(value) || 0;
+                    } else if (['quantity', 'reorder_level', 'maximum_stock'].includes(header)) {
+                        product[header] = parseInt(value) || 0;
+                    } else {
+                        product[header] = value;
+                    }
+                });
+                
+                if (product.product_name && product.product_code) {
+                    products.push(product);
+                }
+            }
+
+            selectedBackupData = {
+                backup_metadata: {
+                    export_date: new Date().toISOString(),
+                    total_products: products.length,
+                    version: '1.0',
+                    system: 'CSV Import'
+                },
+                products: products
+            };
+
+            // Show preview
+            document.getElementById('backup-preview').style.display = 'block';
+            document.getElementById('preview-count').textContent = products.length;
+            document.getElementById('preview-date').textContent = 'CSV Import - ' + new Date().toLocaleString();
+            document.getElementById('preview-format').textContent = 'CSV';
+
+        } else {
+            throw new Error('Unsupported file format. Please use JSON or CSV files.');
+        }
+
+        validateRestoreForm();
+
+    } catch (error) {
+        console.error('Error reading backup file:', error);
+        alert('Error reading backup file: ' + error.message);
+        selectedBackupData = null;
+        document.getElementById('backup-preview').style.display = 'none';
+        document.getElementById('backup-file').value = '';
+        validateRestoreForm();
+    }
+}
+
+function validateRestoreForm() {
+    const restoreMode = document.getElementById('restore-mode').value;
+    const confirmButton = document.getElementById('confirm-restore-btn');
+    
+    if (selectedBackupData && restoreMode) {
+        confirmButton.disabled = false;
+    } else {
+        confirmButton.disabled = true;
+    }
+}
+
+function resetRestoreModal() {
+    document.getElementById('backup-file').value = '';
+    document.getElementById('restore-mode').value = '';
+    document.getElementById('backup-preview').style.display = 'none';
+    selectedBackupData = null;
+    validateRestoreForm();
+}
+
+async function restoreBackup() {
+    if (!selectedBackupData) {
+        alert('Please select a backup file first.');
+        return;
+    }
+
+    const restoreMode = document.getElementById('restore-mode').value;
+    if (!restoreMode) {
+        alert('Please select a restore mode.');
+        return;
+    }
+
+    const confirmMessage = restoreMode === 'replace' 
+        ? `⚠️ WARNING: This will DELETE ALL existing products and replace them with ${selectedBackupData.products.length} products from the backup.\n\nThis action cannot be undone!\n\nType 'CONFIRM' to proceed:`
+        : `This will restore ${selectedBackupData.products.length} products using "${restoreMode}" mode.\n\nContinue?`;
+
+    if (restoreMode === 'replace') {
+        const userInput = prompt(confirmMessage);
+        if (userInput !== 'CONFIRM') {
+            alert('Restore cancelled.');
+            return;
+        }
+    } else {
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+    }
+
+    try {
+        // Show loading
+        const confirmButton = document.getElementById('confirm-restore-btn');
+        const originalText = confirmButton.innerHTML;
+        confirmButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restoring...';
+        confirmButton.disabled = true;
+
+        let successCount = 0;
+        let skippedCount = 0;
+        let errorCount = 0;
+
+        if (restoreMode === 'replace') {
+            // Delete all existing products
+            // First, get all product IDs
+            const { data: allProducts } = await supabaseClient
+                .from('products')
+                .select('product_id');
+            
+            // Delete each product (this also cascades to inventory_stock due to foreign key)
+            if (allProducts && allProducts.length > 0) {
+                for (const product of allProducts) {
+                    await supabaseClient
+                        .from('products')
+                        .delete()
+                        .eq('product_id', product.product_id);
+                }
+            }
+
+            // Insert all products from backup
+            for (const productData of selectedBackupData.products) {
+                try {
+                    const { product_name, product_code, unit_of_measure, unit_price, selling_price, 
+                            reorder_level, maximum_stock, description, quantity } = productData;
+
+                    // Insert product
+                    const { data: newProduct, error: productError } = await supabaseClient
+                        .from('products')
+                        .insert({
+                            product_name,
+                            product_code,
+                            unit_of_measure,
+                            unit_price,
+                            selling_price,
+                            reorder_level,
+                            maximum_stock,
+                            description
+                        })
+                        .select()
+                        .single();
+
+                    if (productError) throw productError;
+
+                    // Insert inventory stock
+                    const { error: stockError } = await supabaseClient
+                        .from('inventory_stock')
+                        .insert({
+                            product_id: newProduct.product_id,
+                            quantity: quantity || 0
+                        });
+
+                    if (stockError) throw stockError;
+
+                    successCount++;
+                } catch (error) {
+                    console.error(`Error restoring product ${productData.product_code}:`, error);
+                    errorCount++;
+                }
+            }
+
+        } else if (restoreMode === 'merge') {
+            // Update existing, add new
+            for (const productData of selectedBackupData.products) {
+                try {
+                    const { product_name, product_code, unit_of_measure, unit_price, selling_price, 
+                            reorder_level, maximum_stock, description, quantity } = productData;
+
+                    // Check if product exists
+                    const { data: existingProducts } = await supabaseClient
+                        .from('products')
+                        .select('product_id')
+                        .eq('product_code', product_code)
+                        .limit(1);
+
+                    if (existingProducts && existingProducts.length > 0) {
+                        // Update existing product
+                        const productId = existingProducts[0].product_id;
+
+                        const { error: updateError } = await supabaseClient
+                            .from('products')
+                            .update({
+                                product_name,
+                                unit_of_measure,
+                                unit_price,
+                                selling_price,
+                                reorder_level,
+                                maximum_stock,
+                                description
+                            })
+                            .eq('product_id', productId);
+
+                        if (updateError) throw updateError;
+
+                        // Update inventory
+                        const { error: stockError } = await supabaseClient
+                            .from('inventory_stock')
+                            .update({ quantity: quantity || 0 })
+                            .eq('product_id', productId);
+
+                        if (stockError) throw stockError;
+
+                    } else {
+                        // Insert new product
+                        const { data: newProduct, error: productError } = await supabaseClient
+                            .from('products')
+                            .insert({
+                                product_name,
+                                product_code,
+                                unit_of_measure,
+                                unit_price,
+                                selling_price,
+                                reorder_level,
+                                maximum_stock,
+                                description
+                            })
+                            .select()
+                            .single();
+
+                        if (productError) throw productError;
+
+                        // Insert inventory stock
+                        const { error: stockError } = await supabaseClient
+                            .from('inventory_stock')
+                            .insert({
+                                product_id: newProduct.product_id,
+                                quantity: quantity || 0
+                            });
+
+                        if (stockError) throw stockError;
+                    }
+
+                    successCount++;
+                } catch (error) {
+                    console.error(`Error restoring product ${productData.product_code}:`, error);
+                    errorCount++;
+                }
+            }
+
+        } else if (restoreMode === 'add-only') {
+            // Only add new products, skip existing
+            for (const productData of selectedBackupData.products) {
+                try {
+                    const { product_name, product_code, unit_of_measure, unit_price, selling_price, 
+                            reorder_level, maximum_stock, description, quantity } = productData;
+
+                    // Check if product exists
+                    const { data: existingProducts } = await supabaseClient
+                        .from('products')
+                        .select('product_id')
+                        .eq('product_code', product_code)
+                        .limit(1);
+
+                    if (existingProducts && existingProducts.length > 0) {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Insert new product
+                    const { data: newProduct, error: productError } = await supabaseClient
+                        .from('products')
+                        .insert({
+                            product_name,
+                            product_code,
+                            unit_of_measure,
+                            unit_price,
+                            selling_price,
+                            reorder_level,
+                            maximum_stock,
+                            description
+                        })
+                        .select()
+                        .single();
+
+                    if (productError) throw productError;
+
+                    // Insert inventory stock
+                    const { error: stockError } = await supabaseClient
+                        .from('inventory_stock')
+                        .insert({
+                            product_id: newProduct.product_id,
+                            quantity: quantity || 0
+                        });
+
+                    if (stockError) throw stockError;
+
+                    successCount++;
+                } catch (error) {
+                    console.error(`Error restoring product ${productData.product_code}:`, error);
+                    errorCount++;
+                }
+            }
+        }
+
+        // Show results
+        let resultMessage = `✅ Restore completed!\n\n`;
+        resultMessage += `✓ Successfully restored: ${successCount} products\n`;
+        if (skippedCount > 0) resultMessage += `⊘ Skipped (already exists): ${skippedCount} products\n`;
+        if (errorCount > 0) resultMessage += `✗ Errors: ${errorCount} products\n`;
+
+        alert(resultMessage);
+
+        // Reload inventory and close modal
+        await loadInventory(getFilters());
+        document.getElementById('restore-modal').classList.remove('active');
+        resetRestoreModal();
+
+    } catch (error) {
+        console.error('Error restoring backup:', error);
+        alert('Error restoring backup: ' + error.message);
+    } finally {
+        // Reset button
+        const confirmButton = document.getElementById('confirm-restore-btn');
+        confirmButton.innerHTML = '<i class="fas fa-upload"></i> Restore Backup';
+        validateRestoreForm();
+    }
+}

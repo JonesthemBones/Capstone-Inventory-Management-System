@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management - Receipt OCR Scan</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/ocr_scan.css">
+    <link rel="stylesheet" href="../styles/help.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/help.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+    <script src="../scripts/mobile-responsive.js"></script>
+
+    <div class="app-container">
+        <main class="main-content">
+            <div class="page active">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Receipt OCR Scanner</h1>
+                        <p class="page-subtitle">Take or upload a receipt image, then review scanned items and adjust values before accepting.</p>
+                    </div>
+                </div>
+
+                <div class="ocr-page-grid">
+                    <section class="ocr-card ocr-upload-card">
+                        <div class="ocr-card-header">
+                            <div>
+                                <h2>Capture / Upload Receipt</h2>
+                                <p class="ocr-card-subtitle">Use your device camera or choose a receipt image from your files.</p>
+                            </div>
+                        </div>
+
+                        <div class="ocr-upload-section">
+                            <div class="form-group">
+                                <label for="receipt-image-input">Receipt Image</label>
+                                <input type="file" id="receipt-image-input" accept="image/*" capture="environment">
+                            </div>
+
+                            <div class="ocr-image-preview-wrapper">
+                                <div class="ocr-preview-label">Preview</div>
+                                <div id="receipt-image-preview" class="ocr-image-preview">No image selected</div>
+                            </div>
+
+                            <div class="ocr-button-row">
+                                <button class="btn btn-primary" id="process-receipt-btn">
+                                    <i class="fas fa-camera"></i>
+                                    Scan Receipt
+                                </button>
+                                <button class="btn" id="clear-receipt-btn">
+                                    <i class="fas fa-trash-alt"></i>
+                                    Clear
+                                </button>
+                            </div>
+
+                            <p class="ocr-hint">The receipt image is processed by the backend and sent to OpenRouter. Your data is only used for this scan.</p>
+                        </div>
+                    </section>
+
+                    <section class="ocr-card ocr-results-card">
+                        <div class="ocr-card-header ocr-results-header">
+                            <div>
+                                <h2>Extracted Items</h2>
+                                <p class="ocr-card-subtitle">Review items extracted by the VLM, then accept or remove them individually or in bulk.</p>
+                            </div>
+                            <div class="ocr-action-buttons">
+                                <button class="btn btn-secondary" id="download-json-btn">
+                                    <i class="fas fa-download"></i>
+                                    Download JSON
+                                </button>
+                                <button class="btn btn-primary" id="accept-all-btn">
+                                    <i class="fas fa-check"></i>
+                                    Accept All
+                                </button>
+                                <button class="btn btn-danger" id="remove-all-btn">
+                                    <i class="fas fa-trash"></i>
+                                    Remove All
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="ocr-status" class="ocr-status">No receipt scanned yet.</div>
+                        <div id="ocr-items-grid" class="ocr-items-grid"></div>
+                        <pre id="ocr-raw-output" class="ocr-raw-output" hidden></pre>
+
+                        <div class="ocr-save-section">
+                            <button class="btn btn-success btn-large" id="save-to-inventory-btn" style="display:none;">
+                                <i class="fas fa-save"></i>
+                                Save Accepted Items to Inventory
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="../scripts/ocr_scan.js"></script>
+</body>
+</html>

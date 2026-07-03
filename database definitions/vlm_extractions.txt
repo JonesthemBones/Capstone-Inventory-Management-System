@@ -1,0 +1,32 @@
+CREATE TABLE vlm_extractions (
+    extraction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    image_id UUID NOT NULL REFERENCES receipt_images(image_id) ON DELETE CASCADE,
+    
+    -- Vendor Info
+    vendor_name VARCHAR(255),
+    vendor_address TEXT,
+    vendor_phone VARCHAR(20),
+    
+    -- Transaction Details
+    transaction_date DATE,
+    transaction_time TIME,
+    receipt_number VARCHAR(100),
+    
+    -- Financial Summary
+    subtotal NUMERIC(12,2),
+    tax_amount NUMERIC(12,2),
+    discount_amount NUMERIC(12,2),
+    total_amount NUMERIC(12,2),
+    currency_code VARCHAR(3) DEFAULT 'USD',
+    
+    -- Quality Metrics
+    overall_confidence NUMERIC(3,2), -- 0.00 to 1.00
+    extraction_status VARCHAR(50), -- success, partial, failed
+    raw_response JSONB, -- Full VLM response (for debugging/re-processing)
+    
+    -- Processing Info
+    processing_time_ms INT,
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

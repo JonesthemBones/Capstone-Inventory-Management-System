@@ -1,0 +1,17 @@
+CREATE TABLE extracted_line_items (
+    line_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    extraction_id UUID NOT NULL REFERENCES vlm_extractions(extraction_id) ON DELETE CASCADE,
+    
+    item_description VARCHAR(255) NOT NULL,
+    item_quantity NUMERIC(10,2),
+    item_unit VARCHAR(20), -- each, kg, ltr, etc.
+    item_unit_price NUMERIC(12,2),
+    item_total_price NUMERIC(12,2),
+    item_confidence NUMERIC(3,2), -- confidence for this line item
+    
+    -- Link to your products (optional, for auto-matching)
+    matched_product_id UUID REFERENCES products(product_id),
+    
+    item_sequence INT, -- order on receipt
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

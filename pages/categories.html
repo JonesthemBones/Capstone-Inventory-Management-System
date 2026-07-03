@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Category Management - Inventory System</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/categories.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+    
+    <div class="app-container">
+        <main class="main-content">
+            <div class="page active">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Category Management</h1>
+                        <p class="page-subtitle">Organize your products with categories</p>
+                    </div>
+                </div>
+
+                <div class="table-section">
+                    <div class="table-header">
+                        <div>
+                            <h3 class="table-title">Categories</h3>
+                            <p class="table-subtitle" id="category-count">0 categories</p>
+                        </div>
+                        <div class="table-actions">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="category-search" placeholder="Search categories...">
+                            </div>
+                            <button class="btn btn-primary" id="add-category-btn">
+                                <i class="fas fa-plus"></i>
+                                Add Category
+                            </button>
+                            <button class="btn" id="back-to-inventory-btn">
+                                <i class="fas fa-arrow-left"></i>
+                                Back to Inventory
+                            </button>
+                        </div>
+                    </div>
+
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Category Name</th>
+                                <th>Description</th>
+                                <th>Parent Category</th>
+                                <th>Products Count</th>
+                                <th>Created Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="category-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="category-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add New Category</h2>
+                <button class="modal-close" id="close-category-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="category-form">
+                <div class="form-group">
+                    <label for="category-name">Category Name *</label>
+                    <input type="text" id="category-name" required placeholder="Enter category name">
+                </div>
+                <div class="form-group">
+                    <label for="category-description">Description</label>
+                    <textarea id="category-description" rows="3" placeholder="Enter category description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="parent-category">Parent Category</label>
+                    <select id="parent-category">
+                        <option value="">None (Top Level)</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn" id="cancel-category-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="../scripts/categories.js"></script>
+</body>
+</html>

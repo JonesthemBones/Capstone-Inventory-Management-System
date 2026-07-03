@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Inventory Management System</title>
+    <link rel="stylesheet" href="../styles/auth.css">
+    <link rel="stylesheet" href="../styles/help.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/help.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+
+    <div id="login-page" class="page active">
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <i class="fas fa-chart-bar"></i>
+                    </div>
+                    <h1 class="auth-title">Welcome Back</h1>
+                    <p class="auth-subtitle">Sign in to your Inventory Management System account</p>
+                </div>
+
+                <form id="login-form">
+                    <div class="form-group">
+                        <label class="form-label" for="login-email">Email</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-envelope input-icon"></i>
+                            <input 
+                                type="email" 
+                                id="login-email" 
+                                class="form-input" 
+                                placeholder="you@gmail.com"
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="login-password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input 
+                                type="password" 
+                                id="login-password" 
+                                class="form-input" 
+                                placeholder="••••••••"
+                                required
+                            >
+                            <i class="fas fa-eye-slash password-toggle" data-target="login-password"></i>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="remember-me">
+                            <label for="remember-me">Remember me</label>
+                        </div>
+                        <a href="forgot-password.html" class="link">Forgot password?</a>
+                    </div>
+
+                    <button type="submit" class="btn-primary">Sign In</button>
+                </form>
+
+                <div class="auth-footer">
+                    Don't have an account? <a href="#" class="link" id="show-signup">Sign up</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="signup-page" class="page">
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="logo-container">
+                    <div class="logo-icon">
+                        <i class="fas fa-chart-bar"></i>
+                    </div>
+                    <h1 class="auth-title">Create Account</h1>
+                    <p class="auth-subtitle">Sign up to start managing your inventory</p>
+                </div>
+
+                <form id="signup-form">
+                    <div class="form-row two-columns">
+                        <div class="form-group">
+                            <label class="form-label" for="signup-first-name">First Name</label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-user input-icon"></i>
+                                <input
+                                    type="text"
+                                    id="signup-first-name"
+                                    class="form-input"
+                                    placeholder="First Name"
+                                    required
+                                >
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="signup-last-name">Last Name</label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-user input-icon"></i>
+                                <input
+                                    type="text"
+                                    id="signup-last-name"
+                                    class="form-input"
+                                    placeholder="Last Name"
+                                >
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row two-columns">
+                        <div class="form-group">
+                            <label class="form-label" for="signup-phone-number">Phone Number</label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-phone input-icon"></i>
+                                <input
+                                    type="tel"
+                                    id="signup-phone-number"
+                                    class="form-input"
+                                    placeholder="09XXXXXXXXX"
+                                    maxlength="11"
+                                >
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="signup-role">Role</label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-user-shield input-icon"></i>
+                                <select id="signup-role" class="form-input">
+                                    <option value="staff" selected>Staff</option>
+                                    <option value="cashier">Cashier</option>
+                                    <option value="manager">Manager</option>
+                                </select>
+                            </div>  
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="signup-email">Email</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-envelope input-icon"></i>
+                            <input 
+                                type="email" 
+                                id="signup-email" 
+                                class="form-input" 
+                                placeholder="youremail@gmail.com"
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="signup-password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input 
+                                type="password" 
+                                id="signup-password" 
+                                class="form-input" 
+                                placeholder="••••••••"
+                                required
+                            >
+                            <i class="fas fa-eye-slash password-toggle" data-target="signup-password"></i>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="signup-confirm-password">Confirm Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input 
+                                type="password" 
+                                id="signup-confirm-password" 
+                                class="form-input" 
+                                placeholder="••••••••"
+                                required
+                            >
+                            <i class="fas fa-eye-slash password-toggle" data-target="signup-confirm-password"></i>
+                        </div>
+                    </div>
+
+                    <div class="privacy-checkbox-wrapper">
+                        <input type="checkbox" id="privacy-consent" required>
+                        <label for="privacy-consent">
+                            I have read and consent to the collection and processing of my personal data in accordance with the 
+                            <a href="#" class="privacy-link" id="open-privacy-modal">Privacy Policy and RA 10173 (Data Privacy Act of 2012)</a>.
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn-primary">Create Account</button>
+                </form>
+
+                <div class="auth-footer">
+                    Already have an account? <a href="#" class="link" id="show-login">Sign in</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Privacy Policy Modal -->
+    <div class="privacy-modal" id="privacyModal">
+        <div class="privacy-content">
+            <div class="privacy-header">
+                <h2>Privacy Policy & Data Privacy Act</h2>
+                <button class="close-privacy" id="close-privacy-modal">&times;</button>
+            </div>
+            <div class="privacy-body">
+                <h3>Republic Act No. 10173 (Data Privacy Act of 2012)</h3>
+                <p>
+                    The Data Privacy Act of 2012 aims to protect individual personal information in information and communications systems in the government and the private sector. This includes the collection, use, processing, and disclosure of personal data.
+                </p>
+
+                <h3>Information We Collect</h3>
+                <p>When you register for an account, we collect the following personal information:</p>
+                <ul>
+                    <li>Full name (First and Last Name)</li>
+                    <li>Email address</li>
+                    <li>Phone number</li>
+                    <li>User role within the organization</li>
+                    <li>Password (encrypted and securely stored)</li>
+                </ul>
+
+                <h3>How We Use Your Information</h3>
+                <p>Your personal information is used for the following purposes:</p>
+                <ul>
+                    <li>To create and manage your user account</li>
+                    <li>To provide access to the Inventory Management System</li>
+                    <li>To communicate important system updates and notifications</li>
+                    <li>To ensure system security and prevent unauthorized access</li>
+                    <li>To generate audit logs for compliance and security purposes</li>
+                    <li>To provide customer support when needed</li>
+                </ul>
+
+                <h3>Data Protection and Security</h3>
+                <p>We implement appropriate technical and organizational measures to protect your personal data:</p>
+                <ul>
+                    <li>Encryption of sensitive data including passwords</li>
+                    <li>Secure database storage with access controls</li>
+                    <li>Regular security audits and updates</li>
+                    <li>Limited access to personal data on a need-to-know basis</li>
+                    <li>Compliance with industry-standard security practices</li>
+                </ul>
+
+                <h3>Your Rights Under RA 10173</h3>
+                <p>As a data subject, you have the following rights:</p>
+                <ul>
+                    <li><strong>Right to be Informed</strong> : You have the right to be informed about the collection and processing of your personal data</li>
+                    <li><strong>Right to Access</strong> : You can request access to your personal data that we hold</li>
+                    <li><strong>Right to Rectification</strong> : You can request correction of inaccurate or incomplete data</li>
+                    <li><strong>Right to Erasure</strong>  : You can request deletion of your personal data under certain circumstances</li>
+                    <li><strong>Right to Object</strong> : You can object to the processing of your personal data</li>
+                    <li><strong>Right to Data Portability</strong> : You can request a copy of your data in a structured format</li>
+                </ul>
+
+                <h3>Data Retention</h3>
+                <p>
+                    We retain your personal information for as long as your account remains active or as needed to provide you services. 
+                    If you wish to delete your account, please contact our support team at +639942823551.
+                </p>
+
+                <h3>Data Sharing and Disclosure</h3>
+                <p>
+                    We do not sell, trade, or rent your personal information to third parties. Your data may only be shared:
+                </p>
+                <ul>
+                    <li>With authorized personnel within your organization</li>
+                    <li>When required by law or legal processes</li>
+                    <li>To protect the rights, property, or safety of our users</li>
+                </ul>
+
+                <h3>Contact Information</h3>
+                <p>
+                    If you have questions about this Privacy Policy or wish to exercise your rights under RA 10173, please contact us at:
+                </p>
+                <ul>
+                    <li>Phone: +639942823551</li>
+                    <li>Email: support@inventorysystem.com</li>
+                </ul>
+
+                <p style="margin-top: 24px; font-size: 13px; color: #999;">
+                    Last Updated: November 16, 2025
+                </p>
+            </div>
+            <div class="privacy-footer">
+                <button id="accept-privacy">I Understand</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="help-button" onclick="openHelp()">
+        <i class="fas fa-question" style="font-size: 20px;"></i>
+    </button>
+
+    <!-- Help Modal -->
+    <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
+        <div class="help-content">
+            <div class="help-header">
+                <h2>Help System Guide</h2>
+                <button class="close-help" onclick="closeHelp()">&times;</button>
+            </div>
+            <div class="help-body">
+                <p>This guide provides an overview of the help system and how to use it effectively.</p>
+                <br>
+                <div class="help-section">
+                    
+                    <h3>Logging In</h3>
+                    <ul>
+                        <li>
+                            Enter your email and password.
+                        </li>
+                        <li>
+                            Input your password carefully, noting case sensitivity.
+                        </li>
+                        <li>
+                            Click the "Sign In" button to access the System.
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Forgot Password?</h3>
+                    <ul>
+                        <li>
+                            If you forget your password, click the 'Forgot Password' link
+                        </li>
+                        <li>
+                            Follow the instructions sent to your email to reset it.
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Create Account</h3>
+                    <ul>
+                        <li>
+                            To create a new account, click the 'Sign Up' link on the login page.
+                        </li>
+                        <li>
+                            Fill in the required information, including first and last name, phone number, user role, email, and password.
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>System Overview</h3>
+                    <ul>
+                       <li>
+                        Once logged in, you will see the dashboard summarizing current inventory status, audit history, and alerts.
+                       </li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>System Overview</h3>
+                    <ul>
+                       <li>
+                        Once logged in, you will see the dashboard summarizing current inventory status, audit history, and alerts.
+                       </li>
+                       <li>
+                        Navigate throught the sidebar for accessing the pages like Dashboard, Inventory Management, User Management, and Audit Logs.
+                       </li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Receipt Upload Process</h3>
+                    <ul>
+                        <li>
+                            Use the inventory pages to review and manage stock data before saving changes.
+                        </li>
+                    </ul>
+                </div>
+                <div class="help-section">
+                    <h3>Stock Monitoring</h3>
+                    <ul>
+                        <li>
+                            By viewing the Inventory Management page, you can track the lists of products real-time as well as their quantity and stock levels.
+                        </li>
+                        <li>
+                            A stock alert pops up as soon as the system detected a low stock level from the list of the products.
+                        </li>
+                        <li>
+                            If you wish to dispatch a product from the inventory, you can use the outbound module in the inventory management page to audit the withdrawal of the products that you wishes to remove.
+                        </li>
+                    </ul>
+                </div>
+                <div class="help-section">
+                    <h3>Help and Support</h3>
+                    <ul>
+                        <li>
+                            Always access the help icon for quick tips with relevance to the current page you are viewing!
+                        </li>
+                        <li>
+                            If you encounter any issues, you can reach out to the support team via contacting <strong>+639942823551.</strong>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const loginPage = document.getElementById('login-page');
+        const signupPage = document.getElementById('signup-page');
+        const privacyModal = document.getElementById('privacyModal');
+        const openPrivacyBtn = document.getElementById('open-privacy-modal');
+        const closePrivacyBtn = document.getElementById('close-privacy-modal');
+        const acceptPrivacyBtn = document.getElementById('accept-privacy');
+        const privacyCheckbox = document.getElementById('privacy-consent');
+
+        // Password toggle functionality
+        document.querySelectorAll('.password-toggle').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                const targetId = this.getAttribute('data-target');
+                const passwordInput = document.getElementById(targetId);
+                
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    this.classList.remove('fa-eye-slash');
+                    this.classList.add('fa-eye');
+                    this.classList.add('show');
+                } else {
+                    passwordInput.type = 'password';
+                    this.classList.remove('fa-eye');
+                    this.classList.add('fa-eye-slash');
+                    this.classList.remove('show');
+                }
+            });
+        });
+
+        // Switch between login and signup
+        const showSignupBtn = document.getElementById('show-signup');
+        const showLoginBtn = document.getElementById('show-login');
+
+        showSignupBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            loginPage.classList.remove('active');
+            signupPage.classList.add('active');
+        });
+
+        showLoginBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            signupPage.classList.remove('active');
+            loginPage.classList.add('active');
+        });
+
+        // Privacy modal functionality
+        openPrivacyBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            privacyModal.classList.add('active');
+        });
+
+        closePrivacyBtn.addEventListener('click', () => {
+            privacyModal.classList.remove('active');
+        });
+
+        acceptPrivacyBtn.addEventListener('click', () => {
+            privacyCheckbox.checked = true;
+            privacyModal.classList.remove('active');
+        });
+
+        // Close modal when clicking outside
+        privacyModal.addEventListener('click', (e) => {
+            if (e.target === privacyModal) {
+                privacyModal.classList.remove('active');
+            }
+        });
+
+        // Prevent form submission if privacy checkbox is not checked
+        document.getElementById('signup-form').addEventListener('submit', (e) => {
+            if (!privacyCheckbox.checked) {
+                e.preventDefault();
+                alert('Please read and accept the Privacy Policy and Data Privacy Act before creating an account.');
+            }
+        });
+    </script>
+
+    <script src="../scripts/auth.js"></script>
+</body>
+</html>

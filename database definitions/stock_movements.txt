@@ -1,0 +1,62 @@
+create table public.stock_movements (
+  movement_id uuid not null default extensions.uuid_generate_v4 (),
+  product_id uuid not null,
+  movement_type character varying(20) not null,
+  reference_type character varying(30) not null,
+  reference_id text null,
+  quantity_change integer null,
+  quantity_before integer null,
+  quantity_after integer not null,
+  movement_date timestamp with time zone null default now(),
+  performed_by uuid not null,
+  notes text null,
+  constraint stock_movements_pkey primary key (movement_id),
+  constraint stock_movements_product_id_fkey foreign KEY (product_id) references products (product_id) on delete RESTRICT,
+  constraint stock_movements_movement_type_check check (
+    (
+      (movement_type)::text = any (
+        (
+          array[
+            'inbound'::character varying,
+            'outbound'::character varying,
+            'adjustment'::character varying,
+            'return'::character varying,
+            'damaged'::character varying,
+            'expired'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint stock_movements_reference_type_check check (
+    (
+      (reference_type)::text = any (
+        (
+          array[
+            'inbound_transaction'::character varying,
+            'outbound_order'::character varying,
+            'manual_adjustment'::character varying,
+            'stock_take'::character varying,
+            'sales_order'::character varying,
+            'transfer'::character varying,
+            'return'::character varying,
+            'other'::character varying,
+            'adjustment'::character varying,
+            'inbound'::character varying,
+            'outbound'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_stock_movements_product on public.stock_movements using btree (product_id, movement_date) TABLESPACE pg_default;
+
+create index IF not exists idx_stock_movements_type on public.stock_movements using btree (movement_type) TABLESPACE pg_default;
+
+create index IF not exists idx_stock_movements_date on public.stock_movements using btree (movement_date) TABLESPACE pg_default;
+
+create index IF not exists idx_stock_movements_reference on public.stock_movements using btree (reference_type, reference_id) TABLESPACE pg_default;
+
+create index IF not exists idx_stock_movements_product_date on public.stock_movements using btree (product_id, movement_date desc) TABLESPACE pg_default;

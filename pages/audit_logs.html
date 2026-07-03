@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log - Inventory System</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/audit_logs.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../styles/help.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <style>
+        .tabs-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .tab-button {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: var(--text-secondary);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            bottom: -2px;
+        }
+        
+        .tab-button:hover {
+            color: var(--primary);
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+        
+        .tab-button.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        
+        .tab-button i {
+            margin-right: 8px;
+        }
+        
+        .text-success {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        .text-danger {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        
+        .badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .badge-success {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        
+        .badge-warning {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/help.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+    <script src="../scripts/mobile-responsive.js"></script>
+    
+    <div class="app-container">
+        <main class="main-content">
+            <div class="page active">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">
+                            <i class="fas fa-shield-alt"></i> Audit & Stock Tracking
+                        </h1>
+                        <p class="page-subtitle">Monitor system activities and track inventory movements</p>
+                    </div>
+                </div>
+
+                <!-- Tab Navigation -->
+                <div class="tabs-container">
+                    <button class="tab-button active" id="audit-tab">
+                        <i class="fas fa-clipboard-list"></i>
+                        Audit Logs
+                    </button>
+                    <button class="tab-button" id="stock-tab">
+                        <i class="fas fa-exchange-alt"></i>
+                        Stock Movements
+                    </button>
+                </div>
+
+                <!-- AUDIT LOGS SECTION -->
+                <div id="audit-logs-section">
+                    <div class="filter-section">
+                        <h3 class="filter-title">Activity Filter</h3>
+                        <p class="filter-subtitle">Search and filter audit logs by user, action, category, or role</p>
+                        
+                        <div class="filter-grid">
+                            <div class="filter-group">
+                                <label>Search</label>
+                                <div class="search-input-wrapper">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="log-search" placeholder="Search logs...">
+                                </div>
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Category</label>
+                                <select id="category-filter">
+                                    <option value="">All Categories</option>
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                                <label>User Role</label>
+                                <select id="role-filter">
+                                    <option value="">All Roles</option>
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Action Type</label>
+                                <select id="action-filter">
+                                    <option value="">All Actions</option>
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Date From</label>
+                                <input type="date" id="date-from">
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Date To</label>
+                                <input type="date" id="date-to">
+                            </div>
+                        </div>
+
+                        <div class="filter-actions">
+                            <button class="btn btn-primary" id="apply-filters-btn">
+                                <i class="fas fa-filter"></i>
+                                Apply Filters
+                            </button>
+                            <button class="btn" id="reset-filters-btn">
+                                <i class="fas fa-redo"></i>
+                                Reset
+                            </button>
+                            <button class="btn" id="export-logs-btn">
+                                <i class="fas fa-download"></i>
+                                Export CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-section">
+                        <div class="table-header">
+                            <div>
+                                <h3 class="table-title">Activity Log</h3>
+                                <p class="table-subtitle" id="logs-count">Showing 0 of 0 entries</p>
+                            </div>
+                        </div>
+
+                        <div class="table-scroll">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>User</th>
+                                        <th>Role</th>
+                                        <th>Action</th>
+                                        <th>Category</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="logs-table-body">
+                                    <tr>
+                                        <td colspan="6" class="loading-cell">
+                                            <i class="fas fa-spinner fa-spin"></i>
+                                            <span>Loading audit logs...</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="pagination-wrapper">
+                            <div class="pagination-info">
+                                Showing <span id="showing-start">0</span> to <span id="showing-end">0</span> of <span id="total-logs">0</span> entries
+                            </div>
+                            <div class="pagination-controls">
+                                <button class="btn" id="first-page-btn" disabled>
+                                    <i class="fas fa-angle-double-left"></i>
+                                </button>
+                                <button class="btn" id="prev-page-btn" disabled>
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                                <span class="page-indicator">
+                                    Page <span id="current-page">1</span> of <span id="total-pages">1</span>
+                                </span>
+                                <button class="btn" id="next-page-btn" disabled>
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                                <button class="btn" id="last-page-btn" disabled>
+                                    <i class="fas fa-angle-double-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STOCK MOVEMENTS SECTION -->
+                <div id="stock-movements-section" style="display: none;">
+                    <div class="filter-section">
+                        <h3 class="filter-title">Stock Movement Filter</h3>
+                        <p class="filter-subtitle">Search and filter stock movements by product, type, or date range</p>
+                        
+                        <div class="filter-grid">
+                            <div class="filter-group">
+                                <label>Search</label>
+                                <div class="search-input-wrapper">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="stock-search" placeholder="Search by reference ID or notes...">
+                                </div>
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Movement Type</label>
+                                <select id="movement-type-filter">
+                                    <option value="">All Types</option>
+                                    <option value="inbound">Inbound</option>
+                                    <option value="outbound">Outbound</option>
+                                    <option value="adjustment">Adjustment</option>
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Date From</label>
+                                <input type="date" id="stock-date-from">
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Date To</label>
+                                <input type="date" id="stock-date-to">
+                            </div>
+                        </div>
+
+                        <div class="filter-actions">
+                            <button class="btn btn-primary" id="apply-stock-filters-btn">
+                                <i class="fas fa-filter"></i>
+                                Apply Filters
+                            </button>
+                            <button class="btn" id="reset-stock-filters-btn">
+                                <i class="fas fa-redo"></i>
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-section">
+                        <div class="table-header">
+                            <div>
+                                <h3 class="table-title">Stock Movement History</h3>
+                                <p class="table-subtitle" id="stock-count">Showing 0 of 0 movements</p>
+                            </div>
+                        </div>
+
+                        <div class="table-scroll">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date & Time</th>
+                                        <th>Product</th>
+                                        <th>Type</th>
+                                        <th>Reference Type</th>
+                                        <th>Reference ID</th>
+                                        <th>Qty Change</th>
+                                        <th>Stock After</th>
+                                        <th>Performed By</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stock-table-body">
+                                    <tr>
+                                        <td colspan="8" class="loading-cell">
+                                            <i class="fas fa-spinner fa-spin"></i>
+                                            <span>Loading stock movements...</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="pagination-wrapper">
+                            <div class="pagination-info">
+                                Showing <span id="stock-showing-start">0</span> to <span id="stock-showing-end">0</span> of <span id="stock-total">0</span> movements
+                            </div>
+                            <div class="pagination-controls">
+                                <button class="btn" id="stock-first-page-btn" disabled>
+                                    <i class="fas fa-angle-double-left"></i>
+                                </button>
+                                <button class="btn" id="stock-prev-page-btn" disabled>
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                                <span class="page-indicator">
+                                    Page <span id="stock-current-page">1</span> of <span id="stock-total-pages">1</span>
+                                </span>
+                                <button class="btn" id="stock-next-page-btn" disabled>
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                                <button class="btn" id="stock-last-page-btn" disabled>
+                                    <i class="fas fa-angle-double-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <button class="help-button" onclick="openHelp()">
+        <i class="fas fa-question" style="font-size: 20px;"></i>
+    </button>
+
+    <!-- Help Modal -->
+    <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
+        <div class="help-content">
+            <div class="help-header">
+                <h2>Audit & Stock Tracking Guide</h2>
+                <button class="close-help" onclick="closeHelp()">&times;</button>
+            </div>
+            <div class="help-body">
+                <p>Track and review all system activities, user actions, and inventory movements for transparency, control, and audit readiness.</p>
+                <br>
+                <div class="help-section">
+                    <h3>Audit Logs Tab</h3>
+                    <ul>
+                        <li>View a comprehensive timeline of system events showing who performed what action and when</li>
+                        <li>Filter by category, user role, action type, and date range</li>
+                        <li>Click "View Details" to see complete information about each event</li>
+                        <li>Export filtered logs to CSV for compliance reporting and audits</li>
+                    </ul>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Stock Movements Tab</h3>
+                    <ul>
+                        <li>Track all inventory changes including inbound receipts, outbound dispatches, and adjustments</li>
+                        <li>See quantity changes, stock levels after each movement, and who performed the action</li>
+                        <li>Filter by movement type, date range, or search by reference ID</li>
+                        <li>Export stock movement history for inventory audits and analysis</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>Understanding Movement Types</h3>
+                    <ul>
+                        <li><strong>Inbound:</strong> Stock received (purchases, returns from customers)</li>
+                        <li><strong>Outbound:</strong> Stock dispatched (sales, transfers, returns to suppliers)</li>
+                        <li><strong>Adjustment:</strong> Manual stock corrections (count adjustments, damaged items)</li>
+                    </ul>
+                </div>
+
+                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️ Review logs regularly to ensure all important actions are properly recorded and authorized. ⚠️</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Details Modal -->
+    <div id="log-details-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>Log Details</h2>
+                <button class="modal-close" id="close-log-details">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="log-details-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../scripts/audit_logs.js"></script>
+</body>
+</html>
