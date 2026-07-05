@@ -82,8 +82,12 @@ def get_env_model():
 
 
 def get_api_key():
-    """Get API key from environment."""
-    return os.getenv('OPENROUTER_API_KEY')
+    """Get API key from environment or use hardcoded fallback"""
+    api_key = os.getenv('OPENROUTER_API_KEY')
+    if not api_key:
+        # Hardcoded fallback (same as in openrouter.js)
+        api_key = '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'
+    return api_key
 
 
 def image_to_text(image_path, api_key, model):
