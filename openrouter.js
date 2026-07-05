@@ -12,14 +12,18 @@ router.use((req, res, next) => {
     next();
 });
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || process.env.OPENROUTER_KEY?.trim();
 const OPENROUTER_MODEL = process.env.VISION_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
 const PYTHON_BINARY = process.env.PYTHON_BINARY || 'python';
 const PYTHON_SCRIPT = path.resolve(__dirname, './python_ocr.py');
 
 // Supabase client initialization
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wxhkhxsxftundtrahpst.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aGtoeHN4ZnR1bmR0cmFocHN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDU3ODc3NywiZXhwIjoyMDc2MTU0Nzc3fQ.R_J7gu9Z7T0CEp0t0Ky8XC0kHvHxDtpqX2t5Vz_K6lE';
+const SUPABASE_URL = process.env.SUPABASE_URL?.trim();
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY?.trim();
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables.');
+}
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 function extractJsonObject(text) {
