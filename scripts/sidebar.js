@@ -117,7 +117,7 @@ function buildFallbackSidebarHTML() {
                     </a>
                     <a href="../pages/ocr_scan.html" class="mobile-nav-item">
                         <i class="fas fa-receipt"></i>
-                        <span>Receipt OCR</span>
+                        <span>Scan Receipts</span>
                     </a>
                     <a href="../pages/reports.html" class="mobile-nav-item">
                         <i class="fas fa-file-alt"></i>
@@ -169,7 +169,7 @@ function buildFallbackSidebarHTML() {
                 </a>
                 <a href="../pages/ocr_scan.html" class="nav-item">
                     <i class="fas fa-receipt"></i>
-                    <span>Receipt OCR</span>
+                    <span>Scan Receipts</span>
                 </a>
                 <a href="../pages/reports.html" class="nav-item">
                     <i class="fas fa-file-alt"></i>
@@ -180,7 +180,7 @@ function buildFallbackSidebarHTML() {
                 <div class="section-title">System</div>
                 <a href="../pages/users.html" class="nav-item">
                     <i class="fas fa-users"></i>
-                    <span>User Management</span>
+                    <span>User Management</span>Oc
                 </a>
                 <a href="../pages/audit_logs.html" class="nav-item">
                     <i class="fas fa-clipboard-list"></i>
