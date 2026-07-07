@@ -9,59 +9,142 @@ import urllib.request
 import ssl
 
 
+def extract_json_payload(text):
+    if not text or not isinstance(text, str):
+        return None
+
+    normalized = text.strip()
+    if not normalized:
+        return None
+
+    try:
+        return json.loads(normalized)
+    except Exception:
+        match = re.search(r'\{[\s\S]*\}|\[[\s\S]*\]', normalized)
+        if not match:
+            return None
+
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            return None
+
+
+def normalize_item(item):
+    if not isinstance(item, dict):
+        return None
+
+    name = str(item.get('name') or item.get('product_name') or item.get('item_name') or '').strip()
+    if not name:
+        return None
+
+    name = re.sub(r'\s+', ' ', name)
+    name = re.sub(r'[^\w\s\(\)\-\/#&.,]', '', name)
+    name = name[:100].strip()
+    if len(name) < 2 or re.match(r'^\d+$', name):
+        return None
+
+    quantity_value = item.get('real_quantity', item.get('receipt_quantity', item.get('quantity', 1)))
+    try:
+        receipt_quantity = int(float(quantity_value))
+    except Exception:
+        receipt_quantity = 1
+    if receipt_quantity < 1:
+        receipt_quantity = 1
+
+    price_value = item.get('price', item.get('unit_price', item.get('amount', 0)))
+    try:
+        price = round(float(price_value), 2)
+    except Exception:
+        price = 0.0
+
+    normalized_item = {
+        'name': name,
+        'price': price,
+        'receipt_quantity': receipt_quantity,
+        'real_quantity': receipt_quantity,
+        'comment': str(item.get('comment', '') or '').strip(),
+        'accepted': bool(item.get('accepted', True)),
+        'removed': bool(item.get('removed', False))
+    }
+
+    confidence = item.get('confidence')
+    if confidence is not None:
+        try:
+            normalized_item['confidence'] = max(0.0, min(1.0, float(confidence)))
+        except Exception:
+            pass
+
+    product_code = item.get('product_code')
+    if product_code:
+        normalized_item['product_code'] = str(product_code).strip()[:50]
+
+    return normalized_item
+
+
 def parse_receipt_response(text):
     """
-    Parse LLM response to extract receipt items.
-    Expects format like: "Item Name - Qty: 2 - ₱100.00"
+    Parse the VLM response into a stable receipt payload.
+    Prefers strict JSON, but falls back to the legacy line parser if needed.
     """
+    payload = extract_json_payload(text)
+    if isinstance(payload, dict) and isinstance(payload.get('items'), list):
+        items = []
+        for item in payload.get('items', []):
+            normalized = normalize_item(item)
+            if normalized:
+                items.append(normalized)
+        return {'items': items}
+
+    if isinstance(payload, list):
+        items = []
+        for item in payload:
+            normalized = normalize_item(item)
+            if normalized:
+                items.append(normalized)
+        return {'items': items}
+
     if not text or not isinstance(text, str):
         return {'items': []}
-    
+
     lines = text.strip().split('\n')
     items = []
-    
+
     for line in lines:
         line = line.strip()
         if not line or len(line) < 3:
             continue
-        
+
         # Skip obvious non-item lines
         if any(skip in line.lower() for skip in [
-            'total', 'subtotal', 'tax', 'discount', 'amount due', 'thank', 
+            'total', 'subtotal', 'tax', 'discount', 'amount due', 'thank',
             'items:', 'item name', 'table header', 'row', 'delivery'
         ]):
             continue
-        
+
         # Look for Qty pattern (handles "Qty: 2" or "qty 2")
         qty_match = re.search(r'qty[:\s]+(\d+)', line, re.IGNORECASE)
         if not qty_match:
-            # No quantity found, skip this line (we require quantity)
             continue
-        
+
         receipt_quantity = int(qty_match.group(1))
-        
+
         # Look for price AFTER the qty pattern
-        # Get everything after the qty match
         after_qty = line[qty_match.end():]
         price_match = re.search(r'[₱$]?\s*(\d+(?:[,\.]?\d+)*(?:\.\d{2})?)', after_qty)
         if not price_match:
             continue
-        
-        # Clean price string: remove commas, keep decimal point
+
         price_str = price_match.group(1).replace(',', '')
         try:
             price = float(price_str)
         except ValueError:
             continue
-        
-        # Extract item name: everything before the first hyphen or Qty
+
         name = re.split(r'\s*[-–—]\s*|qty[:\s]+', line, flags=re.IGNORECASE)[0].strip()
-        
-        # Clean name
         name = re.sub(r'[^\w\s\(\)-]', '', name)
         name = ' '.join(name.split())
-        
-        # Validation: must have a real product name
+
         if name and len(name) > 2 and not re.match(r'^\d+$', name):
             items.append({
                 'name': name[:100],
@@ -72,7 +155,7 @@ def parse_receipt_response(text):
                 'accepted': True,
                 'removed': False
             })
-    
+
     return {'items': items}
 
 
@@ -115,26 +198,29 @@ def image_to_text(image_path, api_key, model):
         'messages': [
             {
                 'role': 'system',
-                'content': 'You are a receipt scanner. Extract ONLY purchased items/products from receipts. Skip totals, taxes, headers, payment info, and store details. Each item must have: product name, quantity (QTY), and price/amount.'
+                'content': 'You are a receipt extraction engine. Return ONLY valid JSON that matches the schema {"items":[{"name":"string","quantity":1,"price":0.0,"confidence":0.0}]}. Extract ONLY purchased items/products from receipts. Skip totals, taxes, headers, payment info, and store details. Do not add markdown, code fences, or extra text.'
             },
             {
                 'role': 'user',
                 'content': [
                     {
                         'type': 'text',
-                        'text': '''Extract all purchased items from this receipt ONLY. Follow these rules strictly:
+                        'text': '''Extract all purchased items from this receipt ONLY and return JSON only.
+
+Use exactly this schema:
+{"items":[{"name":"string","quantity":1,"price":0.0,"confidence":0.0}]}
+
+Rules:
 1. Extract ONLY product/item lines (things that were bought)
-2. SKIP: totals, subtotals, taxes, discounts, payment methods, customer info, store name, store address
-3. For EACH item, include: product name, quantity (must always include), and price/amount
-4. If quantity is missing, put "1" as default but mark clearly
-5. Format each item per line, clear and simple - do NOT use JSON
-6. Remove any non-item rows, headers, or metadata
+2. SKIP totals, subtotals, taxes, discounts, payment methods, customer info, store name, store address
+3. For each item, include name, quantity, price, and confidence
+4. If quantity is missing, use 1
+5. If price is missing, use 0.0
+6. confidence must be a number between 0 and 1
+7. Do not include markdown, code fences, explanations, or extra keys
 
-Example format (follow this style):
-Item Name - Qty: 2 - ₱100.00
-Another Product - Qty: 1 - ₱250.00
-
-DO NOT return: table headers, row numbers, totals, or anything that's not an actual purchased item.'''
+Example:
+{"items":[{"name":"Item Name","quantity":2,"price":100.0,"confidence":0.92},{"name":"Another Product","quantity":1,"price":250.0,"confidence":0.87}]}'''
                     },
                     {
                         'type': 'image_url',

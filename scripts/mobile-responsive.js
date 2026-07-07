@@ -1,6 +1,6 @@
 class MobileResponsive {
     constructor() {
-        this.sidebarOpen = false;
+        this.sidebarOpen = localStorage.getItem('sidebarOpen') === 'true';
         this.isMobile = window.innerWidth <= 768;
         this.initialized = false;
         this.init();
@@ -15,6 +15,9 @@ class MobileResponsive {
                 this.initialized = true;
                 this.setupEventListeners();
                 this.handleResize();
+                if (this.isMobile && this.sidebarOpen) {
+                    this.openSidebar();
+                }
                 console.log('Mobile responsive initialized');
             }
         }, 100);
@@ -53,8 +56,7 @@ class MobileResponsive {
         document.addEventListener('click', (e) => {
             const navItem = e.target.closest('.nav-item');
             if (navItem && this.isMobile && this.sidebarOpen) {
-                // Don't close immediately, let navigation happen
-                setTimeout(() => this.closeSidebar(), 100);
+                localStorage.setItem('sidebarOpen', 'true');
             }
         });
 
@@ -110,6 +112,7 @@ class MobileResponsive {
         if (sidebar) {
             sidebar.classList.add('mobile-open');
             this.sidebarOpen = true;
+            localStorage.setItem('sidebarOpen', 'true');
         }
         
         if (overlay) {
@@ -130,6 +133,7 @@ class MobileResponsive {
         if (sidebar) {
             sidebar.classList.remove('mobile-open');
             this.sidebarOpen = false;
+            localStorage.setItem('sidebarOpen', 'false');
         }
         
         if (overlay) {
