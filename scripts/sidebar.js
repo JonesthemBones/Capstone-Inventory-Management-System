@@ -547,6 +547,21 @@ function setupSignOutButtons() {
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Signing out...</span>';
                 btn.style.pointerEvents = 'none';
                 
+                try {
+                    const { data: { user }, error: userError } = await window.supabaseClient.auth.getUser();
+                    if (!userError && user) {
+                        await window.logAuditEvent({
+                            actionType: 'logout',
+                            tableAffected: 'auth',
+                            recordId: user.id,
+                            oldValues: {},
+                            newValues: { reason: 'manual' }
+                        });
+                    }
+                } catch (logError) {
+                    console.error('Error logging logout audit event:', logError);
+                }
+
                 const { error } = await window.supabaseClient.auth.signOut();
                 if (error) throw error;
                 

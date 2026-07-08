@@ -341,6 +341,19 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                 .eq('user_id', userData.user_id);
         }
         
+        // Write login audit log
+        try {
+            await window.logAuditEvent({
+                actionType: 'login',
+                tableAffected: 'auth',
+                recordId: data.user.id,
+                oldValues: {},
+                newValues: { status: 'success' }
+            });
+        } catch (error) {
+            console.error('Error logging login audit event:', error);
+        }
+        
         // Reset failed login attempts on successful login
         localStorage.removeItem('loginAttempts');
         

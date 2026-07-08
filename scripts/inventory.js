@@ -215,6 +215,17 @@ function displayInventory(products) {
     }
 }
 
+function getStockAdjustmentElements() {
+    return {
+        modal: document.getElementById('adjust-stock-modal') || document.getElementById('stock-adjustment-modal'),
+        form: document.getElementById('adjust-stock-form') || document.getElementById('stock-adjustment-form'),
+        productName: document.getElementById('adjustment-product-name') || document.getElementById('stock-product-name'),
+        currentQuantity: document.getElementById('current-quantity') || document.getElementById('stock-quantity'),
+        quantity: document.getElementById('adjustment-quantity') || document.getElementById('stock-quantity'),
+        notes: document.getElementById('adjustment-notes') || document.getElementById('stock-notes')
+    };
+}
+
 function setupEventListeners() {
     document.getElementById('inventory-search').addEventListener('input', (e) => {
         const filters = getFilters();
@@ -249,19 +260,13 @@ function setupEventListeners() {
         document.getElementById('product-modal').classList.remove('active');
     });
     
-    // Guarded with optional chaining: the stock-adjustment modal HTML is currently
-    // missing from inventory.html (only its JS logic remains). Without these guards,
-    // this throws "Cannot read properties of null (reading 'addEventListener')" and
-    // silently aborts the rest of setupEventListeners() — which is why Export CSV,
-    // Backup/Restore, and the image upload wiring in initImageUpload() were never
-    // running at all. See note below; restore the modal HTML or remove the dead
-    // "Adjust Stock" row action once you confirm which one you want.
-    document.getElementById('stock-adjustment-form')?.addEventListener('submit', saveStockAdjustment);
-    document.getElementById('close-stock-modal')?.addEventListener('click', () => {
-        document.getElementById('stock-adjustment-modal')?.classList.remove('active');
+    const stockElements = getStockAdjustmentElements();
+    stockElements.form?.addEventListener('submit', saveStockAdjustment);
+    document.getElementById('close-adjust-modal')?.addEventListener('click', () => {
+        stockElements.modal?.classList.remove('active');
     });
-    document.getElementById('cancel-stock-btn')?.addEventListener('click', () => {
-        document.getElementById('stock-adjustment-modal')?.classList.remove('active');
+    document.getElementById('cancel-adjust-btn')?.addEventListener('click', () => {
+        stockElements.modal?.classList.remove('active');
     });
 
     // Export CSV event listener
@@ -308,15 +313,24 @@ async function openStockAdjustmentModal(productId) {
         currentAdjustingProductId = productId;
         const inventory = product.inventory_stock?.[0] || product.inventory_stock || {};
         const currentQuantity = inventory.quantity || 0;
+        const stockElements = getStockAdjustmentElements();
         
         console.log('Loading stock adjustment for:', product.product_name, 'Current quantity:', currentQuantity);
         
-        document.getElementById('stock-product-name').textContent = product.product_name;
-        document.getElementById('stock-product-code').textContent = product.product_code || 'N/A';
-        document.getElementById('stock-quantity').value = currentQuantity;
-        document.getElementById('stock-notes').value = '';
+        if (stockElements.productName) {
+            stockElements.productName.value = product.product_name;
+        }
+        if (stockElements.currentQuantity) {
+            stockElements.currentQuantity.value = currentQuantity;
+        }
+        if (stockElements.quantity) {
+            stockElements.quantity.value = '';
+        }
+        if (stockElements.notes) {
+            stockElements.notes.value = '';
+        }
         
-        document.getElementById('stock-adjustment-modal').classList.add('active');
+        stockElements.modal?.classList.add('active');
         
     } catch (error) {
         console.error('Error loading product for adjustment:', error);
@@ -326,8 +340,9 @@ async function openStockAdjustmentModal(productId) {
 
 async function saveStockAdjustment(e) {
     e.preventDefault();  
-    const quantity = parseInt(document.getElementById('stock-quantity').value);
-    const notes = document.getElementById('stock-notes').value;
+    const stockElements = getStockAdjustmentElements();
+    const quantity = parseInt(stockElements.quantity?.value || '0');
+    const notes = stockElements.notes?.value || '';
     
     try {
         // Get product with maximum stock limit
@@ -387,7 +402,7 @@ async function saveStockAdjustment(e) {
                 notes: notes || 'Stock adjustment'
             }]);
         
-        document.getElementById('stock-adjustment-modal').classList.remove('active');
+        getStockAdjustmentElements().modal?.classList.remove('active');
         await loadInventory(getFilters());
         alert('Stock adjusted successfully!');
         

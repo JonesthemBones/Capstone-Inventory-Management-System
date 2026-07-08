@@ -7,11 +7,14 @@ const crypto = require('crypto');
 const router = express.Router();
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim();
-const SUPABASE_KEY = process.env.SUPABASE_KEY?.trim() || process.env.SUPABASE_SERVICE_KEY?.trim();
+const SUPABASE_KEY = process.env.SUPABASE_KEY?.trim()
+  || process.env.SUPABASE_SERVICE_KEY?.trim()
+  || process.env.SUPABASE_SERVICE_ROLE?.trim();
 
 console.log('Password reset env:', {
   SUPABASE_URL: !!SUPABASE_URL,
   SUPABASE_KEY: !!SUPABASE_KEY,
+  SUPABASE_KEY_SOURCE: process.env.SUPABASE_KEY ? 'SUPABASE_KEY' : process.env.SUPABASE_SERVICE_KEY ? 'SUPABASE_SERVICE_KEY' : process.env.SUPABASE_SERVICE_ROLE ? 'SUPABASE_SERVICE_ROLE' : 'missing',
   SMTP_HOST: !!process.env.SMTP_HOST,
   SMTP_PORT: !!process.env.SMTP_PORT,
   EMAIL_USER: !!process.env.EMAIL_USER,
