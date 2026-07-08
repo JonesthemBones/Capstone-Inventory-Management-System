@@ -194,6 +194,20 @@ class InactivityLogout {
         // Sign out using Supabase
         try {
             if (window.supabaseClient) {
+                try {
+                    const { data: { user }, error: userError } = await window.supabaseClient.auth.getUser();
+                    if (!userError && user) {
+                        await window.logAuditEvent({
+                            actionType: 'logout',
+                            tableAffected: 'auth',
+                            recordId: user.id,
+                            oldValues: {},
+                            newValues: { reason: 'inactivity' }
+                        });
+                    }
+                } catch (logError) {
+                    console.error('Error logging inactivity logout audit event:', logError);
+                }
                 await window.supabaseClient.auth.signOut();
             }
         } catch (error) {

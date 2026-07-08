@@ -24,6 +24,21 @@ async function getCurrentUser() {
 }
 
 async function signOut() {
+    try {
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+        if (!authError && user) {
+            await logAuditEvent({
+                actionType: 'logout',
+                tableAffected: 'auth',
+                recordId: user.id,
+                oldValues: {},
+                newValues: { reason: 'manual' }
+            });
+        }
+    } catch (error) {
+        console.error('Error logging logout event:', error);
+    }
+
     const { error } = await supabaseClient.auth.signOut();
     if (!error) {
         window.location.href = '/pages/auth.html';
@@ -81,8 +96,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+async function logAuditEvent({ actionType, tableAffected, recordId, oldValues = {}, newValues = {} }) {
+    try {
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+        if (authError) {
+            console.error('Unable to get current user for audit log:', authError);
+            return;
+        }
+        if (!user) return;
+
+        const event = {
+            user_id: user.id,
+            action_type: actionType,
+            table_affected: tableAffected,
+            record_id: recordId || user.id,
+            old_values: oldValues,
+            new_values: newValues,
+            user_agent: navigator.userAgent,
+            action_timestamp: new Date().toISOString()
+        };
+
+        const { error } = await supabaseClient
+            .from('audit_logs')
+            .insert([event]);
+
+        if (error) {
+            console.error('Audit log write failed:', error);
+        }
+    } catch (error) {
+        console.error('Unexpected error writing audit log:', error);
+    }
+}
+
 // Export to global scope
 window.supabaseClient = supabaseClient;
+window.logAuditEvent = logAuditEvent;
 window.authHelpers = {
     checkAuth,
     requireAuth,

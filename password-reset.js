@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
@@ -6,7 +7,18 @@ const crypto = require('crypto');
 const router = express.Router();
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim();
-const SUPABASE_KEY = process.env.SUPABASE_KEY?.trim();
+const SUPABASE_KEY = process.env.SUPABASE_KEY?.trim()
+  || process.env.SUPABASE_SERVICE_KEY?.trim()
+  || process.env.SUPABASE_SERVICE_ROLE?.trim();
+
+console.log('Password reset env:', {
+  SUPABASE_URL: !!SUPABASE_URL,
+  SUPABASE_KEY: !!SUPABASE_KEY,
+  SUPABASE_KEY_SOURCE: process.env.SUPABASE_KEY ? 'SUPABASE_KEY' : process.env.SUPABASE_SERVICE_KEY ? 'SUPABASE_SERVICE_KEY' : process.env.SUPABASE_SERVICE_ROLE ? 'SUPABASE_SERVICE_ROLE' : 'missing',
+  SMTP_HOST: !!process.env.SMTP_HOST,
+  SMTP_PORT: !!process.env.SMTP_PORT,
+  EMAIL_USER: !!process.env.EMAIL_USER,
+});
 const SMTP_HOST = process.env.SMTP_HOST?.trim();
 const SMTP_PORT = process.env.SMTP_PORT?.trim();
 const SMTP_SECURE = process.env.SMTP_SECURE?.trim();
@@ -14,6 +26,9 @@ const EMAIL_USER = process.env.EMAIL_USER?.trim();
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD?.trim();
 
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+console.log('Password reset supabase client created?', !!supabase);
+console.log('SUPABASE_URL raw:', SUPABASE_URL);
+console.log('SUPABASE_KEY length:', SUPABASE_KEY ? SUPABASE_KEY.length : 0);
 let transporter = null;
 
 if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
@@ -113,9 +128,9 @@ router.post('/send-otp', async (req, res) => {
 
     // Send email with OTP
     const mailOptions = {
-      from: `"Inventory System" <${process.env.EMAIL_USER}>`,
+      from: `"Amacar Hardware Inventory System" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: 'Password Reset OTP - Inventory Management System',
+      subject: 'Password Reset OTP - Amacar Hardware Inventory System',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
@@ -310,7 +325,7 @@ router.post('/reset-password', async (req, res) => {
     // Send confirmation email
     try {
       await transporter.sendMail({
-        from: `"Inventory System" <${process.env.EMAIL_USER}>`,
+        from: `"Amacar Hardware Inventory System" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Password Changed Successfully',
         html: `

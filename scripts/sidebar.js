@@ -1,3 +1,5 @@
+const SIDEBAR_CACHE_VERSION = 'v2';
+
 const sidebarConfig = [
     {
         id: 'dashboard',
@@ -67,7 +69,7 @@ function getSidebarFetchCandidates() {
 }
 
 function getSidebarCacheKey(userRole = 'guest') {
-    return `inventory-sidebar:${(userRole || 'guest').toLowerCase()}`;
+    return `inventory-sidebar:${SIDEBAR_CACHE_VERSION}:${(userRole || 'guest').toLowerCase()}`;
 }
 
 function getCachedSidebarMarkup(userRole) {
@@ -153,7 +155,7 @@ function buildFallbackSidebarHTML() {
                 <div class="logo">
                     <i class="fas fa-chart-bar logo-icon"></i>
                     <div class="logo-text">
-                        <h2>Inventory System</h2>
+                        <h2>Amacar Hardware Inventory System</h2>
                     </div>
                 </div>
             </div>
@@ -545,6 +547,21 @@ function setupSignOutButtons() {
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Signing out...</span>';
                 btn.style.pointerEvents = 'none';
                 
+                try {
+                    const { data: { user }, error: userError } = await window.supabaseClient.auth.getUser();
+                    if (!userError && user) {
+                        await window.logAuditEvent({
+                            actionType: 'logout',
+                            tableAffected: 'auth',
+                            recordId: user.id,
+                            oldValues: {},
+                            newValues: { reason: 'manual' }
+                        });
+                    }
+                } catch (logError) {
+                    console.error('Error logging logout audit event:', logError);
+                }
+
                 const { error } = await window.supabaseClient.auth.signOut();
                 if (error) throw error;
                 
