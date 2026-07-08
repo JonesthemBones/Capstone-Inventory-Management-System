@@ -25,7 +25,7 @@ let currentStockFilters = {
 // Current active view
 let currentView = 'audit'; // 'audit' or 'stock'
 
-const supabase = supabaseClient;
+const supabaseDb = supabaseClient;
 
 // ===== TAB SWITCHING =====
 function switchToAuditLogs() {
@@ -49,17 +49,17 @@ function switchToStockMovements() {
 // ===== AUDIT LOGS FUNCTIONS (Original) =====
 async function populateFilterDropdowns() {
     try {
-        const { data: categories } = await supabase
+        const { data: categories } = await supabaseDb
             .from('audit_logs')
             .select('table_affected')
             .not('table_affected', 'is', null);
 
-        const { data: actions } = await supabase
+        const { data: actions } = await supabaseDb
             .from('audit_logs')
             .select('action_type')
             .not('action_type', 'is', null);
 
-        const { data: users } = await supabase
+        const { data: users } = await supabaseDb
             .from('users')
             .select('role')
             .not('role', 'is', null);
@@ -107,7 +107,7 @@ async function loadAuditLogs() {
         const startRange = (currentPage - 1) * logsPerPage;
         const endRange = startRange + logsPerPage - 1;
 
-        let query = supabase
+        let query = supabaseDb
             .from('audit_logs')
             .select('*', { count: 'exact' });
 
@@ -141,7 +141,7 @@ async function loadAuditLogs() {
         
         let usersMap = {};
         if (userIds.length > 0) {
-            const { data: usersData } = await supabase
+            const { data: usersData } = await supabaseDb
                 .from('users')
                 .select('user_id, first_name, last_name, role')
                 .in('user_id', userIds);
@@ -220,11 +220,15 @@ function updateTable(logs) {
             <td>${escapeHtml(beautifyText(log.action_type || ''))}</td>
             <td>${escapeHtml(beautifyText(log.table_affected || ''))}</td>
             <td>
-                <button class="btn btn-link" onclick="showLogDetails('${escapeHtml(JSON.stringify(logForModal))}')">
+                <button class="btn btn-link view-details-btn">
                     View Details
                 </button>
             </td>
         `;
+        const button = row.querySelector('.view-details-btn');
+        if (button) {
+            button.addEventListener('click', () => showLogDetails(logForModal));
+        }
         tbody.appendChild(row);
     });
 
@@ -309,7 +313,7 @@ async function loadStockMovements() {
         const startRange = (currentStockPage - 1) * logsPerPage;
         const endRange = startRange + logsPerPage - 1;
 
-        let query = supabase
+        let query = supabaseDb
             .from('stock_movements')
             .select(`
                 *,
@@ -342,7 +346,7 @@ async function loadStockMovements() {
         
         let usersMap = {};
         if (userIds.length > 0) {
-            const { data: usersData } = await supabase
+            const { data: usersData } = await supabaseDb
                 .from('users')
                 .select('user_id, first_name, last_name')
                 .in('user_id', userIds);
@@ -484,7 +488,7 @@ async function exportAuditLogs() {
         exportButton.textContent = 'Exporting...';
         exportButton.disabled = true;
 
-        const { data: logs, error } = await supabase
+        const { data: logs, error } = await supabaseDb
             .from('audit_logs')
             .select('*')
             .order('action_timestamp', { ascending: false });
@@ -492,7 +496,7 @@ async function exportAuditLogs() {
         if (error) throw error;
 
         const userIds = Array.from(new Set(logs.map(log => log.user_id).filter(Boolean)));
-        const { data: usersData } = await supabase
+        const { data: usersData } = await supabaseDb
             .from('users')
             .select('user_id, first_name, last_name, role')
             .in('user_id', userIds);
@@ -531,7 +535,7 @@ async function exportStockMovements() {
         exportButton.textContent = 'Exporting...';
         exportButton.disabled = true;
 
-        const { data: movements, error } = await supabase
+        const { data: movements, error } = await supabaseDb
             .from('stock_movements')
             .select(`
                 *,
@@ -542,7 +546,7 @@ async function exportStockMovements() {
         if (error) throw error;
 
         const userIds = Array.from(new Set(movements.map(m => m.performed_by).filter(Boolean)));
-        const { data: usersData } = await supabase
+        const { data: usersData } = await supabaseDb
             .from('users')
             .select('user_id, first_name, last_name')
             .in('user_id', userIds);
@@ -636,7 +640,11 @@ function convertToCSV(objArray) {
         { key: 'role', header: 'User Role' },
         { key: 'action_type', header: 'Action Type' },
         { key: 'table_affected', header: 'Category' },
-        { key: 'details', header: 'Action Details' }
+        { key: 'record_id', header: 'Record ID' },
+        { key: 'old_values', header: 'Old Values' },
+        { key: 'new_values', header: 'New Values' },
+        { key: 'ip_address', header: 'IP Address' },
+        { key: 'user_agent', header: 'User Agent' }
     ];
 
     const BOM = '\uFEFF';
@@ -650,14 +658,16 @@ function convertToCSV(objArray) {
                 value = new Date(value).toLocaleString();
             }
             
-            if (col.key === 'details' && value) {
+            if (['old_values', 'new_values'].includes(col.key) && value) {
                 try {
                     if (typeof value === 'string') {
                         value = JSON.parse(value);
                     }
-                    value = Object.entries(value)
-                        .map(([k, v]) => `${beautifyText(k)}: ${v}`)
-                        .join(' | ');
+                    if (typeof value === 'object' && value !== null) {
+                        value = Object.entries(value)
+                            .map(([k, v]) => `${beautifyText(k)}: ${v}`)
+                            .join(' | ');
+                    }
                 } catch (e) {
                     value = String(value);
                 }
@@ -704,7 +714,7 @@ function downloadCSV(csv, filename) {
 
 // ===== HELPER FUNCTIONS =====
 function showLogDetails(logData) {
-    const log = JSON.parse(logData);
+    const log = typeof logData === 'string' ? JSON.parse(logData) : logData;
     const modal = document.getElementById('log-details-modal');
     const content = document.getElementById('log-details-content');
     
@@ -731,8 +741,24 @@ function showLogDetails(logData) {
                 <span>${escapeHtml(beautifyText(String(log.table_affected || '')))}</span>
             </div>
             <div class="detail-group">
-                <label>Details:</label>
-                <pre>${escapeHtml(JSON.stringify(log.details || {}, null, 2))}</pre>
+                <label>Record ID:</label>
+                <span>${escapeHtml(String(log.record_id || ''))}</span>
+            </div>
+            <div class="detail-group">
+                <label>Old Values:</label>
+                <pre>${escapeHtml(JSON.stringify(log.old_values || {}, null, 2))}</pre>
+            </div>
+            <div class="detail-group">
+                <label>New Values:</label>
+                <pre>${escapeHtml(JSON.stringify(log.new_values || {}, null, 2))}</pre>
+            </div>
+            <div class="detail-group">
+                <label>IP Address:</label>
+                <span>${escapeHtml(String(log.ip_address || ''))}</span>
+            </div>
+            <div class="detail-group">
+                <label>User Agent:</label>
+                <span>${escapeHtml(String(log.user_agent || ''))}</span>
             </div>
         </div>
     `;

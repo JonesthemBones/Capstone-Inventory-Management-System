@@ -8,7 +8,7 @@ const router = express.Router();
 // Initialize Supabase client with service role key
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY // Service role key for admin operations
+  process.env.SUPABASE_SERVICE_KEY 
 );
 
 // Configure nodemailer for Gmail
@@ -79,9 +79,9 @@ router.post('/send-otp', async (req, res) => {
 
     // Send email with OTP
     const mailOptions = {
-      from: `"Inventory System" <${process.env.EMAIL_USER}>`,
+      from: `"Amacar Hardware Inventory System" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: 'Password Reset OTP - Inventory Management System',
+      subject: 'Password Reset OTP - Amacar Hardware Inventory System',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
@@ -268,7 +268,7 @@ router.post('/reset-password', async (req, res) => {
     // Send confirmation email
     try {
       await transporter.sendMail({
-        from: `"Inventory System" <${process.env.EMAIL_USER}>`,
+        from: `"Amacar Hardware Inventory System" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Password Changed Successfully',
         html: `
@@ -506,7 +506,7 @@ router.post('/send-restored-credentials', async (req, res) => {
     console.log(`Sending credentials email to: ${email}`);
 
     await transporter.sendMail({
-      from: `"Inventory System" <${process.env.EMAIL_USER}>`,
+      from: `"Amacar Hardware Inventory System" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Your Account Has Been Restored',
       html: `
@@ -514,7 +514,7 @@ router.post('/send-restored-credentials', async (req, res) => {
           <div style="background-color: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <h2 style="color: #1f2937; margin-top: 0;">Account Restored</h2>
             <p>Hello ${firstName || 'User'},</p>
-            <p>Your account has been restored in the Inventory Management System.</p>
+            <p>Your account has been restored in the Amacar Hardware Inventory System.</p>
             
             <div style="background-color: #f3f4f6; border-radius: 6px; padding: 20px; margin: 20px 0;">
               <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">Your Login Credentials:</p>

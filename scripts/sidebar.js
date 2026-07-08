@@ -1,3 +1,5 @@
+const SIDEBAR_CACHE_VERSION = 'v2';
+
 const sidebarConfig = [
     {
         id: 'dashboard',
@@ -67,7 +69,7 @@ function getSidebarFetchCandidates() {
 }
 
 function getSidebarCacheKey(userRole = 'guest') {
-    return `inventory-sidebar:${(userRole || 'guest').toLowerCase()}`;
+    return `inventory-sidebar:${SIDEBAR_CACHE_VERSION}:${(userRole || 'guest').toLowerCase()}`;
 }
 
 function getCachedSidebarMarkup(userRole) {
@@ -153,7 +155,7 @@ function buildFallbackSidebarHTML() {
                 <div class="logo">
                     <i class="fas fa-chart-bar logo-icon"></i>
                     <div class="logo-text">
-                        <h2>Inventory System</h2>
+                        <h2>Amacar Hardware Inventory System</h2>
                     </div>
                 </div>
             </div>

@@ -790,7 +790,7 @@ function addReportHeader(doc, title, yPos) {
     // Company/System name
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
-    doc.text('INVENTORY MANAGEMENT SYSTEM', 105, yPos, { align: 'center' });
+    doc.text('AMACAR HARDWARE INVENTORY SYSTEM', 105, yPos, { align: 'center' });
     
     // Report title
     doc.setFontSize(16);

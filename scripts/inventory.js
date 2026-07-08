@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyRoleBasedAccess();
     
     await loadInventory();
+    initImageUpload();
     setupEventListeners();
     setupRealtimeSubscriptions();
 });
@@ -103,7 +104,7 @@ function displayInventory(products) {
     if (!products || products.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="9" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <td colspan="10" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                     No products found
                 </td>
             </tr>
@@ -156,8 +157,33 @@ function displayInventory(products) {
             `;
         }
         
+        // Generate thumbnail
+        let thumbnailCell = '';
+        if (product.image_url) {
+            thumbnailCell = `
+                <td class="product-thumbnail-cell">
+                    <img src="${product.image_url}" 
+                         alt="${product.product_name}" 
+                         class="product-thumbnail"
+                         onclick="openImagePreviewModal('${product.image_url}', '${product.product_name.replace(/'/g, "\\'")}')"
+                         loading="lazy">
+                </td>
+            `;
+        } else {
+            thumbnailCell = `
+                <td class="product-thumbnail-cell">
+                    <div class="product-thumbnail-placeholder" 
+                         onclick="openUploadImageModal('${product.product_id}')"
+                         title="Click to upload image">
+                        <i class="fas fa-image"></i>
+                    </div>
+                </td>
+            `;
+        }
+        
         return `
             <tr data-product-id="${product.product_id}">
+                ${thumbnailCell}
                 <td><strong>${product.product_name}</strong></td>
                 <td>${product.product_code || 'N/A'}</td>
                 <td>${product.unit_of_measure || 'N/A'}</td>
@@ -223,12 +249,19 @@ function setupEventListeners() {
         document.getElementById('product-modal').classList.remove('active');
     });
     
-    document.getElementById('stock-adjustment-form').addEventListener('submit', saveStockAdjustment);
-    document.getElementById('close-stock-modal').addEventListener('click', () => {
-        document.getElementById('stock-adjustment-modal').classList.remove('active');
+    // Guarded with optional chaining: the stock-adjustment modal HTML is currently
+    // missing from inventory.html (only its JS logic remains). Without these guards,
+    // this throws "Cannot read properties of null (reading 'addEventListener')" and
+    // silently aborts the rest of setupEventListeners() — which is why Export CSV,
+    // Backup/Restore, and the image upload wiring in initImageUpload() were never
+    // running at all. See note below; restore the modal HTML or remove the dead
+    // "Adjust Stock" row action once you confirm which one you want.
+    document.getElementById('stock-adjustment-form')?.addEventListener('submit', saveStockAdjustment);
+    document.getElementById('close-stock-modal')?.addEventListener('click', () => {
+        document.getElementById('stock-adjustment-modal')?.classList.remove('active');
     });
-    document.getElementById('cancel-stock-btn').addEventListener('click', () => {
-        document.getElementById('stock-adjustment-modal').classList.remove('active');
+    document.getElementById('cancel-stock-btn')?.addEventListener('click', () => {
+        document.getElementById('stock-adjustment-modal')?.classList.remove('active');
     });
 
     // Export CSV event listener
@@ -652,7 +685,7 @@ async function exportBackup() {
                 export_date: new Date().toISOString(),
                 total_products: products.length,
                 version: '1.0',
-                system: 'Inventory Management System'
+                system: 'Amacar Hardware Inventory System'
             },
             products: products.map(product => {
                 const inventory = product.inventory_stock?.[0] || product.inventory_stock || {};
@@ -1071,4 +1104,245 @@ async function restoreBackup() {
         confirmButton.innerHTML = '<i class="fas fa-upload"></i> Restore Backup';
         validateRestoreForm();
     }
+}
+
+// ========== IMAGE MODAL FUNCTIONS ==========
+
+function openImagePreviewModal(imageUrl, productName) {
+    const modal = document.getElementById('image-preview-modal');
+    if (!modal) return;
+    
+    const img = modal.querySelector('.image-modal-content img');
+    img.src = imageUrl;
+    img.alt = productName;
+    
+    const title = modal.querySelector('.image-modal-title');
+    if (title) title.textContent = productName;
+    
+    modal.classList.add('active');
+}
+
+function closeImagePreviewModal() {
+    const modal = document.getElementById('image-preview-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function openUploadImageModal(productId) {
+    const modal = document.getElementById('upload-image-modal');
+    if (!modal) return;
+    
+    modal.dataset.productId = productId;
+    modal.classList.add('active');
+    resetImageUploadForm();
+}
+
+function closeUploadImageModal() {
+    const modal = document.getElementById('upload-image-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+// ========== IMAGE UPLOAD FUNCTIONS ==========
+
+let selectedImageFile = null;
+let selectedImageProductId = null;
+
+function initImageUpload() {
+    const fileInput = document.getElementById('product-image-input');
+    const uploadArea = document.getElementById('image-upload-area');
+    
+    if (!uploadArea || !fileInput) return;
+    
+    // Note: no manual click listener on uploadArea here. The <label for="product-image-input">
+    // inside it already opens the native file picker. Adding a second uploadArea.click()
+    // listener fires fileInput.click() twice in the same tick (label's native trigger + this
+    // listener), which causes the file dialog to immediately close/cancel itself in most
+    // browsers — this was why clicking to upload appeared to do nothing.
+    
+    // File selected
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleImageFileSelect(e.target.files[0]);
+        }
+    });
+    
+    // Drag and drop
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, preventDefaults);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    uploadArea.addEventListener('dragover', () => {
+        uploadArea.classList.add('drag-over');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('drag-over');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        uploadArea.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleImageFileSelect(files[0]);
+        }
+    });
+}
+
+function handleImageFileSelect(file) {
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        showNotification('Invalid file type. Please upload JPG, PNG, or WebP.', 'error');
+        return;
+    }
+    
+    // Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+        showNotification('File too large. Maximum size is 5MB.', 'error');
+        return;
+    }
+    
+    selectedImageFile = file;
+    displayImagePreview(file);
+}
+
+function displayImagePreview(file) {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+        const uploadArea = document.getElementById('image-upload-area');
+        const previewContainer = document.getElementById('image-preview-container');
+        
+        if (uploadArea) uploadArea.style.display = 'none';
+        
+        previewContainer.innerHTML = `
+            <div class="image-preview-container">
+                <img src="${e.target.result}" alt="Preview" class="image-preview">
+                <button type="button" class="remove-image-btn" onclick="removeImagePreview()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <p class="file-info-text">${file.name} (${(file.size / 1024).toFixed(2)} KB)</p>
+        `;
+        previewContainer.style.display = 'block';
+    };
+    
+    reader.readAsDataURL(file);
+}
+
+function removeImagePreview() {
+    selectedImageFile = null;
+    document.getElementById('product-image-input').value = '';
+    document.getElementById('image-preview-container').innerHTML = '';
+    document.getElementById('image-preview-container').style.display = 'none';
+    document.getElementById('image-upload-area').style.display = 'flex';
+}
+
+function resetImageUploadForm() {
+    selectedImageFile = null;
+    selectedImageProductId = null;
+    removeImagePreview();
+}
+
+// Upload image to Supabase Storage
+async function uploadProductImage() {
+    if (!selectedImageFile) {
+        showNotification('Please select an image', 'warning');
+        return;
+    }
+    
+    const modal = document.getElementById('upload-image-modal');
+    const productId = modal.dataset.productId;
+    
+    if (!productId) {
+        showNotification('Product ID not found', 'error');
+        return;
+    }
+    
+    try {
+        // Show loading state
+        const uploadBtn = document.getElementById('confirm-upload-btn');
+        const originalText = uploadBtn.innerHTML;
+        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+        uploadBtn.disabled = true;
+        
+        // Generate unique filename
+        const timestamp = Date.now();
+        const fileExtension = selectedImageFile.name.split('.').pop();
+        const fileName = `product-${productId}-${timestamp}.${fileExtension}`;
+        const filePath = `product-images/${fileName}`;
+        
+        // Upload to Supabase Storage
+        const { data, error: uploadError } = await supabaseClient.storage
+            .from('product-images')
+            .upload(filePath, selectedImageFile, {
+                cacheControl: '3600',
+                upsert: false
+            });
+        
+        if (uploadError) throw uploadError;
+        
+        // Get public URL
+        const { data: publicUrlData } = supabaseClient.storage
+            .from('product-images')
+            .getPublicUrl(filePath);
+        
+        const imageUrl = publicUrlData.publicUrl;
+        
+        // Update product in database
+        const { error: updateError } = await supabaseClient
+            .from('products')
+            .update({
+                image_url: imageUrl,
+                image_path: filePath,
+                image_uploaded_at: new Date().toISOString()
+            })
+            .eq('product_id', productId);
+        
+        if (updateError) throw updateError;
+        
+        // Success
+        showNotification('Image uploaded successfully!', 'success');
+        closeUploadImageModal();
+        await loadInventory(getFilters());
+        
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        showNotification('Failed to upload image: ' + error.message, 'error');
+    } finally {
+        const uploadBtn = document.getElementById('confirm-upload-btn');
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload Image';
+        uploadBtn.disabled = false;
+    }
+}
+
+// Helper notification function (if you don't have one already)
+function showNotification(message, type = 'info') {
+    // Create a simple toast notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 16px 20px;
+        border-radius: 6px;
+        background-color: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+        color: white;
+        font-size: 14px;
+        z-index: 2000;
+        animation: slideIn 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
