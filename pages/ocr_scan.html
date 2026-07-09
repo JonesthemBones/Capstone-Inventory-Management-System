@@ -51,11 +51,11 @@
                             </div>
 
                             <div class="ocr-button-row">
-                                <button class="btn btn-primary" id="process-receipt-btn">
+                                <button type="button" class="btn btn-primary" id="process-receipt-btn">
                                     <i class="fas fa-camera"></i>
                                     Scan Receipt
                                 </button>
-                                <button class="btn" id="clear-receipt-btn">
+                                <button type="button" class="btn" id="clear-receipt-btn">
                                     <i class="fas fa-trash-alt"></i>
                                     Clear
                                 </button>
@@ -72,31 +72,34 @@
                                 <p class="ocr-card-subtitle">Review items extracted by the VLM, then accept or remove them individually or in bulk.</p>
                             </div>
                             <div class="ocr-action-buttons">
-                                <button class="btn btn-secondary" id="download-json-btn">
+                                <button type="button" class="btn btn-secondary" id="download-json-btn">
                                     <i class="fas fa-download"></i>
                                     Download JSON
                                 </button>
-                                <button class="btn btn-primary" id="accept-all-btn">
+                                <button type="button" class="btn btn-primary" id="accept-all-btn">
                                     <i class="fas fa-check"></i>
                                     Accept All
                                 </button>
-                                <button class="btn btn-danger" id="remove-all-btn">
-                                    <i class="fas fa-trash"></i>
-                                    Remove All
+                                <button type="button" class="btn btn-danger" id="remove-all-btn">
+                                    <i class="fas fa-ban"></i>
+                                    Reject All
                                 </button>
                             </div>
                         </div>
 
                         <div id="ocr-status" class="ocr-status">No receipt scanned yet.</div>
-                        <div id="ocr-items-grid" class="ocr-items-grid"></div>
-                        <pre id="ocr-raw-output" class="ocr-raw-output" hidden></pre>
-
                         <div class="ocr-save-section">
-                            <button class="btn btn-success btn-large" id="save-to-inventory-btn" style="display:none;">
+                            <button type="button" class="btn btn-success btn-large" id="save-to-inventory-btn" disabled>
                                 <i class="fas fa-save"></i>
-                                Save Accepted Items to Inventory
+                                No accepted items to save
+                            </button>
+                            <button type="button" class="btn btn-outline btn-large" id="start-new-scan-btn" style="display:none; margin-top:12px;">
+                                <i class="fas fa-refresh"></i>
+                                Start New Scan
                             </button>
                         </div>
+                        <div id="ocr-items-grid" class="ocr-items-grid"></div>
+                        <pre id="ocr-raw-output" class="ocr-raw-output" hidden></pre>
                     </section>
                 </div>
             </div>

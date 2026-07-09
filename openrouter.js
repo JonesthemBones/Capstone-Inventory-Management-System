@@ -176,16 +176,55 @@ router.post('/save-items-to-inventory', async (req, res) => {
             return res.status(400).json({ error: 'No accepted items to save. Please accept at least one item.' });
         }
 
+        const normalizeName = (text) => String(text || '')
+            .trim()
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
+
+        const deduped = acceptedItems.reduce((map, item) => {
+            const productName = (item.name || '').trim();
+            const normalizedName = normalizeName(productName);
+            if (!normalizedName) return map;
+
+            const quantity = parseInt(item.real_quantity) || parseInt(item.receipt_quantity) || 1;
+            const price = parseFloat(item.price) || 0;
+            const comment = (item.comment || '').trim();
+
+            if (!map.has(normalizedName)) {
+                map.set(normalizedName, {
+                    originalName: productName,
+                    normalizedName,
+                    quantity,
+                    price,
+                    comments: comment ? [comment] : [],
+                    rawItems: [item]
+                });
+            } else {
+                const entry = map.get(normalizedName);
+                entry.quantity += quantity;
+                if (!entry.price && price) entry.price = price;
+                if (comment) entry.comments.push(comment);
+                entry.rawItems.push(item);
+            }
+            return map;
+        }, new Map());
+
+        const dedupedItems = Array.from(deduped.values()).map(entry => ({
+            ...entry,
+            quantity: entry.quantity,
+            comment: entry.comments.filter(Boolean).join(' | ')
+        }));
+
         const results = {
             successful: [],
             failed: []
         };
 
-        for (const item of acceptedItems) {
+        for (const item of dedupedItems) {
             try {
-                const productName = (item.name || '').trim();
+                const productName = (item.originalName || item.name || '').trim();
                 const price = parseFloat(item.price) || 0;
-                const quantity = parseInt(item.real_quantity) || parseInt(item.receipt_quantity) || 1;
+                const quantity = parseInt(item.quantity) || 1;
                 const comment = (item.comment || '').trim();
 
                 if (!productName || productName.length < 2) {
@@ -219,7 +258,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     // Get current inventory
                     const { data: currentStockArray } = await supabaseClient
                         .from('inventory_stock')
-                        .select('quantity')
+                        .select('stock_id, quantity')
                         .eq('product_id', productId)
                         .limit(1);
 
@@ -227,16 +266,27 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     previousQuantity = currentStock?.quantity || 0;
                     const newQuantity = previousQuantity + quantity;
 
-                    // Update inventory stock
-                    const { error: updateError } = await supabaseClient
-                        .from('inventory_stock')
-                        .update({ 
-                            quantity: newQuantity,
-                            last_restock_date: new Date().toISOString()
-                        })
-                        .eq('product_id', productId);
+                    if (currentStock) {
+                        const { error: updateError } = await supabaseClient
+                            .from('inventory_stock')
+                            .update({ 
+                                quantity: newQuantity,
+                                last_restock_date: new Date().toISOString()
+                            })
+                            .eq('stock_id', currentStock.stock_id);
 
-                    if (updateError) throw updateError;
+                        if (updateError) throw updateError;
+                    } else {
+                        const { error: insertStockError } = await supabaseClient
+                            .from('inventory_stock')
+                            .insert([{
+                                product_id: productId,
+                                quantity: newQuantity,
+                                last_restock_date: new Date().toISOString()
+                            }]);
+
+                        if (insertStockError) throw insertStockError;
+                    }
 
                     // Record stock movement
                     const { error: movementError } = await supabaseClient
@@ -248,7 +298,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             quantity_before: previousQuantity,
                             quantity_after: newQuantity,
                             reference_type: 'receipt_scan',
-                            notes: `Receipt scan update. Receipt qty: ${item.receipt_quantity}` + (comment ? `. ${comment}` : '')
+                            notes: `Receipt scan update. Receipt qty: ${quantity}` + (comment ? `. ${comment}` : '')
                         }]);
 
                     if (movementError) throw movementError;
