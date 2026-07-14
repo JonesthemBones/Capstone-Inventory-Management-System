@@ -349,13 +349,13 @@ function updateSaveButton() {
     const totalCount = currentItems.length;
     const acceptedCount = currentItems.filter(item => item.accepted && !item.removed).length;
     const rejectedCount = currentItems.filter(item => item.removed).length;
-    const hasReviewItems = totalCount > 0;
+    const hasDecisions = acceptedCount > 0 || rejectedCount > 0;
 
-    saveBtn.disabled = !hasReviewItems;
+    saveBtn.disabled = !hasDecisions;
     saveBtn.style.display = 'inline-flex';
 
-    if (!hasReviewItems) {
-        saveBtn.innerHTML = '<i class="fas fa-save"></i> No items to save';
+    if (!hasDecisions) {
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> No items decided (accept or reject to enable)';
     } else if (acceptedCount > 0) {
         saveBtn.innerHTML = `<i class="fas fa-save"></i> Save ${acceptedCount} Accepted Item(s) to Inventory`;
     } else if (rejectedCount > 0) {
