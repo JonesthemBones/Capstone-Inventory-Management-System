@@ -22,6 +22,28 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wxhkhxsxftundtrahpst.s
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aGtoeHN4ZnR1bmR0cmFocHN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDU3ODc3NywiZXhwIjoyMDc2MTU0Nzc3fQ.R_J7gu9Z7T0CEp0t0Ky8XC0kHvHxDtpqX2t5Vz_K6lE';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+async function logReceiptAuditEvent({ userId, actionType, tableAffected = 'receipt_scan', recordId = null, oldValues = {}, newValues = {} }) {
+    try {
+        const payload = {
+            user_id: userId || null,
+            action_type: actionType,
+            table_affected: tableAffected,
+            record_id: recordId || null,
+            old_values: oldValues || {},
+            new_values: newValues || {},
+            user_agent: 'server-receipt-scan',
+            action_timestamp: new Date().toISOString()
+        };
+
+        const { error } = await supabaseClient.from('audit_logs').insert([payload]);
+        if (error) {
+            console.error('Receipt scan audit log write failed:', error);
+        }
+    } catch (error) {
+        console.error('Unexpected receipt scan audit log error:', error);
+    }
+}
+
 function extractJsonObject(text) {
     if (!text) return null;
     const normalized = String(text).trim();
@@ -161,7 +183,7 @@ router.post('/ocr-scan', async (req, res) => {
 
 router.post('/save-items-to-inventory', async (req, res) => {
     try {
-        const { items } = req.body;
+        const { items, userId } = req.body;
         
         console.log('Save items request received:', items ? items.length : 'no items');
         
@@ -169,12 +191,66 @@ router.post('/save-items-to-inventory', async (req, res) => {
             return res.status(400).json({ error: 'Invalid items array. Must be non-empty.' });
         }
 
-        // Filter to only accepted items
-        const acceptedItems = items.filter(item => item.accepted && !item.removed);
+        const receiptItems = items.filter(item => item && typeof item === 'object');
+        const acceptedItems = receiptItems.filter(item => item.accepted && !item.removed);
+        const rejectedItems = receiptItems.filter(item => item.removed);
+        const pendingItems = receiptItems.filter(item => !item.accepted && !item.removed);
         
         if (acceptedItems.length === 0) {
-            return res.status(400).json({ error: 'No accepted items to save. Please accept at least one item.' });
+            await logReceiptAuditEvent({
+                userId,
+                actionType: 'receipt_scan_decision',
+                tableAffected: 'receipt_scan',
+                newValues: {
+                    summary: {
+                        totalItems: receiptItems.length,
+                        acceptedItems: acceptedItems.length,
+                        rejectedItems: rejectedItems.length,
+                        pendingItems: pendingItems.length
+                    },
+                    items: receiptItems.map(item => ({
+                        name: item.name || '',
+                        comment: item.comment || '',
+                        decision: item.removed ? 'rejected' : 'pending',
+                        real_quantity: item.real_quantity ?? item.receipt_quantity ?? 1
+                    }))
+                }
+            });
+
+            return res.json({
+                success: true,
+                message: 'Receipt review decisions recorded. No items were imported into inventory.',
+                results: {
+                    successful: [],
+                    failed: [],
+                    rejected: receiptItems.filter(item => item.removed).map(item => ({
+                        name: item.name || 'Unnamed item',
+                        comment: item.comment || '',
+                        decision: 'rejected'
+                    }))
+                }
+            });
         }
+
+        await logReceiptAuditEvent({
+            userId,
+            actionType: 'receipt_scan_decision',
+            tableAffected: 'receipt_scan',
+            newValues: {
+                summary: {
+                    totalItems: receiptItems.length,
+                    acceptedItems: acceptedItems.length,
+                    rejectedItems: rejectedItems.length,
+                    pendingItems: pendingItems.length
+                },
+                items: receiptItems.map(item => ({
+                    name: item.name || '',
+                    comment: item.comment || '',
+                    decision: item.removed ? 'rejected' : item.accepted ? 'accepted' : 'pending',
+                    real_quantity: item.real_quantity ?? item.receipt_quantity ?? 1
+                }))
+            }
+        });
 
         const normalizeName = (text) => String(text || '')
             .trim()
@@ -217,8 +293,30 @@ router.post('/save-items-to-inventory', async (req, res) => {
 
         const results = {
             successful: [],
-            failed: []
+            failed: [],
+            rejected: []
         };
+
+        for (const item of rejectedItems) {
+            const comment = (item.comment || '').trim();
+            results.rejected.push({
+                name: item.name || 'Unnamed item',
+                comment,
+                decision: 'rejected'
+            });
+
+            await logReceiptAuditEvent({
+                userId,
+                actionType: 'receipt_scan_item_rejected',
+                tableAffected: 'receipt_scan',
+                newValues: {
+                    itemName: item.name || 'Unnamed item',
+                    comment,
+                    decision: 'rejected',
+                    real_quantity: item.real_quantity ?? item.receipt_quantity ?? 1
+                }
+            });
+        }
 
         for (const item of dedupedItems) {
             try {
@@ -312,6 +410,22 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         isNew: false,
                         message: `Updated stock (+${quantity} units)`
                     });
+
+                    await logReceiptAuditEvent({
+                        userId,
+                        actionType: 'receipt_scan_item_accepted',
+                        tableAffected: 'products',
+                        recordId: productId,
+                        newValues: {
+                            itemName: productName,
+                            quantity,
+                            comment,
+                            decision: 'accepted',
+                            previousQuantity,
+                            newQuantity,
+                            source: 'receipt_scan'
+                        }
+                    });
                 } else {
                     // Product doesn't exist - create new
                     const { data: newProduct, error: insertError } = await supabaseClient
@@ -366,6 +480,22 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         productId: productId,
                         isNew: true,
                         message: `Created new product`
+                    });
+
+                    await logReceiptAuditEvent({
+                        userId,
+                        actionType: 'receipt_scan_item_accepted',
+                        tableAffected: 'products',
+                        recordId: productId,
+                        newValues: {
+                            itemName: productName,
+                            quantity,
+                            comment,
+                            decision: 'accepted',
+                            previousQuantity: 0,
+                            newQuantity: quantity,
+                            source: 'receipt_scan'
+                        }
                     });
                 }
             } catch (itemError) {

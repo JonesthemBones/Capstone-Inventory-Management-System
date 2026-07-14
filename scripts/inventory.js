@@ -245,6 +245,7 @@ function setupEventListeners() {
         currentEditingProductId = null;
         document.getElementById('modal-title').textContent = 'Add New Product';
         document.getElementById('product-form').reset();
+        toggleProductThumbnailSection(false);
         const quantityInput = document.getElementById('product-quantity');
         const quantityGroup = quantityInput.closest('.form-group');
         quantityGroup.style.display = '';
@@ -295,6 +296,47 @@ function getFilters() {
         search: document.getElementById('inventory-search').value,
         status: document.getElementById('status-filter').value
     };
+}
+
+function toggleProductThumbnailSection(show) {
+    const section = document.getElementById('product-thumbnail-section');
+    const button = document.getElementById('change-product-thumbnail-btn');
+
+    if (!section) return;
+
+    section.style.display = show ? 'block' : 'none';
+    if (button) {
+        button.disabled = !show;
+    }
+}
+
+function updateProductThumbnailPreview(product) {
+    const previewContainer = document.getElementById('product-thumbnail-preview');
+    if (!previewContainer) return;
+
+    previewContainer.innerHTML = '';
+
+    if (product?.image_url) {
+        const img = document.createElement('img');
+        img.src = product.image_url;
+        img.alt = product.product_name || 'Product thumbnail';
+        img.className = 'product-form-thumbnail-image';
+        previewContainer.appendChild(img);
+    } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'product-form-thumbnail-placeholder';
+        placeholder.innerHTML = '<i class="fas fa-image"></i><span>No thumbnail yet</span>';
+        previewContainer.appendChild(placeholder);
+    }
+}
+
+function openThumbnailUploadForCurrentProduct() {
+    if (!currentEditingProductId) {
+        showNotification('Select an existing product first to change its thumbnail.', 'warning');
+        return;
+    }
+
+    openUploadImageModal(currentEditingProductId);
 }
 
 async function openStockAdjustmentModal(productId) {
@@ -499,6 +541,8 @@ async function editProduct(productId) {
         document.getElementById('reorder-level').value = product.reorder_level || 10;
         document.getElementById('maximum-stock').value = product.maximum_stock || '';
         document.getElementById('product-description').value = product.description || '';
+        toggleProductThumbnailSection(true);
+        updateProductThumbnailPreview(product);
         
         const quantityInput = document.getElementById('product-quantity');
         const quantityGroup = quantityInput.closest('.form-group');
@@ -1322,6 +1366,13 @@ async function uploadProductImage() {
         if (updateError) throw updateError;
         
         // Success
+        if (currentEditingProductId) {
+            updateProductThumbnailPreview({
+                image_url: imageUrl,
+                product_name: document.getElementById('product-name')?.value || 'Product thumbnail'
+            });
+        }
+
         showNotification('Image uploaded successfully!', 'success');
         closeUploadImageModal();
         await loadInventory(getFilters());

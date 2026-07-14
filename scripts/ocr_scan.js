@@ -11,14 +11,37 @@ function setStatus(message, variant = 'neutral') {
 
 function setPreviewImage(dataUrl) {
     const preview = document.getElementById('receipt-image-preview');
+    const viewButton = document.getElementById('view-receipt-image-btn');
+    const modalImage = document.getElementById('receipt-image-modal-img');
     if (!preview) return;
     if (!dataUrl) {
         preview.innerHTML = 'No image selected';
         preview.style.backgroundImage = 'none';
+        if (viewButton) viewButton.style.display = 'none';
+        if (modalImage) modalImage.src = '';
         return;
     }
     preview.innerHTML = '';
     preview.style.backgroundImage = `url('${dataUrl}')`;
+    if (viewButton) viewButton.style.display = 'inline-flex';
+    if (modalImage) modalImage.src = dataUrl;
+}
+
+function openReceiptImagePreview() {
+    const modal = document.getElementById('receipt-image-modal');
+    const modalImage = document.getElementById('receipt-image-modal-img');
+    if (!modal || !modalImage) return;
+    if (!modalImage.src) return;
+    modal.classList.add('active');
+}
+
+function closeReceiptImagePreview(event) {
+    const modal = document.getElementById('receipt-image-modal');
+    if (!modal) return;
+    if (event && event.target !== modal && event.target.closest('.ocr-image-modal-content')) {
+        return;
+    }
+    modal.classList.remove('active');
 }
 
 function clearReceiptSelection() {
@@ -309,12 +332,12 @@ function removeAllItems() {
         return;
     }
 
-    const confirmReject = confirm('Reject all items? This will mark every item as rejected and remove them from the save list. Continue?');
+    const confirmReject = confirm('Reject all items? This will mark every item as rejected and keep them in the review list. Continue?');
     if (!confirmReject) return;
 
     currentItems = currentItems.map(item => ({ ...item, removed: true, accepted: false }));
     renderItems(currentItems);
-    setStatus('All items have been rejected. Use Restore to recover any item.', 'warning');
+    setStatus('All items have been rejected. They remain in the review list for reference.', 'warning');
     updateSaveButton();
 }
 
@@ -323,36 +346,42 @@ function updateSaveButton() {
     const startBtn = document.getElementById('start-new-scan-btn');
     if (!saveBtn) return;
 
+    const totalCount = currentItems.length;
     const acceptedCount = currentItems.filter(item => item.accepted && !item.removed).length;
-    saveBtn.disabled = acceptedCount === 0;
-    saveBtn.style.display = 'inline-flex';
-    saveBtn.innerHTML = `<i class="fas fa-save"></i> ${acceptedCount > 0 ? `Save ${acceptedCount} Accepted Item(s) to Inventory` : 'No accepted items to save'}`;
+    const rejectedCount = currentItems.filter(item => item.removed).length;
+    const hasReviewItems = totalCount > 0;
 
-    // Show a "Start New Scan" button when all items were rejected (so the user can clear and begin again)
+    saveBtn.disabled = !hasReviewItems;
+    saveBtn.style.display = 'inline-flex';
+
+    if (!hasReviewItems) {
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> No items to save';
+    } else if (acceptedCount > 0) {
+        saveBtn.innerHTML = `<i class="fas fa-save"></i> Save ${acceptedCount} Accepted Item(s) to Inventory`;
+    } else if (rejectedCount > 0) {
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Record Review Decisions';
+    } else {
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Review Decisions';
+    }
+
+    // Keep the session active so rejected items remain visible for review.
     if (startBtn) {
-        const totalCount = currentItems.length;
-        const removedCount = currentItems.filter(i => i.removed).length;
-        if (totalCount > 0 && removedCount === totalCount) {
-            startBtn.style.display = 'inline-flex';
-        } else {
-            startBtn.style.display = 'none';
-        }
+        startBtn.style.display = 'none';
     }
 }
 
 async function saveAcceptedItemsToInventory() {
-    const acceptedCount = currentItems.filter(item => item.accepted && !item.removed).length;
     const saveBtn = document.getElementById('save-to-inventory-btn');
     if (saveBtn) saveBtn.disabled = true;
 
     try {
-        const acceptedItems = currentItems.filter(item => item.accepted && !item.removed);
+        const currentUser = await window.authHelpers?.getCurrentUser?.();
         const response = await fetch('/api/save-items-to-inventory', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ items: acceptedItems })
+            body: JSON.stringify({ items: currentItems, userId: currentUser?.id || null })
         });
 
         const result = await response.json();
@@ -367,8 +396,12 @@ async function saveAcceptedItemsToInventory() {
 
         const successCount = result.results?.successful?.length || 0;
         const failedCount = result.results?.failed?.length || 0;
+        const rejectedCount = result.results?.rejected?.length || 0;
 
         let statusMessage = `✓ Successfully processed ${successCount} item(s)`;
+        if (rejectedCount > 0) {
+            statusMessage += ` and recorded ${rejectedCount} rejected item(s)`;
+        }
         if (failedCount > 0) {
             statusMessage += ` (${failedCount} failed)`;
         }
@@ -386,6 +419,14 @@ async function saveAcceptedItemsToInventory() {
                 } else {
                     detailsHtml += `<li><strong>${item.name}</strong> - Updated Stock (${item.previousQuantity} → ${item.newQuantity} units, +${item.quantity})</li>`;
                 }
+            });
+            detailsHtml += `</ul></li>`;
+        }
+
+        if (result.results?.rejected?.length > 0) {
+            detailsHtml += `<li><strong>Rejected (${rejectedCount}):</strong><ul>`;
+            result.results.rejected.forEach(item => {
+                detailsHtml += `<li><strong>${item.name}</strong>${item.comment ? ` - ${item.comment}` : ''}</li>`;
             });
             detailsHtml += `</ul></li>`;
         }

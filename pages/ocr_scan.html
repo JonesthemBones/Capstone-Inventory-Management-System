@@ -48,6 +48,10 @@
                             <div class="ocr-image-preview-wrapper">
                                 <div class="ocr-preview-label">Preview</div>
                                 <div id="receipt-image-preview" class="ocr-image-preview">No image selected</div>
+                                <button type="button" class="btn btn-secondary" id="view-receipt-image-btn" style="display:none;" onclick="openReceiptImagePreview()">
+                                    <i class="fas fa-expand"></i>
+                                    View Full Receipt
+                                </button>
                             </div>
 
                             <div class="ocr-button-row">
@@ -91,7 +95,7 @@
                         <div class="ocr-save-section">
                             <button type="button" class="btn btn-success btn-large" id="save-to-inventory-btn" disabled>
                                 <i class="fas fa-save"></i>
-                                No accepted items to save
+                                No items to save
                             </button>
                             <button type="button" class="btn btn-outline btn-large" id="start-new-scan-btn" style="display:none; margin-top:12px;">
                                 <i class="fas fa-refresh"></i>
@@ -104,6 +108,15 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <div id="receipt-image-modal" class="ocr-image-modal" onclick="closeReceiptImagePreview(event)">
+        <div class="ocr-image-modal-content">
+            <button type="button" class="ocr-image-modal-close" onclick="closeReceiptImagePreview()" aria-label="Close receipt preview">
+                <i class="fas fa-times"></i>
+            </button>
+            <img id="receipt-image-modal-img" src="" alt="Full receipt preview">
+        </div>
     </div>
 
     <script src="../scripts/ocr_scan.js"></script>
