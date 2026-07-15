@@ -88,6 +88,57 @@ function parseOCRResponse(responseBody) {
     }
 }
 
+function normalizeProductName(text) {
+    return String(text || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function mergeWithExistingProductDefaults(items) {
+    if (!window.supabaseClient || !items || items.length === 0) {
+        return items;
+    }
+
+    try {
+        const { data: products, error } = await window.supabaseClient
+            .from('products')
+            .select('product_name, unit_price, selling_price, unit_of_measure');
+
+        if (error || !products) {
+            return items;
+        }
+
+        const productMap = new Map();
+        products.forEach(product => {
+            const key = normalizeProductName(product.product_name);
+            if (key) {
+                productMap.set(key, product);
+            }
+        });
+
+        return items.map(item => {
+            const key = normalizeProductName(item.name);
+            const product = productMap.get(key);
+            if (!product) {
+                return item;
+            }
+
+            return {
+                ...item,
+                unit_price: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : Number(product.unit_price) || item.unit_price,
+                selling_price: Number.isFinite(Number(product.selling_price)) ? Number(product.selling_price) : item.selling_price,
+                unit_of_measure: String(product.unit_of_measure || item.unit_of_measure || 'unit').trim() || 'unit'
+            };
+        });
+    } catch (error) {
+        console.warn('Unable to merge OCR items with existing product defaults:', error);
+        return items;
+    }
+}
+
 function normalizeItemsFromReceipt(rawReceipt) {
     let items = [];
     if (!rawReceipt) {
@@ -114,6 +165,7 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const unitPrice = Number.isFinite(price) ? price : 0;
         const sellingPriceValue = item.selling_price ?? item.sale_price ?? unitPrice;
         const sellingPrice = Number.isFinite(Number(sellingPriceValue)) ? Number(sellingPriceValue) : unitPrice;
+        const unitOfMeasure = String(item.unit_of_measure ?? item.unit ?? 'unit').trim();
         const confidenceValue = item.confidence ?? item.confidence_score ?? item.score ?? item.confidenceScore;
         const confidence = Number.isFinite(Number(confidenceValue)) ? Number(confidenceValue) : null;
         const comment = item.comment ?? item.notes ?? '';
@@ -124,6 +176,7 @@ function normalizeItemsFromReceipt(rawReceipt) {
             price,
             unit_price: unitPrice,
             selling_price: sellingPrice,
+            unit_of_measure: unitOfMeasure || 'unit',
             receipt_quantity: receiptQuantity,
             real_quantity: realQuantity,
             confidence,
@@ -188,8 +241,8 @@ function renderItems(items) {
                 </div>
                 <div class="ocr-card-item-row">
                     <div class="ocr-card-item-field">
-                        <label>Unit Price</label>
-                        <input type="text" disabled value="₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}">
+                        <label>Unit</label>
+                        <input type="text" value="${escapeHtml(item.unit_of_measure || 'unit')}" data-field="unit_of_measure" data-index="${index}">
                     </div>
                     <div class="ocr-card-item-field">
                         <label>Selling Price</label>
@@ -360,6 +413,8 @@ function handleOcrItemGridInput(event) {
         if (!Number.isFinite(value)) {
             value = 0;
         }
+    } else if (field === 'unit_of_measure') {
+        value = target.value.trim();
     } else {
         value = target.value;
     }
@@ -404,6 +459,7 @@ function downloadJsonFile() {
             name: item.name,
             unit_price: item.unit_price,
             selling_price: item.selling_price,
+            unit_of_measure: item.unit_of_measure,
             price: item.price,
             receipt_quantity: item.receipt_quantity,
             real_quantity: item.real_quantity,
@@ -472,6 +528,8 @@ async function processReceiptImage() {
             removed: false,
             confidence: item.confidence ?? null,
         }));
+
+        currentItems = await mergeWithExistingProductDefaults(currentItems);
         renderItems(currentItems);
         setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.`, 'success');
         const rawOutput = document.getElementById('ocr-raw-output');
@@ -490,6 +548,7 @@ function setAllAccepted() {
     }
     currentItems = currentItems.map(item => ({ ...item, accepted: true, removed: false }));
     renderItems(currentItems);
+    updateSaveButton();
     setStatus('All items marked as accepted.', 'success');
 }
 
@@ -504,8 +563,8 @@ function removeAllItems() {
 
     currentItems = currentItems.map(item => ({ ...item, removed: true, accepted: false }));
     renderItems(currentItems);
-    setStatus('All items have been rejected. They remain in the review list for reference.', 'warning');
     updateSaveButton();
+    setStatus('All items have been rejected. They remain in the review list for reference.', 'warning');
 }
 
 function updateSaveButton() {
@@ -516,12 +575,16 @@ function updateSaveButton() {
     const totalCount = currentItems.length;
     const acceptedCount = currentItems.filter(item => item.accepted && !item.removed).length;
     const rejectedCount = currentItems.filter(item => item.removed).length;
+    const pendingCount = currentItems.filter(item => !item.accepted && !item.removed).length;
     const hasDecisions = acceptedCount > 0 || rejectedCount > 0;
 
-    saveBtn.disabled = !hasDecisions;
+    const noPendingAndHasDecisions = pendingCount === 0 && hasDecisions;
+    saveBtn.disabled = !noPendingAndHasDecisions;
     saveBtn.style.display = 'inline-flex';
 
-    if (!hasDecisions) {
+    if (pendingCount > 0) {
+        saveBtn.innerHTML = `<i class="fas fa-save"></i> Resolve ${pendingCount} pending item(s) before saving`;
+    } else if (!hasDecisions) {
         saveBtn.innerHTML = '<i class="fas fa-save"></i> No items decided (accept or reject to enable)';
     } else if (acceptedCount > 0) {
         saveBtn.innerHTML = `<i class="fas fa-save"></i> Save ${acceptedCount} Accepted Item(s) to Inventory`;
