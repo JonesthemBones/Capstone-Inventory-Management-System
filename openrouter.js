@@ -428,6 +428,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
             const price = parseFloat(item.price) || 0;
             const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
             const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
+            const unitOfMeasure = String(item.unit_of_measure || item.unit || 'unit').trim() || 'unit';
             const comment = (item.comment || '').trim();
 
             if (!map.has(normalizedName)) {
@@ -438,6 +439,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     price,
                     unit_price: unitPrice,
                     selling_price: sellingPrice,
+                    unit_of_measure: unitOfMeasure,
                     comments: comment ? [comment] : [],
                     rawItems: [item]
                 });
@@ -447,6 +449,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 if (!entry.price && price) entry.price = price;
                 if (!entry.unit_price && unitPrice) entry.unit_price = unitPrice;
                 if (!entry.selling_price && sellingPrice) entry.selling_price = sellingPrice;
+                if (!entry.unit_of_measure && unitOfMeasure) entry.unit_of_measure = unitOfMeasure;
                 if (comment) entry.comments.push(comment);
                 entry.rawItems.push(item);
             }
@@ -570,7 +573,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         .from('products')
                         .update({
                             unit_price: unitPrice,
-                            selling_price: sellingPrice
+                            selling_price: sellingPrice,
+                            unit_of_measure: item.unit_of_measure || 'unit'
                         })
                         .eq('product_id', productId);
 
@@ -627,7 +631,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             product_code: productCode,
                             unit_price: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price,
                             selling_price: Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : price,
-                            unit_of_measure: 'unit',
+                            unit_of_measure: item.unit_of_measure || 'unit',
                             description: comment || `Imported from receipt scan. Qty: ${item.receipt_quantity}`,
                             reorder_level: Number.isFinite(reorderLevel) ? reorderLevel : 5,
                             maximum_stock: null
