@@ -241,7 +241,7 @@ Example:
         'Content-Type': 'application/json'
     }
     
-    # Create SSL context that doesn't verify certificates (development workaround)
+
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
@@ -276,11 +276,11 @@ Example:
     message = choices[0].get('message') or {}
     content = message.get('content') if message else data.get('choices', [])[0].get('text')
     
-    # Parse the LLM response flexibly (not strict JSON)
+    # Parse the LLM response flexibly
     parsed = parse_receipt_response(content)
     
     if not parsed or not parsed.get('items'):
-        print('{}', file=sys.stderr)  # Empty result
+        print('{}', file=sys.stderr)
         parsed = {'items': []}
 
     print(json.dumps(parsed, ensure_ascii=False))

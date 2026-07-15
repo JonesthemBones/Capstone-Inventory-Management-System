@@ -426,6 +426,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
 
             const quantity = parseInt(item.real_quantity) || parseInt(item.receipt_quantity) || 1;
             const price = parseFloat(item.price) || 0;
+            const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
+            const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
             const comment = (item.comment || '').trim();
 
             if (!map.has(normalizedName)) {
@@ -434,6 +436,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     normalizedName,
                     quantity,
                     price,
+                    unit_price: unitPrice,
+                    selling_price: sellingPrice,
                     comments: comment ? [comment] : [],
                     rawItems: [item]
                 });
@@ -441,6 +445,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 const entry = map.get(normalizedName);
                 entry.quantity += quantity;
                 if (!entry.price && price) entry.price = price;
+                if (!entry.unit_price && unitPrice) entry.unit_price = unitPrice;
+                if (!entry.selling_price && sellingPrice) entry.selling_price = sellingPrice;
                 if (comment) entry.comments.push(comment);
                 entry.rawItems.push(item);
             }
@@ -484,6 +490,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
             try {
                 const productName = (item.originalName || item.name || '').trim();
                 const price = parseFloat(item.price) || 0;
+                const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
+                const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
                 const quantity = parseInt(item.quantity) || 1;
                 const comment = (item.comment || '').trim();
 
@@ -523,10 +531,9 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             console.warn('Failed to assign missing product code for existing product:', codeError);
                         }
                     }
-                    // Product exists - update existing stock
+                    // Product exists - update existing stock and pricing
                     productId = existingProduct.product_id;
 
-                    // Get current inventory
                     const { data: currentStockArray } = await supabaseClient
                         .from('inventory_stock')
                         .select('stock_id, quantity')
@@ -558,6 +565,16 @@ router.post('/save-items-to-inventory', async (req, res) => {
 
                         if (insertStockError) throw insertStockError;
                     }
+
+                    const { error: updateProductError } = await supabaseClient
+                        .from('products')
+                        .update({
+                            unit_price: unitPrice,
+                            selling_price: sellingPrice
+                        })
+                        .eq('product_id', productId);
+
+                    if (updateProductError) throw updateProductError;
 
                     // Record stock movement
                     const { error: movementError } = await supabaseClient
@@ -602,15 +619,17 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 } else {
                     // Product doesn't exist - create new and generate a unique product code
                     const productCode = await findUniqueProductCode(productName);
+                    const reorderLevel = Math.max(5, Math.ceil(Number(quantity) / 2));
                     const { data: newProduct, error: insertError } = await supabaseClient
                         .from('products')
                         .insert([{
                             product_name: productName,
                             product_code: productCode,
-                            selling_price: price,
+                            unit_price: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price,
+                            selling_price: Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : price,
                             unit_of_measure: 'unit',
                             description: comment || `Imported from receipt scan. Qty: ${item.receipt_quantity}`,
-                            reorder_level: Math.max(5, quantity / 2),
+                            reorder_level: Number.isFinite(reorderLevel) ? reorderLevel : 5,
                             maximum_stock: null
                         }])
                         .select()

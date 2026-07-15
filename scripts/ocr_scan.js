@@ -111,6 +111,9 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const realQuantity = item.real_quantity !== undefined && item.real_quantity !== null
             ? Number(item.real_quantity)
             : receiptQuantity;
+        const unitPrice = Number.isFinite(price) ? price : 0;
+        const sellingPriceValue = item.selling_price ?? item.sale_price ?? unitPrice;
+        const sellingPrice = Number.isFinite(Number(sellingPriceValue)) ? Number(sellingPriceValue) : unitPrice;
         const confidenceValue = item.confidence ?? item.confidence_score ?? item.score ?? item.confidenceScore;
         const confidence = Number.isFinite(Number(confidenceValue)) ? Number(confidenceValue) : null;
         const comment = item.comment ?? item.notes ?? '';
@@ -119,6 +122,8 @@ function normalizeItemsFromReceipt(rawReceipt) {
             id: `ocr-item-${idx}`,
             name,
             price,
+            unit_price: unitPrice,
+            selling_price: sellingPrice,
             receipt_quantity: receiptQuantity,
             real_quantity: realQuantity,
             confidence,
@@ -167,7 +172,7 @@ function renderItems(items) {
                 <div class="ocr-card-item-header">
                     <div>
                         <h3>${escapeHtml(item.name)}</h3>
-                        <p class="ocr-card-item-meta">Price: <strong>₱${item.price.toFixed(2)}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
+                        <p class="ocr-card-item-meta">Unit Price: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
                         <span class="ocr-item-status ${statusClass}">${statusLabel}</span>
                     </div>
                     <div class="ocr-card-item-actions">
@@ -179,6 +184,16 @@ function renderItems(items) {
                             <i class="fas ${rejectIcon}"></i>
                             ${rejectLabel}
                         </button>
+                    </div>
+                </div>
+                <div class="ocr-card-item-row">
+                    <div class="ocr-card-item-field">
+                        <label>Unit Price</label>
+                        <input type="text" disabled value="₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}">
+                    </div>
+                    <div class="ocr-card-item-field">
+                        <label>Selling Price</label>
+                        <input type="number" step="0.01" min="0" value="${Number.isFinite(item.selling_price) ? item.selling_price.toFixed(2) : '0.00'}" data-field="selling_price" data-index="${index}">
                     </div>
                 </div>
                 <div class="ocr-card-item-row">
@@ -337,7 +352,17 @@ function handleOcrItemGridInput(event) {
     const index = Number(target.getAttribute('data-index'));
     if (!field || Number.isNaN(index)) return;
 
-    const value = field === 'real_quantity' ? Number(target.value) : target.value;
+    let value;
+    if (field === 'real_quantity') {
+        value = Number(target.value);
+    } else if (field === 'selling_price') {
+        value = Number(target.value);
+        if (!Number.isFinite(value)) {
+            value = 0;
+        }
+    } else {
+        value = target.value;
+    }
     currentItems[index][field] = value;
 }
 
@@ -377,6 +402,8 @@ function downloadJsonFile() {
     const payload = {
         items: currentItems.map(item => ({
             name: item.name,
+            unit_price: item.unit_price,
+            selling_price: item.selling_price,
             price: item.price,
             receipt_quantity: item.receipt_quantity,
             real_quantity: item.real_quantity,
