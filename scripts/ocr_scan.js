@@ -111,6 +111,8 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const realQuantity = item.real_quantity !== undefined && item.real_quantity !== null
             ? Number(item.real_quantity)
             : receiptQuantity;
+        const confidenceValue = item.confidence ?? item.confidence_score ?? item.score ?? item.confidenceScore;
+        const confidence = Number.isFinite(Number(confidenceValue)) ? Number(confidenceValue) : null;
         const comment = item.comment ?? item.notes ?? '';
         const accepted = item.accepted === true;
         return {
@@ -119,11 +121,25 @@ function normalizeItemsFromReceipt(rawReceipt) {
             price,
             receipt_quantity: receiptQuantity,
             real_quantity: realQuantity,
+            confidence,
             comment,
             accepted,
             removed: item.removed === true,
         };
     });
+}
+
+function formatConfidence(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+        return 'N/A';
+    }
+
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return 'N/A';
+    }
+
+    return `${Math.round(numeric * 100)}%`;
 }
 
 function renderItems(items) {
@@ -151,7 +167,7 @@ function renderItems(items) {
                 <div class="ocr-card-item-header">
                     <div>
                         <h3>${escapeHtml(item.name)}</h3>
-                        <p class="ocr-card-item-meta">Price: <strong>₱${item.price.toFixed(2)}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong></p>
+                        <p class="ocr-card-item-meta">Price: <strong>₱${item.price.toFixed(2)}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
                         <span class="ocr-item-status ${statusClass}">${statusLabel}</span>
                     </div>
                     <div class="ocr-card-item-actions">
@@ -189,6 +205,128 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+async function getSupabaseAccessToken() {
+    const sessionResult = await window.supabaseClient?.auth?.getSession?.();
+    return sessionResult?.data?.session?.access_token || null;
+}
+
+function getOcrConfigStatusElement() {
+    return document.getElementById('ocr-config-status');
+}
+
+function setOcrConfigStatus(message, variant = 'neutral') {
+    const status = getOcrConfigStatusElement();
+    if (!status) return;
+    status.textContent = message;
+    status.style.color = variant === 'error' ? '#b91c1c' : variant === 'success' ? '#047857' : 'var(--text-secondary)';
+}
+
+async function fetchAdminOCRConfig() {
+    const token = await getSupabaseAccessToken();
+    if (!token) {
+        throw new Error('User is not authenticated.');
+    }
+
+    const response = await fetch('http://localhost:3001/api/ocr-config', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+        throw new Error(result?.error || 'Failed to load OCR config.');
+    }
+
+    return result.config;
+}
+
+async function saveAdminOCRConfig() {
+    const token = await getSupabaseAccessToken();
+    if (!token) {
+        alert('Unable to save OCR settings because you are not authenticated.');
+        return;
+    }
+
+    const apiKeyInput = document.getElementById('ocr-api-key-input');
+    const modelInput = document.getElementById('ocr-model-input');
+    const saveButton = document.getElementById('save-ocr-config-btn');
+
+    if (!apiKeyInput || !modelInput || !saveButton) return;
+
+    const apiKey = apiKeyInput.value.trim();
+    const model = modelInput.value.trim();
+    if (!apiKey || !model) {
+        setOcrConfigStatus('API key and model name are both required.', 'error');
+        return;
+    }
+
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving...';
+
+    try {
+        const response = await fetch('http://localhost:3001/api/ocr-config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ apiKey, model })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result?.error || 'Unable to save OCR settings.');
+        }
+
+        setOcrConfigStatus('OCR settings saved successfully.', 'success');
+        apiKeyInput.value = result.config?.apiKey || apiKey;
+        modelInput.value = result.config?.model || model;
+    } catch (error) {
+        console.error('OCR config save failed:', error);
+        setOcrConfigStatus(error.message || 'Failed to save OCR settings.', 'error');
+    } finally {
+        saveButton.disabled = false;
+        saveButton.innerHTML = '<i class="fas fa-save"></i> Save OCR Settings';
+    }
+}
+
+async function initAdminOCRSettings() {
+    const adminSettings = document.getElementById('ocr-admin-settings');
+    if (!adminSettings) return;
+
+    const role = await window.authHelpers.getUserRole?.();
+    if (role !== 'admin') {
+        adminSettings.classList.add('hidden');
+        return;
+    }
+
+    adminSettings.classList.remove('hidden');
+    setOcrConfigStatus('Loading admin OCR settings...', 'neutral');
+
+    const saveButton = document.getElementById('save-ocr-config-btn');
+    if (saveButton) {
+        saveButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            saveAdminOCRConfig();
+        });
+    }
+
+    try {
+        const config = await fetchAdminOCRConfig();
+        const apiKeyInput = document.getElementById('ocr-api-key-input');
+        const modelInput = document.getElementById('ocr-model-input');
+        if (apiKeyInput) apiKeyInput.value = config?.apiKey || '';
+        if (modelInput) modelInput.value = config?.model || '';
+        setOcrConfigStatus('Admin OCR settings loaded.', 'success');
+    } catch (error) {
+        console.error('Unable to load admin OCR settings:', error);
+        setOcrConfigStatus('Unable to load admin settings.', 'error');
+    }
 }
 
 function handleOcrItemGridInput(event) {
@@ -242,6 +380,7 @@ function downloadJsonFile() {
             price: item.price,
             receipt_quantity: item.receipt_quantity,
             real_quantity: item.real_quantity,
+            confidence: item.confidence,
             comment: item.comment,
             accepted: item.accepted,
             removed: item.removed,
@@ -304,6 +443,7 @@ async function processReceiptImage() {
             ...item,
             accepted: false,
             removed: false,
+            confidence: item.confidence ?? null,
         }));
         renderItems(currentItems);
         setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.`, 'success');
@@ -459,7 +599,7 @@ async function saveAcceptedItemsToInventory() {
     }
 }
 
-function initReceiptScanner() {
+async function initReceiptScanner() {
     const imageInput = document.getElementById('receipt-image-input');
     const processButton = document.getElementById('process-receipt-btn');
     const clearButton = document.getElementById('clear-receipt-btn');
@@ -551,6 +691,7 @@ function initReceiptScanner() {
         itemsGrid.addEventListener('click', handleOcrItemGridClick);
     }
 
+    await initAdminOCRSettings();
     clearReceiptSelection();
 }
 

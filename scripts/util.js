@@ -144,9 +144,14 @@ function isValidEmail(email) {
 }
 
 function generateSKU(productName) {
-    const prefix = productName.substring(0, 3).toUpperCase();
-    const timestamp = Date.now().toString().slice(-6);
-    return `${prefix}-${timestamp}`;
+    const cleanedName = String(productName || 'PRD')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .substring(0, 3)
+        .padEnd(3, 'X');
+    const timestamp = Date.now().toString().slice(-5);
+    const randomSuffix = Math.random().toString(36).slice(2, 5).toUpperCase();
+    return `${cleanedName}-${timestamp}-${randomSuffix}`;
 }
 
 function getStockStatus(quantity, minQuantity = 10) {

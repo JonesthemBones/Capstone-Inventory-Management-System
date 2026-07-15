@@ -66,6 +66,30 @@
                             </div>
 
                             <p class="ocr-hint">The receipt image is processed by the backend and sent to OpenRouter. Your data is only used for this scan.</p>
+
+                            <div id="ocr-admin-settings" class="ocr-admin-settings hidden">
+                                <div class="ocr-admin-settings-header">
+                                    <h3>OCR Settings (Admin Only)</h3>
+                                    <p>Change the OpenRouter API key and model name used for receipt extraction.</p>
+                                </div>
+                                <div class="ocr-admin-settings-row">
+                                    <div class="ocr-admin-settings-field">
+                                        <label for="ocr-api-key-input">OpenRouter API Key</label>
+                                        <input type="password" id="ocr-api-key-input" placeholder="Paste admin API key here">
+                                    </div>
+                                    <div class="ocr-admin-settings-field">
+                                        <label for="ocr-model-input">Vision Model Name</label>
+                                        <input type="text" id="ocr-model-input" placeholder="e.g. nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free">
+                                    </div>
+                                </div>
+                                <div class="ocr-admin-settings-actions">
+                                    <button type="button" class="btn btn-primary" id="save-ocr-config-btn">
+                                        <i class="fas fa-save"></i>
+                                        Save OCR Settings
+                                    </button>
+                                    <span id="ocr-config-status" class="ocr-config-status"></span>
+                                </div>
+                            </div>
                         </div>
                     </section>
 

@@ -12,15 +12,144 @@ router.use((req, res, next) => {
     next();
 });
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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';
-const OPENROUTER_MODEL = process.env.VISION_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
+const OCR_CONFIG_FILE = path.resolve(__dirname, './ocr_settings.json');
 const PYTHON_BINARY = process.env.PYTHON_BINARY || 'python';
 const PYTHON_SCRIPT = path.resolve(__dirname, './python_ocr.py');
 
 // Supabase client initialization
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wxhkhxsxftundtrahpst.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aGtoeHN4ZnR1bmR0cmFocHN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDU3ODc3NywiZXhwIjoyMDc2MTU0Nzc3fQ.R_J7gu9Z7T0CEp0t0Ky8XC0kHvHxDtpqX2t5Vz_K6lE';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aGtoeHN4ZnR1bmR0cmFocHN0Iiwicm9zZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDU3ODc3NywiZXhwIjoyMDc2MTU0Nzc3fQ.R_J7gu9Z7T0CEp0t0Ky8XC0kHvHxDtpqX2t5Vz_K6lE';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+function loadOCRConfig() {
+    const defaults = {
+        apiKey: process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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',
+        model: process.env.VISION_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
+    };
+
+    try {
+        if (fs.existsSync(OCR_CONFIG_FILE)) {
+            const raw = fs.readFileSync(OCR_CONFIG_FILE, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (parsed?.apiKey) {
+                defaults.apiKey = parsed.apiKey;
+            }
+            if (parsed?.model) {
+                defaults.model = parsed.model;
+            }
+        }
+    } catch (error) {
+        console.error('Unable to load OCR settings file:', error);
+    }
+
+    return defaults;
+}
+
+function persistOCRConfig({ apiKey, model }) {
+    const payload = {
+        apiKey: String(apiKey || '').trim(),
+        model: String(model || '').trim()
+    };
+
+    if (!payload.apiKey || !payload.model) {
+        throw new Error('Both apiKey and model are required to persist OCR settings.');
+    }
+
+    fs.writeFileSync(OCR_CONFIG_FILE, JSON.stringify(payload, null, 2), 'utf8');
+    return payload;
+}
+
+function generateProductCode(productName) {
+    const normalized = String(productName || 'PRD')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+    const prefix = normalized.substring(0, 3).padEnd(3, 'X');
+    const timestamp = Date.now().toString().slice(-5);
+    const randomSuffix = Math.random().toString(36).slice(2, 7).toUpperCase();
+    return `${prefix}-${timestamp}-${randomSuffix}`;
+}
+
+function normalizeProductName(productName) {
+    return String(productName || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ');
+}
+
+async function findUniqueProductCode(productName, maxAttempts = 5) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const candidate = generateProductCode(productName);
+        const { data: existing, error } = await supabaseClient
+            .from('products')
+            .select('product_id')
+            .eq('product_code', candidate)
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            throw error;
+        }
+
+        if (!existing) {
+            return candidate;
+        }
+    }
+
+    throw new Error('Unable to generate a unique product code after multiple attempts.');
+}
+
+async function ensureProductCodeForProduct(productId, productName, currentCode) {
+    if (currentCode && String(currentCode).trim()) {
+        return currentCode;
+    }
+
+    const productCode = await findUniqueProductCode(productName);
+    const { error: updateError } = await supabaseClient
+        .from('products')
+        .update({ product_code: productCode })
+        .eq('product_id', productId);
+
+    if (updateError) {
+        throw updateError;
+    }
+
+    return productCode;
+}
+
+async function requireAdmin(req, res) {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    if (!token) {
+        res.status(401).json({ error: 'Authorization token is required.' });
+        return null;
+    }
+
+    const { data, error } = await supabaseClient.auth.getUser(token);
+    if (error || !data?.user) {
+        res.status(401).json({ error: 'Invalid or expired authorization token.' });
+        return null;
+    }
+
+    const userId = data.user.id;
+    const { data: userProfile, error: profileError } = await supabaseClient
+        .from('users')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+    if (profileError || !userProfile) {
+        res.status(403).json({ error: 'Unable to verify user role.' });
+        return null;
+    }
+
+    if ((userProfile.role || '').toLowerCase() !== 'admin') {
+        res.status(403).json({ error: 'Admin access required.' });
+        return null;
+    }
+
+    return { user: data.user, role: userProfile.role.toLowerCase() };
+}
 
 async function logReceiptAuditEvent({ userId, actionType, tableAffected = 'receipt_scan', recordId = null, oldValues = {}, newValues = {} }) {
     try {
@@ -101,7 +230,8 @@ router.post('/ocr-scan', async (req, res) => {
             return res.status(400).json({ error: 'Unable to parse the receipt image data URL.' });
         }
 
-        if (!OPENROUTER_API_KEY) {
+        const ocrConfig = loadOCRConfig();
+        if (!ocrConfig.apiKey) {
             return res.status(500).json({ error: 'OpenRouter API key is not configured on the server.' });
         }
 
@@ -111,8 +241,8 @@ router.post('/ocr-scan', async (req, res) => {
 
         const pythonEnv = {
             ...process.env,
-            OPENROUTER_API_KEY,
-            VISION_MODEL: OPENROUTER_MODEL
+            OPENROUTER_API_KEY: ocrConfig.apiKey,
+            VISION_MODEL: ocrConfig.model
         };
 
         const child = spawn(PYTHON_BINARY, [PYTHON_SCRIPT, tempFile], {
@@ -178,6 +308,38 @@ router.post('/ocr-scan', async (req, res) => {
             error: 'OCR scan failed on the server.',
             message: error?.message || 'Unknown error.'
         });
+    }
+});
+
+router.get('/ocr-config', async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+
+    const config = loadOCRConfig();
+    res.json({
+        success: true,
+        config
+    });
+});
+
+router.post('/ocr-config', async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+
+    const { apiKey, model } = req.body;
+    if (!apiKey || !model) {
+        return res.status(400).json({ error: 'Both apiKey and model are required.' });
+    }
+
+    try {
+        const saved = persistOCRConfig({ apiKey, model });
+        return res.json({
+            success: true,
+            config: saved
+        });
+    } catch (err) {
+        console.error('Unable to save OCR config:', err);
+        return res.status(500).json({ error: 'Unable to save OCR settings.' });
     }
 });
 
@@ -333,16 +495,16 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     continue;
                 }
 
-                // Normalize product name for comparison (lowercase, trim extra spaces)
-                const normalizedName = productName.toLowerCase().replace(/\s+/g, ' ');
+                // Normalize product name for comparison and merge names with punctuation differences
+                const normalizedName = normalizeProductName(productName);
 
-                // Check if product already exists (case-insensitive)
+                // Check if product already exists (case-insensitive, punctuation-insensitive)
                 const { data: allProducts } = await supabaseClient
                     .from('products')
-                    .select('product_id, product_name');
+                    .select('product_id, product_name, product_code');
 
                 const existingProduct = allProducts?.find(p => 
-                    p.product_name.toLowerCase().replace(/\s+/g, ' ') === normalizedName
+                    normalizeProductName(p.product_name) === normalizedName
                 ) || null;
 
                 let productId;
@@ -350,6 +512,17 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 let previousQuantity = 0;
 
                 if (existingProduct) {
+                    if (!existingProduct.product_code) {
+                        try {
+                            existingProduct.product_code = await ensureProductCodeForProduct(
+                                existingProduct.product_id,
+                                productName,
+                                existingProduct.product_code
+                            );
+                        } catch (codeError) {
+                            console.warn('Failed to assign missing product code for existing product:', codeError);
+                        }
+                    }
                     // Product exists - update existing stock
                     productId = existingProduct.product_id;
 
@@ -427,12 +600,13 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         }
                     });
                 } else {
-                    // Product doesn't exist - create new
+                    // Product doesn't exist - create new and generate a unique product code
+                    const productCode = await findUniqueProductCode(productName);
                     const { data: newProduct, error: insertError } = await supabaseClient
                         .from('products')
                         .insert([{
                             product_name: productName,
-                            unit_price: price,
+                            product_code: productCode,
                             selling_price: price,
                             unit_of_measure: 'unit',
                             description: comment || `Imported from receipt scan. Qty: ${item.receipt_quantity}`,

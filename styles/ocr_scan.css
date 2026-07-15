@@ -331,6 +331,68 @@
   min-height: 60px;
 }
 
+.ocr-admin-settings {
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-white);
+  margin-bottom: 18px;
+}
+
+.ocr-admin-settings.hidden {
+  display: none;
+}
+
+.ocr-admin-settings-header h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.ocr-admin-settings-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.ocr-admin-settings-row {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.ocr-admin-settings-field {
+  display: grid;
+  gap: 8px;
+}
+
+.ocr-admin-settings-field label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.ocr-admin-settings-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--bg-light);
+  color: var(--text-primary);
+}
+
+.ocr-admin-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ocr-config-status {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .ocr-empty-state {
   color: var(--text-secondary);
   font-size: 15px;

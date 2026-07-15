@@ -88,6 +88,8 @@ async function loadInventory(filters = {}) {
                 return true;
             });
         }
+
+        await backfillMissingProductCodes(filteredProducts);
         
         displayInventory(filteredProducts);
         document.getElementById('inventory-count').textContent = 
@@ -95,6 +97,31 @@ async function loadInventory(filters = {}) {
         
     } catch (error) {
         console.error('Error loading inventory:', error);
+    }
+}
+
+async function backfillMissingProductCodes(products) {
+    if (!Array.isArray(products) || products.length === 0) {
+        return;
+    }
+
+    const missingCodes = products.filter(p => !p.product_code && p.product_id && p.product_name);
+    if (missingCodes.length === 0) {
+        return;
+    }
+
+    for (const product of missingCodes) {
+        const generatedCode = generateSKU(product.product_name || 'PRD');
+        const { error } = await supabaseClient
+            .from('products')
+            .update({ product_code: generatedCode })
+            .eq('product_id', product.product_id);
+
+        if (!error) {
+            product.product_code = generatedCode;
+        } else {
+            console.warn('Unable to backfill product code for', product.product_id, error);
+        }
     }
 }
 
@@ -459,7 +486,7 @@ async function saveProduct(e) {
     
     const productData = {
         product_name: document.getElementById('product-name').value,
-        product_code: document.getElementById('product-code').value,
+        product_code: document.getElementById('product-code').value.trim(),
         unit_of_measure: document.getElementById('product-unit').value,
         unit_price: parseFloat(document.getElementById('product-price').value),
         selling_price: parseFloat(document.getElementById('selling-price').value),
@@ -483,6 +510,9 @@ async function saveProduct(e) {
             productId = currentEditingProductId;
             
         } else {
+            if (!productData.product_code) {
+                productData.product_code = generateSKU(productData.product_name || 'PRD');
+            }
             const { data, error } = await supabaseClient
                 .from('products')
                 .insert([productData])
