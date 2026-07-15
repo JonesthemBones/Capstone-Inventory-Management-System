@@ -163,6 +163,18 @@
                     </div>
                 </div>
 
+                <div class="form-group" id="product-thumbnail-section" style="display: none; grid-column: 1 / -1;">
+                    <label>Thumbnail</label>
+                    <div id="product-thumbnail-preview" class="product-form-thumbnail-preview"></div>
+                    <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <button type="button" class="btn" id="change-product-thumbnail-btn" onclick="openThumbnailUploadForCurrentProduct()">
+                            <i class="fas fa-image"></i>
+                            Change Thumbnail
+                        </button>
+                        <small style="color: var(--text-secondary);">Update the item image whenever you edit this product.</small>
+                    </div>
+                </div>
+
                 <div class="modal-actions">
                     <button type="button" class="btn" id="cancel-product-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary">

@@ -88,6 +88,8 @@ async function loadInventory(filters = {}) {
                 return true;
             });
         }
+
+        await backfillMissingProductCodes(filteredProducts);
         
         displayInventory(filteredProducts);
         document.getElementById('inventory-count').textContent = 
@@ -95,6 +97,31 @@ async function loadInventory(filters = {}) {
         
     } catch (error) {
         console.error('Error loading inventory:', error);
+    }
+}
+
+async function backfillMissingProductCodes(products) {
+    if (!Array.isArray(products) || products.length === 0) {
+        return;
+    }
+
+    const missingCodes = products.filter(p => !p.product_code && p.product_id && p.product_name);
+    if (missingCodes.length === 0) {
+        return;
+    }
+
+    for (const product of missingCodes) {
+        const generatedCode = generateSKU(product.product_name || 'PRD');
+        const { error } = await supabaseClient
+            .from('products')
+            .update({ product_code: generatedCode })
+            .eq('product_id', product.product_id);
+
+        if (!error) {
+            product.product_code = generatedCode;
+        } else {
+            console.warn('Unable to backfill product code for', product.product_id, error);
+        }
     }
 }
 
@@ -245,6 +272,7 @@ function setupEventListeners() {
         currentEditingProductId = null;
         document.getElementById('modal-title').textContent = 'Add New Product';
         document.getElementById('product-form').reset();
+        toggleProductThumbnailSection(false);
         const quantityInput = document.getElementById('product-quantity');
         const quantityGroup = quantityInput.closest('.form-group');
         quantityGroup.style.display = '';
@@ -295,6 +323,47 @@ function getFilters() {
         search: document.getElementById('inventory-search').value,
         status: document.getElementById('status-filter').value
     };
+}
+
+function toggleProductThumbnailSection(show) {
+    const section = document.getElementById('product-thumbnail-section');
+    const button = document.getElementById('change-product-thumbnail-btn');
+
+    if (!section) return;
+
+    section.style.display = show ? 'block' : 'none';
+    if (button) {
+        button.disabled = !show;
+    }
+}
+
+function updateProductThumbnailPreview(product) {
+    const previewContainer = document.getElementById('product-thumbnail-preview');
+    if (!previewContainer) return;
+
+    previewContainer.innerHTML = '';
+
+    if (product?.image_url) {
+        const img = document.createElement('img');
+        img.src = product.image_url;
+        img.alt = product.product_name || 'Product thumbnail';
+        img.className = 'product-form-thumbnail-image';
+        previewContainer.appendChild(img);
+    } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'product-form-thumbnail-placeholder';
+        placeholder.innerHTML = '<i class="fas fa-image"></i><span>No thumbnail yet</span>';
+        previewContainer.appendChild(placeholder);
+    }
+}
+
+function openThumbnailUploadForCurrentProduct() {
+    if (!currentEditingProductId) {
+        showNotification('Select an existing product first to change its thumbnail.', 'warning');
+        return;
+    }
+
+    openUploadImageModal(currentEditingProductId);
 }
 
 async function openStockAdjustmentModal(productId) {
@@ -417,7 +486,7 @@ async function saveProduct(e) {
     
     const productData = {
         product_name: document.getElementById('product-name').value,
-        product_code: document.getElementById('product-code').value,
+        product_code: document.getElementById('product-code').value.trim(),
         unit_of_measure: document.getElementById('product-unit').value,
         unit_price: parseFloat(document.getElementById('product-price').value),
         selling_price: parseFloat(document.getElementById('selling-price').value),
@@ -441,6 +510,9 @@ async function saveProduct(e) {
             productId = currentEditingProductId;
             
         } else {
+            if (!productData.product_code) {
+                productData.product_code = generateSKU(productData.product_name || 'PRD');
+            }
             const { data, error } = await supabaseClient
                 .from('products')
                 .insert([productData])
@@ -499,6 +571,8 @@ async function editProduct(productId) {
         document.getElementById('reorder-level').value = product.reorder_level || 10;
         document.getElementById('maximum-stock').value = product.maximum_stock || '';
         document.getElementById('product-description').value = product.description || '';
+        toggleProductThumbnailSection(true);
+        updateProductThumbnailPreview(product);
         
         const quantityInput = document.getElementById('product-quantity');
         const quantityGroup = quantityInput.closest('.form-group');
@@ -1322,6 +1396,13 @@ async function uploadProductImage() {
         if (updateError) throw updateError;
         
         // Success
+        if (currentEditingProductId) {
+            updateProductThumbnailPreview({
+                image_url: imageUrl,
+                product_name: document.getElementById('product-name')?.value || 'Product thumbnail'
+            });
+        }
+
         showNotification('Image uploaded successfully!', 'success');
         closeUploadImageModal();
         await loadInventory(getFilters());

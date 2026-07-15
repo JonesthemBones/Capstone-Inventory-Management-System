@@ -212,14 +212,25 @@ function updateTable(logs) {
 
     logs.forEach(log => {
         const logForModal = { ...log };
+        const logCommentPreview = getAuditCommentPreview(log);
+        const decisionStatus = getReceiptDecisionStatus(log);
         const row = document.createElement('tr');
+        let actionTypeCell = escapeHtml(beautifyText(log.action_type || ''));
+        if (decisionStatus) {
+            const icon = decisionStatus === 'mixed' ? 'fa-code-branch' : decisionStatus === 'accepted' ? 'fa-check-circle' : 'fa-times-circle';
+            const label = decisionStatus.charAt(0).toUpperCase() + decisionStatus.slice(1);
+            actionTypeCell += ` <span class="decision-badge decision-${decisionStatus}"><i class="fas ${icon}"></i> ${label}</span>`;
+        }
         row.innerHTML = `
             <td>${new Date(log.action_timestamp).toLocaleString()}</td>
             <td>${escapeHtml(log.fullName || '')}</td>
             <td>${escapeHtml(beautifyText(log.role || ''))}</td>
-            <td>${escapeHtml(beautifyText(log.action_type || ''))}</td>
+            <td>${actionTypeCell}</td>
             <td>${escapeHtml(beautifyText(log.table_affected || ''))}</td>
             <td>
+                ${logCommentPreview
+                    ? `<div class="audit-log-comment-preview"><i class="fas fa-comment"></i><span>${escapeHtml(logCommentPreview)}</span></div>`
+                    : `<div class="audit-log-comment-preview muted"><i class="fas fa-comment-slash"></i><span>No comments</span></div>`}
                 <button class="btn btn-link view-details-btn">
                     View Details
                 </button>
@@ -713,10 +724,109 @@ function downloadCSV(csv, filename) {
 }
 
 // ===== HELPER FUNCTIONS =====
+function extractAuditComments(values) {
+    const comments = [];
+    const seen = new Set();
+
+    const visit = (node) => {
+        if (!node || typeof node !== 'object') return;
+
+        if (Array.isArray(node)) {
+            node.forEach(visit);
+            return;
+        }
+
+        if (typeof node.comment === 'string' && node.comment.trim()) {
+            const trimmedComment = node.comment.trim();
+            if (!seen.has(trimmedComment)) {
+                seen.add(trimmedComment);
+                comments.push(trimmedComment);
+            }
+        }
+
+        if (typeof node.notes === 'string' && node.notes.trim()) {
+            const trimmedNote = node.notes.trim();
+            if (!seen.has(trimmedNote)) {
+                seen.add(trimmedNote);
+                comments.push(trimmedNote);
+            }
+        }
+
+        Object.values(node).forEach(visit);
+    };
+
+    visit(values);
+    return comments;
+}
+
+function extractReceiptDecisionEntries(values) {
+    const entries = [];
+    const seen = new Set();
+
+    const visit = (node) => {
+        if (!node || typeof node !== 'object') return;
+
+        if (Array.isArray(node)) {
+            node.forEach(visit);
+            return;
+        }
+
+        if (node.itemName || node.name || node.comment || node.decision) {
+            const decision = node.decision || (node.itemName ? 'accepted' : null);
+            const name = node.itemName || node.name || '';
+            const comment = node.comment || '';
+
+            if (name || comment || decision) {
+                const key = `${name}|${comment}|${decision}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    entries.push({
+                        name: name || 'Unnamed item',
+                        comment,
+                        decision: decision || 'unknown'
+                    });
+                }
+            }
+        }
+
+        Object.values(node).forEach(visit);
+    };
+
+    visit(values);
+    return entries;
+}
+
+function getAuditCommentPreview(log) {
+    const comments = extractAuditComments(log.new_values || log.old_values || {});
+    const decisions = extractReceiptDecisionEntries(log.new_values || log.old_values || {});
+    if (comments.length) {
+        return comments[0];
+    }
+    if (decisions.length) {
+        return `${decisions[0].name} (${decisions[0].decision})`;
+    }
+    return '';
+}
+
+function getReceiptDecisionStatus(log) {
+    const decisions = extractReceiptDecisionEntries(log.new_values || log.old_values || {});
+    if (!decisions.length) return null;
+
+    const accepted = decisions.filter(d => d.decision === 'accepted').length;
+    const rejected = decisions.filter(d => d.decision === 'rejected').length;
+
+    if (accepted > 0 && rejected > 0) return 'mixed';
+    if (accepted > 0) return 'accepted';
+    if (rejected > 0) return 'rejected';
+    return null;
+}
+
 function showLogDetails(logData) {
     const log = typeof logData === 'string' ? JSON.parse(logData) : logData;
     const modal = document.getElementById('log-details-modal');
     const content = document.getElementById('log-details-content');
+    const comments = extractAuditComments(log.new_values || log.old_values || {});
+    const decisions = extractReceiptDecisionEntries(log.new_values || log.old_values || {});
     
     content.innerHTML = `
         <div class="log-details">
@@ -744,6 +854,16 @@ function showLogDetails(logData) {
                 <label>Record ID:</label>
                 <span>${escapeHtml(String(log.record_id || ''))}</span>
             </div>
+            ${(comments.length || decisions.length) ? `
+            <div class="detail-group">
+                <label>Receipt Decisions:</label>
+                <ul class="audit-detail-comments">
+                    ${decisions.length
+                        ? decisions.map(entry => `<li><strong>${escapeHtml(entry.name)}</strong> — ${escapeHtml(entry.decision)}${entry.comment ? ` — ${escapeHtml(entry.comment)}` : ''}</li>`).join('')
+                        : comments.map(comment => `<li>${escapeHtml(comment)}</li>`).join('')}
+                </ul>
+            </div>
+            ` : ''}
             <div class="detail-group">
                 <label>Old Values:</label>
                 <pre>${escapeHtml(JSON.stringify(log.old_values || {}, null, 2))}</pre>
@@ -767,7 +887,7 @@ function showLogDetails(logData) {
 }
 
 function escapeHtml(unsafe) {
-    return unsafe
+    return String(unsafe ?? '')
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")

@@ -58,6 +58,19 @@ def normalize_item(item):
     except Exception:
         price = 0.0
 
+    unit_value = item.get('unit_of_measure') or item.get('unit') or ''
+    if isinstance(unit_value, str):
+        unit_value = unit_value.strip()
+    else:
+        unit_value = str(unit_value).strip()
+
+    if unit_value:
+        unit_value = re.sub(r'[^\w\s\.\-/&%]+', '', unit_value).upper()
+        if len(unit_value) > 20:
+            unit_value = unit_value[:20].strip()
+    else:
+        unit_value = ''
+
     normalized_item = {
         'name': name,
         'price': price,
@@ -67,6 +80,9 @@ def normalize_item(item):
         'accepted': bool(item.get('accepted', True)),
         'removed': bool(item.get('removed', False))
     }
+
+    if unit_value:
+        normalized_item['unit_of_measure'] = unit_value
 
     confidence = item.get('confidence')
     if confidence is not None:
@@ -198,7 +214,7 @@ def image_to_text(image_path, api_key, model):
         'messages': [
             {
                 'role': 'system',
-                'content': 'You are a receipt extraction engine. Return ONLY valid JSON that matches the schema {"items":[{"name":"string","quantity":1,"price":0.0,"confidence":0.0}]}. Extract ONLY purchased items/products from receipts. Skip totals, taxes, headers, payment info, and store details. Do not add markdown, code fences, or extra text.'
+                'content': 'You are a receipt extraction engine. Return ONLY valid JSON that matches the schema {"items":[{"name":"string","quantity":1,"price":0.0,"unit_of_measure":"string","confidence":0.0}]}. Extract ONLY purchased items/products from receipts. Skip totals, taxes, headers, payment info, and store details. Do not add markdown, code fences, or extra text.'
             },
             {
                 'role': 'user',
@@ -208,19 +224,20 @@ def image_to_text(image_path, api_key, model):
                         'text': '''Extract all purchased items from this receipt ONLY and return JSON only.
 
 Use exactly this schema:
-{"items":[{"name":"string","quantity":1,"price":0.0,"confidence":0.0}]}
+{"items":[{"name":"string","quantity":1,"price":0.0,"unit_of_measure":"string","confidence":0.0}]}
 
 Rules:
 1. Extract ONLY product/item lines (things that were bought)
 2. SKIP totals, subtotals, taxes, discounts, payment methods, customer info, store name, store address
-3. For each item, include name, quantity, price, and confidence
+3. For each item, include name, quantity, price, unit_of_measure, and confidence
 4. If quantity is missing, use 1
 5. If price is missing, use 0.0
-6. confidence must be a number between 0 and 1
-7. Do not include markdown, code fences, explanations, or extra keys
+6. If unit_of_measure is missing, use "unit" or "N/A"
+7. confidence must be a number between 0 and 1
+8. Do not include markdown, code fences, explanations, or extra keys
 
 Example:
-{"items":[{"name":"Item Name","quantity":2,"price":100.0,"confidence":0.92},{"name":"Another Product","quantity":1,"price":250.0,"confidence":0.87}]}'''
+{"items":[{"name":"Item Name","quantity":2,"price":100.0,"unit_of_measure":"PCS","confidence":0.92},{"name":"Another Product","quantity":1,"price":250.0,"unit_of_measure":"KG","confidence":0.87}]}'''
                     },
                     {
                         'type': 'image_url',
@@ -232,7 +249,7 @@ Example:
             }
         ],
         'temperature': 0.0,
-        'max_tokens': 12000
+        'max_tokens': 64000
     }
 
     url = 'https://openrouter.ai/api/v1/chat/completions'
@@ -241,7 +258,7 @@ Example:
         'Content-Type': 'application/json'
     }
     
-    # Create SSL context that doesn't verify certificates (development workaround)
+
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
@@ -276,11 +293,11 @@ Example:
     message = choices[0].get('message') or {}
     content = message.get('content') if message else data.get('choices', [])[0].get('text')
     
-    # Parse the LLM response flexibly (not strict JSON)
+    # Parse the LLM response flexibly
     parsed = parse_receipt_response(content)
     
     if not parsed or not parsed.get('items'):
-        print('{}', file=sys.stderr)  # Empty result
+        print('{}', file=sys.stderr)
         parsed = {'items': []}
 
     print(json.dumps(parsed, ensure_ascii=False))

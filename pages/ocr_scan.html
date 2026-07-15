@@ -48,20 +48,48 @@
                             <div class="ocr-image-preview-wrapper">
                                 <div class="ocr-preview-label">Preview</div>
                                 <div id="receipt-image-preview" class="ocr-image-preview">No image selected</div>
+                                <button type="button" class="btn btn-secondary" id="view-receipt-image-btn" style="display:none;" onclick="openReceiptImagePreview()">
+                                    <i class="fas fa-expand"></i>
+                                    View Full Receipt
+                                </button>
                             </div>
 
                             <div class="ocr-button-row">
-                                <button class="btn btn-primary" id="process-receipt-btn">
+                                <button type="button" class="btn btn-primary" id="process-receipt-btn">
                                     <i class="fas fa-camera"></i>
                                     Scan Receipt
                                 </button>
-                                <button class="btn" id="clear-receipt-btn">
+                                <button type="button" class="btn" id="clear-receipt-btn">
                                     <i class="fas fa-trash-alt"></i>
                                     Clear
                                 </button>
                             </div>
 
                             <p class="ocr-hint">The receipt image is processed by the backend and sent to OpenRouter. Your data is only used for this scan.</p>
+
+                            <div id="ocr-admin-settings" class="ocr-admin-settings hidden">
+                                <div class="ocr-admin-settings-header">
+                                    <h3>OCR Settings (Admin Only)</h3>
+                                    <p>Change the OpenRouter API key and model name used for receipt extraction.</p>
+                                </div>
+                                <div class="ocr-admin-settings-row">
+                                    <div class="ocr-admin-settings-field">
+                                        <label for="ocr-api-key-input">OpenRouter API Key</label>
+                                        <input type="password" id="ocr-api-key-input" placeholder="Paste admin API key here">
+                                    </div>
+                                    <div class="ocr-admin-settings-field">
+                                        <label for="ocr-model-input">Vision Model Name</label>
+                                        <input type="text" id="ocr-model-input" placeholder="e.g. nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free">
+                                    </div>
+                                </div>
+                                <div class="ocr-admin-settings-actions">
+                                    <button type="button" class="btn btn-primary" id="save-ocr-config-btn">
+                                        <i class="fas fa-save"></i>
+                                        Save OCR Settings
+                                    </button>
+                                    <span id="ocr-config-status" class="ocr-config-status"></span>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
@@ -72,35 +100,47 @@
                                 <p class="ocr-card-subtitle">Review items extracted by the VLM, then accept or remove them individually or in bulk.</p>
                             </div>
                             <div class="ocr-action-buttons">
-                                <button class="btn btn-secondary" id="download-json-btn">
+                                <button type="button" class="btn btn-secondary" id="download-json-btn">
                                     <i class="fas fa-download"></i>
                                     Download JSON
                                 </button>
-                                <button class="btn btn-primary" id="accept-all-btn">
+                                <button type="button" class="btn btn-primary" id="accept-all-btn">
                                     <i class="fas fa-check"></i>
                                     Accept All
                                 </button>
-                                <button class="btn btn-danger" id="remove-all-btn">
-                                    <i class="fas fa-trash"></i>
-                                    Remove All
+                                <button type="button" class="btn btn-danger" id="remove-all-btn">
+                                    <i class="fas fa-ban"></i>
+                                    Reject All
                                 </button>
                             </div>
                         </div>
 
                         <div id="ocr-status" class="ocr-status">No receipt scanned yet.</div>
-                        <div id="ocr-items-grid" class="ocr-items-grid"></div>
-                        <pre id="ocr-raw-output" class="ocr-raw-output" hidden></pre>
-
                         <div class="ocr-save-section">
-                            <button class="btn btn-success btn-large" id="save-to-inventory-btn" style="display:none;">
+                            <button type="button" class="btn btn-success btn-large" id="save-to-inventory-btn" disabled>
                                 <i class="fas fa-save"></i>
-                                Save Accepted Items to Inventory
+                                No items to save
+                            </button>
+                            <button type="button" class="btn btn-outline btn-large" id="start-new-scan-btn" style="display:none; margin-top:12px;">
+                                <i class="fas fa-refresh"></i>
+                                Start New Scan
                             </button>
                         </div>
+                        <div id="ocr-items-grid" class="ocr-items-grid"></div>
+                        <pre id="ocr-raw-output" class="ocr-raw-output" hidden></pre>
                     </section>
                 </div>
             </div>
         </main>
+    </div>
+
+    <div id="receipt-image-modal" class="ocr-image-modal" onclick="closeReceiptImagePreview(event)">
+        <div class="ocr-image-modal-content">
+            <button type="button" class="ocr-image-modal-close" onclick="closeReceiptImagePreview()" aria-label="Close receipt preview">
+                <i class="fas fa-times"></i>
+            </button>
+            <img id="receipt-image-modal-img" src="" alt="Full receipt preview">
+        </div>
     </div>
 
     <script src="../scripts/ocr_scan.js"></script>
