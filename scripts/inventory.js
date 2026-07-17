@@ -589,33 +589,33 @@ async function editProduct(productId) {
 
 async function deleteProduct(productId) {
     try {
-        // First, check if the product has any stock
-        const { data: stockData, error: stockError } = await supabaseClient
-            .from('inventory_stock')
-            .select('quantity')
-            .eq('product_id', productId)
-            .maybeSingle();
-        
-        if (stockError) throw stockError;
-        
-        // Check if product has quantity in stock
-        const currentQuantity = stockData?.quantity || 0;
-        
-        if (currentQuantity > 0) {
-            alert(`❌ Cannot delete this product!\n\nThis product still has ${currentQuantity} units in stock.\n\nPlease adjust the stock to 0 before deleting.`);
+        if (!confirm('Are you sure you want to delete this product? This will also remove its stock movement history.')) {
             return;
         }
+
+        // Delete dependent records first (FK constraints)
+        const { error: movementsError } = await supabaseClient
+            .from('stock_movements')
+            .delete()
+            .eq('product_id', productId);
         
-        // If no stock, proceed with confirmation
-        if (!confirm('Are you sure you want to delete this product?')) return;
+        if (movementsError) throw movementsError;
+
+        const { error: inventoryError } = await supabaseClient
+            .from('inventory_stock')
+            .delete()
+            .eq('product_id', productId);
         
-        const { error } = await supabaseClient
+        if (inventoryError) throw inventoryError;
+
+        // Now delete the product itself
+        const { error: productError } = await supabaseClient
             .from('products')
             .delete()
             .eq('product_id', productId);
         
-        if (error) throw error;
-        
+        if (productError) throw productError;
+
         await loadInventory(getFilters());
         alert('Product deleted successfully!');
         
