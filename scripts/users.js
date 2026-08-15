@@ -352,7 +352,6 @@ function showToast(message, type = 'info') {
     }
 }
 
-// ============== BACKUP & RESTORE FUNCTIONS ==============
 
 async function exportBackup() {
     try {

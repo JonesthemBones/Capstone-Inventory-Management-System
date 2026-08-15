@@ -16,6 +16,13 @@ const sidebarConfig = [
         permission: ['admin', 'manager', 'cashier', 'staff']
     },
     {
+        id: 'pos',
+        title: 'Point of Sale',
+        icon: 'fas fa-cash-register',
+        path: 'pages/pos.html',
+        permission: ['admin', 'manager', 'cashier']
+    },
+    {
         id: 'reports',
         title: 'Reports',
         icon: 'fas fa-file-alt',
@@ -83,17 +90,50 @@ function getCachedSidebarMarkup(userRole) {
     }
 }
 
-function getAnyCachedSidebarMarkup() {
-    const fallbackRoles = ['guest', 'admin', 'manager', 'staff', 'cashier'];
-    for (const role of fallbackRoles) {
-        const cachedMarkup = getCachedSidebarMarkup(role);
-        if (cachedMarkup) {
-            return cachedMarkup;
-        }
-    }
-    return null;
+// Neutral placeholder shown ONLY while the real role is being determined.
+// Deliberately contains no nav links at all, so no role's navigation — not
+// even the current user's own — can ever flash before permissions are known.
+function buildLoadingSkeletonHTML() {
+    return `
+        <header class="mobile-header">
+            <div class="mobile-header-content">
+                <div class="mobile-logo">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Amacar Hardware Inventory System</span>
+                </div>
+                <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+        </header>
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-chart-bar logo-icon"></i>
+                    <div class="logo-text">
+                        <h2>Amacar Hardware Inventory System</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="section-title">Navigation</div>
+                <div class="nav-loading" style="padding: 12px; color: #6b7280; font-size: 0.9rem;">
+                    <i class="fas fa-spinner fa-spin"></i> Loading menu...
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <div class="user-info-section">
+                    <p class="user-label">User</p>
+                    <p class="user-name">Loading...</p>
+                    <p class="user-role"></p>
+                </div>
+            </div>
+        </aside>`;
 }
 
+// Last-resort fallback if sidebar.html can't be fetched/parsed at all. Kept
+// permission-free (no page links) for the same reason as the skeleton above —
+// we should never render nav items we haven't role-filtered.
 function buildFallbackSidebarHTML() {
     return `
         <header class="mobile-header">
@@ -109,33 +149,9 @@ function buildFallbackSidebarHTML() {
             <nav class="mobile-nav-dropdown" id="mobile-nav-dropdown">
                 <div class="mobile-nav-section">
                     <div class="mobile-section-title">Navigation</div>
-                    <a href="../pages/dashboard.html" class="mobile-nav-item">
-                        <i class="fas fa-th-large"></i>
-                        <span>Dashboard</span>
-                    </a>
-                    <a href="../pages/inventory.html" class="mobile-nav-item">
-                        <i class="fas fa-box"></i>
-                        <span>Inventory Management</span>
-                    </a>
-                    <a href="../pages/ocr_scan.html" class="mobile-nav-item">
-                        <i class="fas fa-receipt"></i>
-                        <span>Scan Receipts</span>
-                    </a>
-                    <a href="../pages/reports.html" class="mobile-nav-item">
-                        <i class="fas fa-file-alt"></i>
-                        <span>Reports</span>
-                    </a>
-                </div>
-                <div class="mobile-nav-section">
-                    <div class="mobile-section-title">System</div>
-                    <a href="../pages/users.html" class="mobile-nav-item">
-                        <i class="fas fa-users"></i>
-                        <span>User Management</span>
-                    </a>
-                    <a href="../pages/audit_logs.html" class="mobile-nav-item">
-                        <i class="fas fa-clipboard-list"></i>
-                        <span>Audit Logs</span>
-                    </a>
+                    <div class="nav-loading" style="padding: 12px; color: #6b7280; font-size: 0.9rem;">
+                        Menu unavailable — please reload the page.
+                    </div>
                 </div>
                 <div class="mobile-nav-footer">
                     <div class="mobile-user-info">
@@ -161,33 +177,9 @@ function buildFallbackSidebarHTML() {
             </div>
             <div class="sidebar-section">
                 <div class="section-title">Navigation</div>
-                <a href="../pages/dashboard.html" class="nav-item">
-                    <i class="fas fa-th-large"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="../pages/inventory.html" class="nav-item">
-                    <i class="fas fa-box"></i>
-                    <span>Inventory Management</span>
-                </a>
-                <a href="../pages/ocr_scan.html" class="nav-item">
-                    <i class="fas fa-receipt"></i>
-                    <span>Scan Receipts</span>
-                </a>
-                <a href="../pages/reports.html" class="nav-item">
-                    <i class="fas fa-file-alt"></i>
-                    <span>Reports</span>
-                </a>
-            </div>
-            <div class="sidebar-section">
-                <div class="section-title">System</div>
-                <a href="../pages/users.html" class="nav-item">
-                    <i class="fas fa-users"></i>
-                    <span>User Management</span>Oc
-                </a>
-                <a href="../pages/audit_logs.html" class="nav-item">
-                    <i class="fas fa-clipboard-list"></i>
-                    <span>Audit Logs</span>
-                </a>
+                <div class="nav-loading" style="padding: 12px; color: #6b7280; font-size: 0.9rem;">
+                    Menu unavailable — please reload the page.
+                </div>
             </div>
             <div class="sidebar-footer">
                 <div class="user-info-section">
@@ -261,11 +253,11 @@ async function getUserRole() {
             .from('users')
             .select('role')
             .eq('user_id', user.id)
-            .single();
+            .maybeSingle();
 
         if (dbError) {
             console.warn('⚠️  Could not fetch user role:', dbError.message);
-            return 'staff'; // Safe default
+            return 'staff';
         }
         
         const role = (userData?.role || 'staff').toLowerCase();
@@ -395,40 +387,56 @@ function markCurrentPageActive() {
 
 async function loadUserInfo() {
     try {
-        const { data: { user } } = await window.supabaseClient.auth.getUser();
-        
-        if (!user) {
-            updateUserDisplay(null, 'Not logged in');
+        const supabase = window.supabaseClient;
+        if (!supabase) {
+            updateUserDisplay(null, 'Guest');
             return;
         }
 
-        const { data: userData } = await window.supabaseClient
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+            updateUserDisplay(null, 'Guest');
+            return;
+        }
+
+        const { data: userData, error: profileError } = await supabase
             .from('users')
             .select('first_name, last_name, email, role')
             .eq('user_id', user.id)
-            .single();
+            .maybeSingle();
 
-        updateUserDisplay(userData, user.email);
+        const profile = userData || {
+            first_name: '',
+            last_name: '',
+            email: user.email || 'User',
+            role: 'staff'
+        };
+
+        if (profileError) {
+            console.warn('⚠️  Could not load user profile, using auth fallback:', profileError.message);
+        }
+
+        updateUserDisplay(profile, user.email || 'User');
 
     } catch (error) {
         console.warn('⚠️  Could not load user info:', error.message);
-        updateUserDisplay(null, 'User');
+        updateUserDisplay(null, 'Guest');
     }
 }
 
 function updateUserDisplay(userData, fallbackEmail) {
-    const displayName = userData && userData.first_name && userData.last_name 
-        ? `${userData.first_name} ${userData.last_name}`
-        : (fallbackEmail || 'Guest');
-    
-    const displayRole = userData?.role 
-        ? userData.role.charAt(0).toUpperCase() + userData.role.slice(1)
-        : '';
+    const safeUser = userData || {};
+    const fullName = [safeUser.first_name, safeUser.last_name].filter(Boolean).join(' ').trim();
+    const displayName = fullName || (safeUser.email || fallbackEmail || 'Guest');
+    const displayRole = safeUser.role
+        ? safeUser.role.charAt(0).toUpperCase() + safeUser.role.slice(1)
+        : 'User';
 
     document.querySelectorAll('.user-name, .mobile-user-name').forEach(el => {
         if (el) el.textContent = displayName;
     });
-    
+
     document.querySelectorAll('.user-role, .mobile-user-role').forEach(el => {
         if (el) el.textContent = displayRole;
     });
@@ -637,14 +645,13 @@ async function loadSidebar() {
     console.log('=====================================');
     
     try {
-        const cachedSidebarMarkup = getAnyCachedSidebarMarkup();
-        if (cachedSidebarMarkup) {
-            console.log('📦 Reusing cached sidebar markup immediately');
-            insertSidebarIntoDOM(cachedSidebarMarkup);
-        } else {
-            console.log('📦 No cached sidebar found; rendering fallback sidebar first');
-            insertSidebarIntoDOM(buildFallbackSidebarHTML());
-        }
+        // Render a neutral placeholder with NO nav links until we know the
+        // real logged-in user's role. We intentionally do not guess based on
+        // whatever role happens to be cached in this browser — a stale
+        // 'admin' cache from a previous login must never be shown to a
+        // different, lower-privileged user.
+        console.log('📦 Rendering neutral loading skeleton first');
+        insertSidebarIntoDOM(buildLoadingSkeletonHTML());
 
         // Step 1: Wait briefly for dependencies, but do not block sidebar rendering
         console.log('\n[1/8] ⏳ Waiting for dependencies...');

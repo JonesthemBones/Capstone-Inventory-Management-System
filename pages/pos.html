@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Point of Sale - Amacar Hardware Inventory System</title>
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/pos.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/supabase_check.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+    <script src="../scripts/mobile-responsive.js"></script>
+
+    <div class="app-container">
+        <main class="main-content">
+            <div class="page active">
+                <!-- Page Header -->
+                <div class="page-header">
+                    <h1 class="page-title">Point of Sale</h1>
+                    <p class="page-subtitle">Process customer transactions</p>
+                </div>
+
+                <div class="pos-container">
+                    <!-- Left: Product Search & Cart -->
+                    <div class="pos-left">
+                        <!-- Product Search -->
+                        <div class="pos-search-section">
+                            <h3>Add Items</h3>
+                            <div class="search-input-group">
+                                <input 
+                                    type="text" 
+                                    id="product-search" 
+                                    class="search-input" 
+                                    placeholder="Search product name or code..."
+                                    autocomplete="off"
+                                >
+                                <i class="fas fa-search search-icon"></i>
+                            </div>
+                            <div id="product-suggestions" class="product-suggestions"></div>
+                        </div>
+
+                        <!-- Shopping Cart -->
+                        <div class="cart-section">
+                            <h3>Shopping Cart</h3>
+                            <div id="cart-items" class="cart-items">
+                                <div class="empty-cart">
+                                    <i class="fas fa-shopping-cart"></i>
+                                    <p>Cart is empty</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Cart Summary & Checkout -->
+                    <div class="pos-right">
+                        <!-- Cart Summary -->
+                        <div class="cart-summary">
+                            <h3>Order Summary</h3>
+                            
+                            <div class="summary-row">
+                                <span>Subtotal</span>
+                                <span id="summary-subtotal">₱0.00</span>
+                            </div>
+
+                            <div class="summary-row">
+                                <span>Discount</span>
+                                <span id="summary-discount">-₱0.00</span>
+                            </div>
+
+                            <div class="summary-row">
+                                <span>Tax (VAT)</span>
+                                <span id="summary-tax">₱0.00</span>
+                            </div>
+
+                            <hr class="summary-divider">
+
+                            <div class="summary-row total">
+                                <span>Total</span>
+                                <span id="summary-total">₱0.00</span>
+                            </div>
+
+                            <!-- Discount Input -->
+                            <div class="discount-section">
+                                <label>Discount Amount (₱)</label>
+                                <input 
+                                    type="number" 
+                                    id="discount-input" 
+                                    min="0" 
+                                    step="0.01"
+                                    placeholder="0.00"
+                                >
+                            </div>
+
+                            <!-- Payment Method -->
+                            <div class="payment-section">
+                                <label>Payment Method</label>
+                                <select id="payment-method">
+                                    <option value="cash">Cash</option>
+                                    <option value="card">Debit/Credit Card</option>
+                                    <option value="check">Check</option>
+                                    <option value="bank_transfer">Bank Transfer</option>
+                                </select>
+                            </div>
+
+                            <!-- Tender Amount (for cash) -->
+                            <div class="tender-section" id="tender-section" style="display: none;">
+                                <label>Tender Amount (₱)</label>
+                                <input 
+                                    type="number" 
+                                    id="tender-amount" 
+                                    min="0" 
+                                    step="0.01"
+                                    placeholder="0.00"
+                                >
+                                <div class="change-display">
+                                    Change: <span id="change-amount">₱0.00</span>
+                                </div>
+                            </div>
+
+                            <!-- Buttons -->
+                            <div class="pos-buttons">
+                                <button class="btn btn-secondary" id="clear-cart-btn">
+                                    <i class="fas fa-trash"></i> Clear
+                                </button>
+                                <button class="btn btn-primary" id="checkout-btn">
+                                    <i class="fas fa-check"></i> Complete Sale
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Transactions -->
+                <div class="recent-transactions-section">
+                    <h3>Today's Transactions</h3>
+                    <div id="recent-transactions" class="transactions-list">
+                        <div class="empty-state">
+                            <p>No transactions yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div class="modal" id="receipt-modal">
+        <div class="modal-content receipt-modal">
+            <div class="modal-header">
+                <h2>Transaction Receipt</h2>
+                <button class="close-btn" onclick="closeReceiptModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="receipt-content" class="receipt-content">
+                    <!-- Receipt will be generated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeReceiptModal()">Close</button>
+                <button class="btn btn-primary" onclick="printReceipt()">
+                    <i class="fas fa-print"></i> Print
+                </button>
+                <button class="btn btn-secondary" onclick="emailReceipt()">
+                    <i class="fas fa-envelope"></i> Email
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Void Transaction Modal -->
+    <div class="modal" id="void-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Void Transaction</h2>
+                <button class="close-btn" onclick="closeVoidModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to void this transaction?</p>
+                <label>Reason for voiding:</label>
+                <textarea id="void-reason" placeholder="Enter reason..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeVoidModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmVoidTransaction()">
+                    <i class="fas fa-trash"></i> Void Transaction
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts -->
+    <div class="shortcuts-hint">
+        <small>💡 Tip: Press <kbd>Ctrl+S</kbd> to Complete Sale, <kbd>Escape</kbd> to Clear</small>
+    </div>
+
+    <script src="../scripts/pos.js"></script>
+    <script src="../scripts/pos-calculation.js"></script>
+    <script src="../scripts/receipt-printer.js"></script>
+</body>
+</html>
