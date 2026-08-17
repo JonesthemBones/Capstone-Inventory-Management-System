@@ -1,7 +1,7 @@
 .pos-container {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.8fr);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1.8fr) minmax(290px, 0.8fr);
+  gap: 22px;
   align-items: start;
 }
 
@@ -10,7 +10,7 @@
 .recent-transactions-section {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .pos-search-section,
@@ -20,8 +20,8 @@
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 18px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
-  padding: 20px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  padding: 18px 18px 16px;
 }
 
 .pos-search-section h3,
@@ -63,6 +63,155 @@
   transform: translateY(-50%);
   color: #6b7280;
   font-size: 0.95rem;
+}
+
+.pos-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.pos-filter-select {
+  width: min(220px, 100%);
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #111827;
+  font-size: 0.9rem;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.product-card-grid {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  min-height: 250px;
+}
+
+.product-card-grid:hover {
+  transform: translateY(-2px);
+  border-color: #93c5fd;
+  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.12);
+}
+
+.product-card-image {
+  position: relative;
+  width: 100%;
+  height: 126px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.product-card-image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 2rem;
+}
+
+.stock-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(15, 118, 110, 0.92);
+  color: #ffffff;
+  font-size: 0.65rem;
+  line-height: 1;
+  font-weight: 700;
+  padding: 6px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.stock-badge.in-stock {
+  background: rgba(16, 185, 129, 0.92);
+}
+
+.stock-badge.low-stock {
+  background: rgba(245, 158, 11, 0.96);
+}
+
+.stock-badge.out-of-stock {
+  background: rgba(239, 68, 68, 0.95);
+}
+
+.product-card-info {
+  padding: 12px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.product-card-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.35;
+  min-height: 38px;
+}
+
+.product-card-code {
+  font-size: 0.72rem;
+  color: #6b7280;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.04em;
+}
+
+.product-card-price {
+  margin-top: auto;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.product-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 180px;
+  border: 1px dashed #d1d5db;
+  border-radius: 14px;
+  background: #f9fafb;
+  color: #6b7280;
+  text-align: center;
+  padding: 20px;
+}
+
+.product-empty-state i {
+  font-size: 1.8rem;
+  color: #9ca3af;
 }
 
 .product-suggestions {
@@ -270,7 +419,8 @@
 
 .cart-summary {
   position: sticky;
-  top: 24px;
+  top: 18px;
+  padding: 18px 18px 14px;
 }
 
 .summary-row {
@@ -280,7 +430,7 @@
   gap: 12px;
   padding: 8px 0;
   color: #374151;
-  font-size: 0.96rem;
+  font-size: 0.94rem;
 }
 
 .summary-row.total {
@@ -344,7 +494,7 @@
 
 .pos-buttons {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: 0.9fr 1.3fr;
   gap: 12px;
   margin-top: 20px;
 }

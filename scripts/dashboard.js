@@ -69,60 +69,60 @@ async function loadDashboardStats() {
 
 async function loadRecentActivity() {
     try {
-        const { data: movements, error } = await supabaseClient
-            .from('stock_movements')
+        const { data: transactions, error } = await supabaseClient
+            .from('pos_transactions')
             .select(`
-                movement_id,
-                product_id,
-                movement_type,
-                quantity_change,
-                movement_date,
-                notes,
-                product:products(product_name)
+                transaction_id,
+                transaction_datetime,
+                total_amount,
+                payment_method,
+                is_voided,
+                pos_transaction_items(quantity)
             `)
-            .order('movement_date', { ascending: false })
+            .eq('is_voided', false)
+            .order('transaction_datetime', { ascending: false })
             .limit(8);
         
         if (error) {
-            console.error('Error loading recent activity:', error);
+            console.error('Error loading recent POS activity:', error);
             throw error;
         }
-        
+
         const activityContainer = document.getElementById('recent-activity');
-        
-        if (!movements || movements.length === 0) {
+
+        if (!transactions || transactions.length === 0) {
             activityContainer.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-inbox"></i>
-                    <p>No recent activity</p>
+                    <p>No recent POS sales</p>
                 </div>
             `;
             return;
         }
-        
-        activityContainer.innerHTML = movements.map(movement => {
-            const date = new Date(movement.movement_date);
+
+        activityContainer.innerHTML = transactions.map(transaction => {
+            const date = new Date(transaction.transaction_datetime);
             const timeAgo = getTimeAgo(date);
-            const icon = movement.movement_type === 'inbound' ? 'arrow-down' : 'arrow-up';
-            const iconClass = movement.movement_type === 'inbound' ? 'inbound' : 'outbound';
-            
+            const itemCount = Array.isArray(transaction.pos_transaction_items)
+                ? transaction.pos_transaction_items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+                : 0;
+
             return `
                 <div class="activity-item">
-                    <div class="activity-icon ${iconClass}">
-                        <i class="fas fa-${icon}"></i>
+                    <div class="activity-icon inbound">
+                        <i class="fas fa-cash-register"></i>
                     </div>
                     <div class="activity-content">
-                        <div class="activity-title">${movement.product?.product_name || 'Unknown'}</div>
+                        <div class="activity-title">POS Sale</div>
                         <div class="activity-details">
-                            ${movement.quantity_change > 0 ? '+' : ''}${movement.quantity_change} units
-                            ${movement.notes ? ' • ' + movement.notes : ''}
+                            ${formatCurrency(Number(transaction.total_amount || 0))} • ${itemCount} items • ${transaction.payment_method || 'cash'}
                         </div>
                     </div>
                     <div class="activity-time">${timeAgo}</div>
                 </div>
             `;
         }).join('');
-        
+
     } catch (error) {
         console.error('Error loading recent activity:', error);
     }
@@ -216,7 +216,7 @@ function initializeCharts() {
             data: {
                 labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
                 datasets: [{
-                    label: 'Outbound Transactions',
+                    label: 'POS Sales Revenue',
                     data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                     borderColor: '#2563eb',
                     backgroundColor: 'rgba(37, 99, 235, 0.1)',
@@ -235,7 +235,7 @@ function initializeCharts() {
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return context.dataset.label + ': ' + context.parsed.y + ' items';
+                                return context.dataset.label + ': ' + formatCurrency(context.parsed.y || 0);
                             }
                         }
                     }
@@ -248,7 +248,7 @@ function initializeCharts() {
                         },
                         ticks: {
                             callback: function(value) {
-                                return value.toLocaleString();
+                                return '₱' + Number(value).toLocaleString();
                             }
                         }
                     },
@@ -401,24 +401,25 @@ async function updateSalesTrendChart() {
         const currentYear = new Date().getFullYear();
         const startDate = new Date(currentYear, 0, 1).toISOString();
         const endDate = new Date(currentYear, 11, 31, 23, 59, 59).toISOString();
-        
-        const { data: movements, error } = await supabaseClient
-            .from('stock_movements')
-            .select('movement_date, quantity_change')
-            .eq('movement_type', 'outbound')
-            .gte('movement_date', startDate)
-            .lte('movement_date', endDate);
-        
+
+        const { data: transactions, error } = await supabaseClient
+            .from('pos_transactions')
+            .select('transaction_datetime, total_amount')
+            .eq('is_voided', false)
+            .gte('transaction_datetime', startDate)
+            .lte('transaction_datetime', endDate);
+
         if (error) throw error;
+
         const monthlyData = Array(12).fill(0);
-        movements?.forEach(movement => {
-            const date = new Date(movement.movement_date);
+        transactions?.forEach(transaction => {
+            const date = new Date(transaction.transaction_datetime);
             const month = date.getMonth();
-            monthlyData[month] += Math.abs(movement.quantity_change);
+            monthlyData[month] += Number(transaction.total_amount || 0);
         });
-        
-        console.log('Sales trend data (outbound by month):', monthlyData);
-        
+
+        console.log('Sales trend data (POS sales by month):', monthlyData);
+
         if (salesTrendChart) {
             salesTrendChart.data.datasets[0].data = monthlyData;
             salesTrendChart.update();

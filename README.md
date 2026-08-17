@@ -290,6 +290,16 @@ python -m http.server 5500
 - Email-based reset link
 - Secure token validation
 
+### POS (Point of Sale)
+- Cashier-friendly checkout interface
+- Real-time sales transaction processing
+- Add/remove items during checkout
+- Calculate totals and apply discounts
+- Multiple payment method support
+- Generate sales receipts
+- Track sales history and transactions
+- Integrate with inventory system for real-time stock updates
+
 ## 🔌 API Documentation
 
 The API documentation is available in [openapi.json](openapi.json).
@@ -311,6 +321,13 @@ The API documentation is available in [openapi.json](openapi.json).
 - `POST /api/products` - Create new product
 - `PUT /api/products/:id` - Update product
 - `DELETE /api/products/:id` - Delete product
+
+#### POS (Point of Sale)
+- `POST /api/sales/transactions` - Create new sales transaction
+- `GET /api/sales/transactions` - List all transactions
+- `GET /api/sales/transactions/:id` - Get transaction details
+- `POST /api/sales/checkout` - Process checkout
+- `POST /api/sales/receipts` - Generate receipt
 
 #### AI Features
 - `POST /api/ai/analyze` - Analyze inventory with AI

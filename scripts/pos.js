@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     setupEventListeners();
     setupKeyboardShortcuts();
+    handleProductSearch({ target: document.getElementById('product-search') });
     loadTodaysTransactions();
 });
 
@@ -67,8 +68,13 @@ async function loadPosUserInfo() {
 function setupEventListeners() {
     // Product search
     const productSearch = document.getElementById('product-search');
-    productSearch.addEventListener('input', debounce(handleProductSearch, 300));
+    productSearch.addEventListener('input', debounce(handleProductSearch, 250));
     productSearch.addEventListener('keydown', handleSearchKeydown);
+
+    const stockFilter = document.getElementById('pos-stock-filter');
+    if (stockFilter) {
+        stockFilter.addEventListener('change', () => handleProductSearch({ target: productSearch }));
+    }
     
     // Cart interactions
     document.getElementById('clear-cart-btn').addEventListener('click', clearCart);
@@ -86,6 +92,7 @@ function setupEventListeners() {
         if (e.key === 'Escape') {
             document.getElementById('product-search').value = '';
             document.getElementById('product-suggestions').innerHTML = '';
+            handleProductSearch({ target: document.getElementById('product-search') });
         }
     });
 }
@@ -131,55 +138,108 @@ async function getProductStockQuantity(productId) {
     }
 }
 
-async function handleProductSearch(e) {
-    const query = e.target.value.trim();
-    const suggestionsDiv = document.getElementById('product-suggestions');
-    
-    if (query.length < 2) {
-        suggestionsDiv.innerHTML = '';
+function getProductImageUrl(imagePath) {
+    if (!imagePath) return null;
+    if (imagePath.startsWith('http')) return imagePath;
+
+    const storageBaseUrl = 'https://wxhkhxsxftundtrahpst.supabase.co/storage/v1/object/public/product-images';
+    const relativePath = imagePath.replace(/^product-images\//, '');
+    return `${storageBaseUrl}/${relativePath}`;
+}
+
+function renderProductGrid(products) {
+    const productGrid = document.getElementById('product-grid');
+    if (!productGrid) return;
+
+    if (!products || products.length === 0) {
+        productGrid.innerHTML = '<div class="product-empty-state"><i class="fas fa-box-open"></i><p>No products match your filters.</p></div>';
         return;
     }
-    
-    try {
-        const { data: products, error } = await supabaseClient
-            .from('products')
-            .select('product_id, product_code, product_name, selling_price')
-            .or(`product_name.ilike.%${query}%,product_code.ilike.%${query}%`)
-            .limit(10);
-        
-        if (error) throw error;
-        
-        if (!products || products.length === 0) {
-            suggestionsDiv.innerHTML = '<div class="suggestion-item no-results">No products found</div>';
-            return;
-        }
 
-        const stockMap = {};
-        for (const product of products) {
-            stockMap[product.product_id] = await getProductStockQuantity(product.product_id);
-        }
+    productGrid.innerHTML = products.map(product => {
+        const inventory = Array.isArray(product.inventory_stock) ? (product.inventory_stock[0] || {}) : (product.inventory_stock || {});
+        const quantity = Number(inventory.quantity || 0);
+        const stockStatus = quantity === 0 ? 'out-of-stock' : quantity < 10 ? 'low-stock' : 'in-stock';
+        const imageUrl = product.image_url || getProductImageUrl(product.image_path);
+        const imageMarkup = imageUrl
+            ? `<img src="${imageUrl}" alt="${product.product_name}" onerror="this.onerror=null; this.src='https://via.placeholder.com/220?text=No+Image';">`
+            : `<div class="product-card-image-placeholder"><i class="fas fa-image"></i></div>`;
 
-        suggestionsDiv.innerHTML = products.map(product => {
-            const quantity = stockMap[product.product_id] ?? 0;
-            const stockStatus = quantity === 0 ? 'out-of-stock' : quantity < 10 ? 'low-stock' : 'in-stock';
-            
-            return `
-                <div class="suggestion-item" onclick="addToCart('${product.product_id}', '${product.product_name}', ${product.selling_price}, ${quantity})">
-                    <div class="suggestion-header">
-                        <strong>${product.product_name}</strong>
-                        <span class="stock-badge ${stockStatus}">${quantity} in stock</span>
-                    </div>
-                    <div class="suggestion-details">
-                        <span class="product-code">${product.product_code}</span>
-                        <span class="product-price">₱${parseFloat(product.selling_price).toFixed(2)}</span>
-                    </div>
+        return `
+            <button class="product-card-grid" type="button" onclick="addToCart('${product.product_id}', '${product.product_name.replace(/'/g, "\\'")}', ${Number(product.selling_price || 0)}, ${quantity})">
+                <div class="product-card-image ${imageUrl ? '' : 'placeholder'}">
+                    ${imageMarkup}
+                    <span class="stock-badge ${stockStatus}">${quantity} in stock</span>
                 </div>
-            `;
-        }).join('');
-        
+                <div class="product-card-info">
+                    <div class="product-card-name">${product.product_name}</div>
+                    <div class="product-card-code">${product.product_code || 'N/A'}</div>
+                    <div class="product-card-price">₱${Number(product.selling_price || 0).toFixed(2)}</div>
+                </div>
+            </button>
+        `;
+    }).join('');
+}
+
+async function handleProductSearch(e) {
+    const productSearch = document.getElementById('product-search');
+    const query = (e?.target?.value || productSearch?.value || '').trim();
+    const suggestionsDiv = document.getElementById('product-suggestions');
+    const productGrid = document.getElementById('product-grid');
+    const stockFilter = document.getElementById('pos-stock-filter');
+    const filterValue = stockFilter ? stockFilter.value : 'all';
+
+    if (query.length >= 2 && suggestionsDiv) {
+        suggestionsDiv.innerHTML = '';
+    }
+
+    try {
+        let productQuery = supabaseClient
+            .from('products')
+            .select(`
+                product_id,
+                product_code,
+                product_name,
+                selling_price,
+                image_url,
+                image_path,
+                unit_of_measure,
+                is_active,
+                inventory_stock!inventory_stock_product_id_fkey(quantity)
+            `)
+            .eq('is_active', true)
+            .order('product_name');
+
+        if (query.length >= 2) {
+            productQuery = productQuery.or(`product_name.ilike.%${query}%,product_code.ilike.%${query}%`);
+        }
+
+        const { data: products, error } = await productQuery;
+        if (error) throw error;
+
+        const filteredProducts = (products || []).filter(product => {
+            const inventory = Array.isArray(product.inventory_stock) ? (product.inventory_stock[0] || {}) : (product.inventory_stock || {});
+            const quantity = Number(inventory.quantity || 0);
+
+            if (filterValue === 'in_stock') return quantity > 0 && quantity >= 10;
+            if (filterValue === 'low_stock') return quantity > 0 && quantity < 10;
+            if (filterValue === 'out_of_stock') return quantity === 0;
+            return true;
+        });
+
+        renderProductGrid(filteredProducts);
+        if (suggestionsDiv) {
+            suggestionsDiv.style.display = 'none';
+        }
+
+        if (query.length >= 2 && filteredProducts.length === 0 && productGrid) {
+            productGrid.innerHTML = '<div class="product-empty-state"><i class="fas fa-box-open"></i><p>No products found.</p></div>';
+        }
     } catch (error) {
         console.error('Error searching products:', error);
-        suggestionsDiv.innerHTML = '<div class="suggestion-item error">Error loading products</div>';
+        if (productGrid) {
+            productGrid.innerHTML = '<div class="product-empty-state"><i class="fas fa-exclamation-circle"></i><p>Unable to load products.</p></div>';
+        }
     }
 }
 

@@ -44,7 +44,16 @@
                                 >
                                 <i class="fas fa-search search-icon"></i>
                             </div>
-                            <div id="product-suggestions" class="product-suggestions"></div>
+                            <div class="pos-toolbar">
+                                <select id="pos-stock-filter" class="pos-filter-select">
+                                    <option value="all">All items</option>
+                                    <option value="in_stock">In stock</option>
+                                    <option value="low_stock">Low stock</option>
+                                    <option value="out_of_stock">Out of stock</option>
+                                </select>
+                            </div>
+                            <div id="product-suggestions" class="product-suggestions" style="display:none;"></div>
+                            <div id="product-grid" class="product-grid"></div>
                         </div>
 
                         <!-- Shopping Cart -->
