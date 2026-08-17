@@ -103,9 +103,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 .eq('user_id', data.user.id)
                 .single();
             
-            const redirectPage = (userProfile?.role === 'cashier' || userProfile?.role === 'staff') 
-                ? 'inventory.html' 
-                : 'dashboard.html';
+            const redirectPage = userProfile?.role === 'cashier'
+                ? 'inventory.html'
+                : (userProfile?.role === 'staff' ? 'inventory.html' : 'dashboard.html');
             
             window.history.replaceState({}, document.title, window.location.pathname);
             alert('✅ Email confirmed successfully!\n\nRedirecting...');
@@ -128,9 +128,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             .eq('user_id', user.id)
             .single();
         
-        const redirectPage = (userProfile?.role === 'cashier' || userProfile?.role === 'staff') 
-            ? 'inventory.html' 
-            : 'dashboard.html';
+        const redirectPage = userProfile?.role === 'cashier'
+            ? 'inventory.html'
+            : (userProfile?.role === 'staff' ? 'inventory.html' : 'dashboard.html');
         window.location.href = redirectPage;
         return;
     }

@@ -48,24 +48,28 @@ async function signOut() {
 
 async function getUserRole() {
     try {
-        const { data: { user } } = await supabaseClient.auth.getUser();
-        if (!user) return null;
-        
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+        if (authError || !user) {
+            console.warn('⚠️ Could not resolve user role from auth state:', authError?.message || 'No authenticated user');
+            return 'guest';
+        }
+
         const { data: userData, error } = await supabaseClient
             .from('users')
             .select('role')
             .eq('user_id', user.id)
-            .single();
-        
+            .maybeSingle();
+
         if (error) {
-            console.error('Error fetching user role:', error);
-            return null;
+            console.warn('⚠️ Error fetching user role; falling back to staff:', error.message);
+            return 'staff';
         }
-        
-        return userData?.role?.toLowerCase() || 'staff';
+
+        const role = (userData?.role || 'staff').toLowerCase();
+        return role;
     } catch (error) {
         console.error('Error in getUserRole:', error);
-        return null;
+        return 'guest';
     }
 }
 

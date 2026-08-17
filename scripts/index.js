@@ -28,9 +28,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 .eq('user_id', session.user.id)
                 .single();
             
-            const redirectPage = (userProfile?.role === 'cashier' || userProfile?.role === 'staff') 
-                ? 'pages/inventory.html' 
-                : 'pages/dashboard.html';
+            const redirectPage = userProfile?.role === 'cashier'
+                ? 'pages/inventory.html'
+                : (userProfile?.role === 'staff' ? 'pages/inventory.html' : 'pages/dashboard.html');
             redirectTo(redirectPage);
         } else {
             redirectTo('pages/auth.html');
