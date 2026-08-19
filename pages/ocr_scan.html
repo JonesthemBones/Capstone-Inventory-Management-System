@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory Management - Scan Receipts</title>
     <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/modal.css">
     <link rel="stylesheet" href="../styles/ocr_scan.css">
+    <link rel="stylesheet" href="../styles/inventory-thumbnail.css">
     <link rel="stylesheet" href="../styles/help.css">
     <link rel="stylesheet" href="../styles/dark-mode.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -126,12 +128,45 @@
                                 Start New Scan
                             </button>
                         </div>
+                        <div class="ocr-items-column-header" aria-hidden="true">
+                            <span>Thumbnail</span>
+                            <span>Extracted item</span>
+                        </div>
                         <div id="ocr-items-grid" class="ocr-items-grid"></div>
                         <pre id="ocr-raw-output" class="ocr-raw-output" hidden></pre>
                     </section>
                 </div>
             </div>
         </main>
+    </div>
+
+    <div id="thumbnail-modal" class="modal" aria-hidden="true">
+        <div class="modal-content thumbnail-modal-content" role="dialog" aria-modal="true" aria-labelledby="thumbnail-modal-title">
+            <div class="modal-header">
+                <h2 id="thumbnail-modal-title">Edit Thumbnail</h2>
+                <button type="button" class="modal-close" id="thumbnail-modal-close" aria-label="Close thumbnail editor">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="thumbnail-modal-body">
+                <div id="thumbnail-modal-preview" class="thumbnail-modal-preview">
+                    <img id="thumbnail-modal-image" class="thumbnail-modal-image" src="" alt="Thumbnail preview" hidden>
+                    <div id="thumbnail-modal-empty" class="product-form-thumbnail-placeholder">
+                        <i class="fas fa-image"></i>
+                        <span>No thumbnail yet</span>
+                    </div>
+                </div>
+                <input type="file" id="thumbnail-file-input" accept="image/*" hidden>
+                <button type="button" class="btn btn-secondary" id="change-thumbnail-btn">
+                    <i class="fas fa-image"></i>
+                    Change Thumbnail
+                </button>
+                <div class="modal-actions">
+                    <button type="button" class="btn" id="cancel-thumbnail-btn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-thumbnail-btn">Save</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="receipt-image-modal" class="ocr-image-modal" onclick="closeReceiptImagePreview(event)">

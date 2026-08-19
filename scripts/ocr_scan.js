@@ -1,6 +1,13 @@
 const OCR_API_ENDPOINT = 'http://localhost:3001/api/ocr-scan';
 let currentReceiptImage = null;
 let currentItems = [];
+let thumbnailModalContext = {
+    itemIndex: null,
+    inventoryId: null,
+    currentThumbnailUrl: null,
+    pendingThumbnailUrl: null,
+    pendingThumbnailFile: null
+};
 
 function setStatus(message, variant = 'neutral') {
     const statusElement = document.getElementById('ocr-status');
@@ -139,6 +146,57 @@ async function mergeWithExistingProductDefaults(items) {
     }
 }
 
+async function lookupThumbnails(extractedItems) {
+    const items = Array.isArray(extractedItems) ? extractedItems : [];
+    const unmatchedItems = items.map(item => ({
+        ...item,
+        inventoryId: null,
+        thumbnailUrl: null
+    }));
+
+    if (!window.supabaseClient || items.length === 0) {
+        return unmatchedItems;
+    }
+
+    try {
+        const { data: products, error } = await window.supabaseClient
+            .from('products')
+            .select('product_id, product_name, image_url');
+
+        if (error || !products) {
+            return unmatchedItems;
+        }
+
+        const productMap = new Map();
+        products.forEach(product => {
+            const key = normalizeProductName(product.product_name);
+            if (key) {
+                productMap.set(key, product);
+            }
+        });
+
+        return items.map(item => {
+            const product = productMap.get(normalizeProductName(item.name));
+            if (!product) {
+                return {
+                    ...item,
+                    inventoryId: null,
+                    thumbnailUrl: null
+                };
+            }
+
+            return {
+                ...item,
+                inventoryId: product.product_id ?? null,
+                thumbnailUrl: product.image_url || null
+            };
+        });
+    } catch (error) {
+        console.warn('Unable to look up OCR item thumbnails:', error);
+        return unmatchedItems;
+    }
+}
+
 function normalizeItemsFromReceipt(rawReceipt) {
     let items = [];
     if (!rawReceipt) {
@@ -219,10 +277,16 @@ function renderItems(items) {
         const rejectLabel = item.removed ? 'Restore' : 'Reject';
         const rejectIcon = item.removed ? 'fa-undo' : 'fa-ban';
         const disableAccept = item.removed ? 'disabled' : '';
+        const thumbnailHtml = item.thumbnailUrl
+            ? `<img src="${escapeHtml(item.thumbnailUrl)}" alt="${escapeHtml(item.name)} thumbnail" class="product-thumbnail" loading="lazy">`
+            : '<div class="product-thumbnail-placeholder" aria-label="No thumbnail"><i class="fas fa-image"></i></div>';
 
         return `
             <article class="ocr-card-item ${removedClass} ${acceptedClass}" data-index="${index}">
                 <div class="ocr-card-item-header">
+                    <button type="button" class="ocr-card-item-thumbnail-column ocr-thumbnail-trigger" data-action="edit-thumbnail" data-index="${index}" aria-label="Change ${escapeHtml(item.name)} thumbnail">
+                        ${thumbnailHtml}
+                    </button>
                     <div>
                         <h3>${escapeHtml(item.name)}</h3>
                         <p class="ocr-card-item-meta">Unit Price: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
@@ -264,6 +328,159 @@ function renderItems(items) {
     }).join('');
 
     updateSaveButton();
+}
+
+function setThumbnailModalPreview(thumbnailUrl) {
+    const image = document.getElementById('thumbnail-modal-image');
+    const emptyState = document.getElementById('thumbnail-modal-empty');
+    if (!image || !emptyState) return;
+
+    if (thumbnailUrl) {
+        image.src = thumbnailUrl;
+        image.hidden = false;
+        emptyState.hidden = true;
+    } else {
+        image.src = '';
+        image.hidden = true;
+        emptyState.hidden = false;
+    }
+}
+
+function openThumbnailModal(itemIndex) {
+    const item = currentItems[itemIndex];
+    const modal = document.getElementById('thumbnail-modal');
+    const fileInput = document.getElementById('thumbnail-file-input');
+    if (!item || !modal) return;
+
+    thumbnailModalContext = {
+        itemIndex,
+        inventoryId: item.inventoryId ?? null,
+        currentThumbnailUrl: item.thumbnailUrl || null,
+        pendingThumbnailUrl: item.thumbnailUrl || null,
+        pendingThumbnailFile: null
+    };
+    modal.dataset.itemIndex = String(itemIndex);
+    modal.dataset.inventoryId = item.inventoryId ?? '';
+    if (fileInput) fileInput.value = '';
+    setThumbnailModalPreview(thumbnailModalContext.pendingThumbnailUrl);
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeThumbnailModal() {
+    const modal = document.getElementById('thumbnail-modal');
+    const fileInput = document.getElementById('thumbnail-file-input');
+    if (fileInput) fileInput.value = '';
+    if (modal) {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+        delete modal.dataset.itemIndex;
+        delete modal.dataset.inventoryId;
+    }
+    thumbnailModalContext = {
+        itemIndex: null,
+        inventoryId: null,
+        currentThumbnailUrl: null,
+        pendingThumbnailUrl: null,
+        pendingThumbnailFile: null
+    };
+}
+
+function handleThumbnailFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file.');
+        event.target.value = '';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        thumbnailModalContext.pendingThumbnailFile = file;
+        thumbnailModalContext.pendingThumbnailUrl = reader.result;
+        setThumbnailModalPreview(thumbnailModalContext.pendingThumbnailUrl);
+    };
+    reader.readAsDataURL(file);
+}
+
+async function uploadThumbnailToStorage(file, inventoryId) {
+    if (!window.supabaseClient) {
+        throw new Error('Supabase is not available.');
+    }
+
+    const extension = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const itemPrefix = inventoryId ? `product-${inventoryId}` : 'ocr-item';
+    const filePath = `product-images/${itemPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+    const { error: uploadError } = await window.supabaseClient.storage
+        .from('product-images')
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicUrlData } = window.supabaseClient.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+    const imageUrl = publicUrlData?.publicUrl;
+    if (!imageUrl) {
+        throw new Error('Unable to generate a public thumbnail URL.');
+    }
+
+    return { imageUrl, filePath };
+}
+
+async function saveThumbnailModal() {
+    const context = { ...thumbnailModalContext };
+    const itemIndex = context.itemIndex;
+    const item = itemIndex === null ? null : currentItems[itemIndex];
+    const file = context.pendingThumbnailFile;
+    const saveButton = document.getElementById('save-thumbnail-btn');
+    if (!item || !file) {
+        closeThumbnailModal();
+        return;
+    }
+
+    if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    }
+
+    try {
+        const { imageUrl, filePath } = await uploadThumbnailToStorage(file, context.inventoryId);
+
+        if (context.inventoryId) {
+            const { error: updateError } = await window.supabaseClient
+                .from('products')
+                .update({
+                    image_url: imageUrl,
+                    image_path: filePath,
+                    image_uploaded_at: new Date().toISOString()
+                })
+                .eq('product_id', context.inventoryId);
+
+            if (updateError) throw updateError;
+        }
+
+        currentItems[itemIndex] = {
+            ...item,
+            thumbnailUrl: imageUrl,
+            inventoryId: context.inventoryId
+        };
+        renderItems(currentItems);
+        closeThumbnailModal();
+    } catch (error) {
+        console.error('Thumbnail save error:', error);
+        setStatus('Thumbnail save failed. Please try again.', 'danger');
+        alert('Unable to save thumbnail: ' + error.message);
+    } finally {
+        if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.textContent = 'Save';
+        }
+    }
 }
 
 function escapeHtml(value) {
@@ -431,6 +648,11 @@ function handleOcrItemGridClick(event) {
     if (Number.isNaN(index) || !currentItems[index]) return;
 
     const action = button.getAttribute('data-action');
+    if (action === 'edit-thumbnail') {
+        openThumbnailModal(index);
+        return;
+    }
+
     if (action === 'toggle-accept') {
         if (currentItems[index].removed) {
             return;
@@ -530,6 +752,7 @@ async function processReceiptImage() {
         }));
 
         currentItems = await mergeWithExistingProductDefaults(currentItems);
+        currentItems = await lookupThumbnails(currentItems);
         renderItems(currentItems);
         setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.`, 'success');
         const rawOutput = document.getElementById('ocr-raw-output');
@@ -697,6 +920,12 @@ async function initReceiptScanner() {
     const removeAllBtn = document.getElementById('remove-all-btn');
     const downloadBtn = document.getElementById('download-json-btn');
     const saveToInventoryBtn = document.getElementById('save-to-inventory-btn');
+    const thumbnailModal = document.getElementById('thumbnail-modal');
+    const thumbnailFileInput = document.getElementById('thumbnail-file-input');
+    const changeThumbnailBtn = document.getElementById('change-thumbnail-btn');
+    const saveThumbnailBtn = document.getElementById('save-thumbnail-btn');
+    const cancelThumbnailBtn = document.getElementById('cancel-thumbnail-btn');
+    const closeThumbnailBtn = document.getElementById('thumbnail-modal-close');
 
     if (imageInput) {
         imageInput.addEventListener('change', async (event) => {
@@ -762,6 +991,27 @@ async function initReceiptScanner() {
         saveToInventoryBtn.addEventListener('click', (event) => {
             event.preventDefault();
             saveAcceptedItemsToInventory();
+        });
+    }
+
+    if (changeThumbnailBtn && thumbnailFileInput) {
+        changeThumbnailBtn.addEventListener('click', () => thumbnailFileInput.click());
+    }
+    if (thumbnailFileInput) {
+        thumbnailFileInput.addEventListener('change', handleThumbnailFileChange);
+    }
+    if (saveThumbnailBtn) {
+        saveThumbnailBtn.addEventListener('click', saveThumbnailModal);
+    }
+    if (cancelThumbnailBtn) {
+        cancelThumbnailBtn.addEventListener('click', closeThumbnailModal);
+    }
+    if (closeThumbnailBtn) {
+        closeThumbnailBtn.addEventListener('click', closeThumbnailModal);
+    }
+    if (thumbnailModal) {
+        thumbnailModal.addEventListener('click', (event) => {
+            if (event.target === thumbnailModal) closeThumbnailModal();
         });
     }
     const startNewScanBtn = document.getElementById('start-new-scan-btn');
