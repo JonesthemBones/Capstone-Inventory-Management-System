@@ -75,6 +75,13 @@ function setupEventListeners() {
     if (stockFilter) {
         stockFilter.addEventListener('change', () => handleProductSearch({ target: productSearch }));
     }
+
+    document.getElementById('product-grid').addEventListener('click', event => {
+        const card = event.target.closest('.product-card-grid');
+        if (!card || card.disabled) return;
+        addToCart(card.dataset.productId, card.dataset.productName,
+            Number(card.dataset.price), Number(card.dataset.availableQuantity));
+    });
     
     // Cart interactions
     document.getElementById('clear-cart-btn').addEventListener('click', clearCart);
@@ -84,7 +91,7 @@ function setupEventListeners() {
     document.getElementById('payment-method').addEventListener('change', handlePaymentMethodChange);
     
     // Discount and tender inputs
-    document.getElementById('discount-input').addEventListener('change', updateCartSummary);
+    document.getElementById('discount-input').addEventListener('input', updateCartSummary);
     document.getElementById('tender-amount').addEventListener('input', updateChangeDisplay);
     
     // Escape key to clear search
@@ -95,6 +102,14 @@ function setupEventListeners() {
             handleProductSearch({ target: document.getElementById('product-search') });
         }
     });
+
+    handlePaymentMethodChange({ target: document.getElementById('payment-method') });
+}
+
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[character]);
 }
 
 function setupKeyboardShortcuts() {
@@ -161,19 +176,27 @@ function renderProductGrid(products) {
         const quantity = Number(inventory.quantity || 0);
         const stockStatus = quantity === 0 ? 'out-of-stock' : quantity < 10 ? 'low-stock' : 'in-stock';
         const imageUrl = product.image_url || getProductImageUrl(product.image_path);
+        const safeName = escapeHTML(product.product_name);
+        const safeCode = escapeHTML(product.product_code || 'N/A');
+        const safeImageUrl = escapeHTML(imageUrl || '');
         const imageMarkup = imageUrl
-            ? `<img src="${imageUrl}" alt="${product.product_name}" onerror="this.onerror=null; this.src='https://via.placeholder.com/220?text=No+Image';">`
+            ? `<img src="${safeImageUrl}" alt="${safeName}" onerror="this.onerror=null; this.src='https://via.placeholder.com/220?text=No+Image';">`
             : `<div class="product-card-image-placeholder"><i class="fas fa-image"></i></div>`;
 
         return `
-            <button class="product-card-grid" type="button" onclick="addToCart('${product.product_id}', '${product.product_name.replace(/'/g, "\\'")}', ${Number(product.selling_price || 0)}, ${quantity})">
+            <button class="product-card-grid" type="button"
+                data-product-id="${escapeHTML(product.product_id)}"
+                data-product-name="${safeName}"
+                data-price="${Number(product.selling_price || 0)}"
+                data-available-quantity="${quantity}"
+                ${quantity <= 0 ? 'disabled aria-disabled="true"' : ''}>
                 <div class="product-card-image ${imageUrl ? '' : 'placeholder'}">
                     ${imageMarkup}
                     <span class="stock-badge ${stockStatus}">${quantity} in stock</span>
                 </div>
                 <div class="product-card-info">
-                    <div class="product-card-name">${product.product_name}</div>
-                    <div class="product-card-code">${product.product_code || 'N/A'}</div>
+                    <div class="product-card-name">${safeName}</div>
+                    <div class="product-card-code">${safeCode}</div>
                     <div class="product-card-price">₱${Number(product.selling_price || 0).toFixed(2)}</div>
                 </div>
             </button>
@@ -253,6 +276,10 @@ function handleSearchKeydown(e) {
 }
 
 function addToCart(productId, productName, price, availableQuantity) {
+    if (!productId || !Number.isFinite(price) || availableQuantity <= 0) {
+        alert('This product is currently out of stock and cannot be added.');
+        return;
+    }
     // Check if product already in cart
     const existingItem = currentCart.find(item => item.productId === productId);
     
@@ -325,7 +352,7 @@ function updateCartDisplay() {
         return `
             <div class="cart-item">
                 <div class="cart-item-header">
-                    <h4>${item.productName}</h4>
+                    <h4>${escapeHTML(item.productName)}</h4>
                     <button class="btn-icon" onclick="removeFromCart('${item.productId}')">
                         <i class="fas fa-trash-alt"></i>
                     </button>
@@ -371,10 +398,10 @@ function updateCartSummary() {
     }
 }
 
-function clearCart() {
+function clearCart(force = false) {
     if (currentCart.length === 0) return;
     
-    if (confirm('Clear all items from cart?')) {
+    if (force || confirm('Clear all items from cart?')) {
         currentCart = [];
         document.getElementById('discount-input').value = '';
         document.getElementById('tender-amount').value = '';
@@ -399,14 +426,15 @@ function handlePaymentMethodChange(e) {
 }
 
 function updateChangeDisplay() {
-    const total = parseFloat(document.getElementById('summary-total').textContent.replace('₱', ''));
+    const discountAmount = parseFloat(document.getElementById('discount-input').value) || 0;
+    const calculatedTotal = POSCalculations.calculateTotals(currentCart, discountAmount).total;
     const tender = parseFloat(document.getElementById('tender-amount').value) || 0;
-    const change = POSCalculations.calculateChange(total, tender);
+    const change = POSCalculations.calculateChange(calculatedTotal, tender);
 
     const changeDisplay = document.getElementById('change-amount');
     changeDisplay.textContent = POSCalculations.formatCurrency(change);
 
-    if (tender < total) {
+    if (tender < calculatedTotal) {
         changeDisplay.style.color = 'var(--color-danger)';
     } else {
         changeDisplay.style.color = 'var(--color-success)';
@@ -420,6 +448,13 @@ async function handleCheckout() {
     }
 
     const discountAmount = parseFloat(document.getElementById('discount-input').value) || 0;
+
+    const subtotal = POSCalculations.calculateSubtotal(currentCart);
+    if (discountAmount < 0 || discountAmount > subtotal) {
+        alert('Discount must be between zero and the order subtotal.');
+        document.getElementById('discount-input').focus();
+        return;
+    }
 
     if (POSCalculations.requiresDiscountApproval(discountAmount)) {
         const approved = confirm(
@@ -437,15 +472,14 @@ async function handleCheckout() {
     // Validate payment method
     if (paymentMethod === 'cash') {
         const tender = parseFloat(document.getElementById('tender-amount').value) || 0;
-        const total = parseFloat(document.getElementById('summary-total').textContent.replace('₱', ''));
-        
+        const calculatedTotal = POSCalculations.calculateTotals(currentCart, discountAmount).total;
         if (tender === 0) {
             alert('Please enter tender amount.');
             document.getElementById('tender-amount').focus();
             return;
         }
         
-        if (tender < total) {
+        if (tender < calculatedTotal) {
             alert('Tender amount is insufficient.');
             return;
         }
@@ -463,7 +497,7 @@ async function handleCheckout() {
             currentTransaction = transaction;
             await loadTodaysTransactions();
             displayReceipt(transaction);
-            clearCart();
+            clearCart(true);
         }
         
     } catch (error) {
@@ -541,7 +575,17 @@ async function createPOSTransaction() {
             action_details: `POS Sale completed. Total: ₱${total.toFixed(2)}`
         });
         
-        return transaction;
+        return {
+            ...transaction,
+            pos_transaction_items: currentCart.map(item => ({
+                product_id: item.productId,
+                product_name: item.productName,
+                quantity: item.quantity,
+                unit_price: item.price,
+                subtotal: item.price * item.quantity,
+                item_total: item.price * item.quantity
+            }))
+        };
         
     } catch (error) {
         console.error('Error creating POS transaction:', error);
@@ -561,34 +605,31 @@ async function finalizePOSTransaction(transactionId) {
         
         // For each item, decrement inventory and create movement record
         for (const item of items) {
-            // Update inventory
-            const { error: updateError } = await supabaseClient
-                .from('inventory_stock')
-                .update({
-                    quantity: supabaseClient.rpc('decrement_by', { x: item.quantity, product_id: item.product_id }),
-                    last_sale_date: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('product_id', item.product_id);
-            
-            // Simpler approach: fetch current quantity, decrement, and update
-            const { data: currentStock } = await supabaseClient
+            const { data: currentStock, error: stockReadError } = await supabaseClient
                 .from('inventory_stock')
                 .select('quantity')
                 .eq('product_id', item.product_id)
                 .single();
+
+            if (stockReadError) throw stockReadError;
+            const currentQuantity = Number(currentStock?.quantity || 0);
+            if (currentQuantity < item.quantity) {
+                throw new Error(`Insufficient stock for product ${item.product_id}.`);
+            }
             
-            await supabaseClient
+            const { error: stockUpdateError } = await supabaseClient
                 .from('inventory_stock')
                 .update({
-                    quantity: (currentStock?.quantity || 0) - item.quantity,
+                    quantity: currentQuantity - item.quantity,
                     last_sale_date: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 })
                 .eq('product_id', item.product_id);
+
+            if (stockUpdateError) throw stockUpdateError;
             
             // Create stock movement record
-            await supabaseClient
+            const { error: movementError } = await supabaseClient
                 .from('stock_movements')
                 .insert({
                     product_id: item.product_id,
@@ -599,6 +640,8 @@ async function finalizePOSTransaction(transactionId) {
                     pos_transaction_id: transactionId,
                     movement_source: 'pos'
                 });
+
+            if (movementError) throw movementError;
         }
         
         console.log('Inventory finalized for transaction:', transactionId);

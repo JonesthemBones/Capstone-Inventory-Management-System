@@ -56,20 +56,20 @@
                             <div id="product-grid" class="product-grid"></div>
                         </div>
 
-                        <!-- Shopping Cart -->
+                    </div>
+
+                    <!-- Right: Cart Summary & Checkout -->
+                    <div class="pos-right">
                         <div class="cart-section">
                             <h3>Shopping Cart</h3>
-                            <div id="cart-items" class="cart-items">
+                            <div id="cart-items" class="cart-items" aria-live="polite">
                                 <div class="empty-cart">
                                     <i class="fas fa-shopping-cart"></i>
                                     <p>Cart is empty</p>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Right: Cart Summary & Checkout -->
-                    <div class="pos-right">
                         <!-- Cart Summary -->
                         <div class="cart-summary">
                             <h3>Order Summary</h3>
@@ -120,7 +120,7 @@
                             </div>
 
                             <!-- Tender Amount (for cash) -->
-                            <div class="tender-section" id="tender-section" style="display: none;">
+                            <div class="tender-section" id="tender-section">
                                 <label>Tender Amount (₱)</label>
                                 <input 
                                     type="number" 
@@ -207,11 +207,11 @@
 
     <!-- Keyboard Shortcuts -->
     <div class="shortcuts-hint">
-        <small>💡 Tip: Press <kbd>Ctrl+S</kbd> to Complete Sale, <kbd>Escape</kbd> to Clear</small>
+        <small>💡 Tip: Press <kbd>Ctrl+S</kbd> to Complete Sale, <kbd>Escape</kbd> to clear search</small>
     </div>
 
-    <script src="../scripts/pos.js"></script>
     <script src="../scripts/pos-calculation.js"></script>
     <script src="../scripts/receipt-printer.js"></script>
+    <script src="../scripts/pos.js"></script>
 </body>
 </html>

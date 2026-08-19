@@ -1,15 +1,4 @@
-/**
- * Receipt Printer
- * Builds receipt markup for the on-screen modal and handles printing it as
- * a standalone document (rather than printing the whole POS page, modal
- * overlay and all).
- */
-
 const ReceiptPrinter = {
-    /**
-     * Receipt content for a transaction, used both in the on-screen modal
-     * and inside the print document below — one source of truth for layout.
-     */
     generateHTML(transaction) {
         const fmt = window.POSCalculations
             ? window.POSCalculations.formatCurrency
@@ -19,7 +8,7 @@ const ReceiptPrinter = {
             ? transaction.pos_transaction_items.map(item => `
                 <tr>
                     <td>${item.quantity}x</td>
-                    <td>${item.product_id}</td>
+                    <td>${item.product_name || item.products?.product_name || item.product_id}</td>
                     <td>${fmt(item.unit_price)}</td>
                     <td>${fmt(item.item_total)}</td>
                 </tr>
