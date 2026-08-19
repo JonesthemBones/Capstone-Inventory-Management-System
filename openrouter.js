@@ -440,6 +440,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     unit_price: unitPrice,
                     selling_price: sellingPrice,
                     unit_of_measure: unitOfMeasure,
+                    thumbnailUrl: item.thumbnailUrl || null,
                     comments: comment ? [comment] : [],
                     rawItems: [item]
                 });
@@ -450,6 +451,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 if (!entry.unit_price && unitPrice) entry.unit_price = unitPrice;
                 if (!entry.selling_price && sellingPrice) entry.selling_price = sellingPrice;
                 if (!entry.unit_of_measure && unitOfMeasure) entry.unit_of_measure = unitOfMeasure;
+                if (!entry.thumbnailUrl && item.thumbnailUrl) entry.thumbnailUrl = item.thumbnailUrl;
                 if (comment) entry.comments.push(comment);
                 entry.rawItems.push(item);
             }
@@ -634,7 +636,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             unit_of_measure: item.unit_of_measure || 'unit',
                             description: comment || `Imported from receipt scan. Qty: ${item.receipt_quantity}`,
                             reorder_level: Number.isFinite(reorderLevel) ? reorderLevel : 5,
-                            maximum_stock: null
+                            maximum_stock: null,
+                            image_url: item.thumbnailUrl || null
                         }])
                         .select()
                         .single();
