@@ -3,16 +3,22 @@ const ReceiptPrinter = {
         const fmt = window.POSCalculations
             ? window.POSCalculations.formatCurrency
             : (n) => `₱${parseFloat(n || 0).toFixed(2)}`;
+        const paymentLabel = transaction.payment_method === 'bank_transfer'
+            ? 'QR / E-wallet (PayMongo)'
+            : transaction.payment_method;
 
         const itemsHTML = transaction.pos_transaction_items
-            ? transaction.pos_transaction_items.map(item => `
-                <tr>
-                    <td>${item.quantity}x</td>
-                    <td>${item.product_name || item.products?.product_name || item.product_id}</td>
-                    <td>${fmt(item.unit_price)}</td>
-                    <td>${fmt(item.item_total)}</td>
-                </tr>
-            `).join('')
+            ? transaction.pos_transaction_items.map(item => {
+                const lineTotal = item.line_total ?? item.subtotal ?? item.item_total ?? (Number(item.unit_price || 0) * Number(item.quantity || 0));
+                return `
+                    <tr>
+                        <td>${item.quantity}x</td>
+                        <td>${item.product_name || item.products?.product_name || item.product_id}</td>
+                        <td>${fmt(item.unit_price)}</td>
+                        <td>${fmt(lineTotal)}</td>
+                    </tr>
+                `;
+            }).join('')
             : '';
 
         const discountRow = transaction.discount_amount > 0
@@ -31,7 +37,7 @@ const ReceiptPrinter = {
 
             <div class="receipt-details">
                 <p><strong>Date:</strong> ${new Date(transaction.transaction_datetime).toLocaleString()}</p>
-                <p><strong>Payment Method:</strong> ${transaction.payment_method}</p>
+                <p><strong>Payment Method:</strong> ${paymentLabel}</p>
             </div>
 
             <table class="receipt-items">

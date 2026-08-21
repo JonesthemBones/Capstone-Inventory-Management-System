@@ -662,6 +662,196 @@
 }
 
 /* ===============================================
+   POINT OF SALE
+   =============================================== */
+
+.dark-mode .pos-search-section,
+.dark-mode .cart-section,
+.dark-mode .cart-summary,
+.dark-mode .recent-transactions-section {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.dark-mode .pos-search-section h3,
+.dark-mode .cart-section h3,
+.dark-mode .cart-summary h3,
+.dark-mode .recent-transactions-section h3,
+.dark-mode .product-card-name,
+.dark-mode .cart-item h4,
+.dark-mode .summary-row.total,
+.dark-mode .transaction-amount {
+    color: var(--text-primary);
+}
+
+.dark-mode .search-input,
+.dark-mode .pos-filter-select,
+.dark-mode .discount-section input,
+.dark-mode .payment-section select,
+.dark-mode .tender-section input {
+    background: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+.dark-mode .search-input:focus,
+.dark-mode .discount-section input:focus,
+.dark-mode .payment-section select:focus,
+.dark-mode .tender-section input:focus {
+    background: var(--bg-tertiary);
+}
+
+.dark-mode .search-icon,
+.dark-mode .product-card-code,
+.dark-mode .product-empty-state,
+.dark-mode .suggestion-item.no-results,
+.dark-mode .suggestion-item.error,
+.dark-mode .empty-cart,
+.dark-mode .empty-state,
+.dark-mode .cart-item-sub,
+.dark-mode .summary-row,
+.dark-mode .discount-section label,
+.dark-mode .payment-section label,
+.dark-mode .tender-section label,
+.dark-mode .change-display,
+.dark-mode .transaction-time,
+.dark-mode .transaction-items,
+.dark-mode .transaction-payment {
+    color: var(--text-secondary);
+}
+
+.dark-mode .product-card-grid,
+.dark-mode .cart-item {
+    background: linear-gradient(180deg, var(--card-bg) 0%, var(--bg-secondary) 100%);
+    border-color: var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.dark-mode .product-card-grid:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 12px 26px rgba(96, 165, 250, 0.16);
+}
+
+.dark-mode .product-card-image,
+.dark-mode .product-empty-state,
+.dark-mode .suggestion-item,
+.dark-mode .empty-cart,
+.dark-mode .empty-state,
+.dark-mode .transaction-row {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.dark-mode .product-card-image-placeholder,
+.dark-mode .product-empty-state i,
+.dark-mode .empty-cart i,
+.dark-mode .empty-state i {
+    color: var(--text-tertiary);
+}
+
+.dark-mode .product-card-price,
+.dark-mode .suggestion-price,
+.dark-mode .change-display span {
+    color: var(--primary-color);
+}
+
+.dark-mode .suggestion-item {
+    color: var(--text-primary);
+}
+
+.dark-mode .suggestion-item:hover {
+    background: rgba(96, 165, 250, 0.12);
+    border-color: var(--primary-color);
+}
+
+.dark-mode .cart-item-price,
+.dark-mode .cart-item-details,
+.dark-mode .item-detail,
+.dark-mode .summary-line {
+    color: var(--text-secondary);
+}
+
+.dark-mode .quantity-controls {
+    background: var(--input-bg);
+    border-color: var(--border-color);
+}
+
+.dark-mode .quantity-btn {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.dark-mode .quantity-btn:hover {
+    background: var(--border-color);
+}
+
+.dark-mode .quantity-input,
+.dark-mode .qty-input {
+    background: var(--input-bg);
+    color: var(--text-primary);
+}
+
+.dark-mode .cart-action-btn {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.45);
+    color: var(--danger-color);
+}
+
+.dark-mode .cart-action-btn:hover {
+    background: rgba(248, 113, 113, 0.2);
+}
+
+.dark-mode .summary-divider,
+.dark-mode .receipt-items th,
+.dark-mode .receipt-items td,
+.dark-mode .modal-header,
+.dark-mode .modal-footer {
+    border-color: var(--border-color);
+}
+
+.dark-mode .btn-secondary,
+.dark-mode .btn-icon {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.dark-mode .btn-secondary:hover:not(:disabled),
+.dark-mode .btn-icon:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.dark-mode .modal-content {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+.dark-mode .modal-header h2,
+.dark-mode .receipt-content,
+.dark-mode .summary-line.total {
+    color: var(--text-primary);
+}
+
+.dark-mode .close-btn {
+    color: var(--text-secondary);
+}
+
+.dark-mode .close-btn:hover {
+    color: var(--text-primary);
+}
+
+.dark-mode .receipt-header p,
+.dark-mode .receipt-details p,
+.dark-mode .receipt-summary,
+.dark-mode .receipt-footer,
+.dark-mode .receipt-items th {
+    color: var(--text-secondary);
+}
+
+/* ===============================================
    SMOOTH TRANSITIONS
    =============================================== */
 

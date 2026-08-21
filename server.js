@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const passwordResetRoutes = require('./password-reset');
 const openRouterRoutes = require('./openrouter');
+const paymongoRoutes = require('./paymongo');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -46,6 +47,7 @@ app.use(express.static(__dirname));
 
 app.use('/api', passwordResetRoutes);
 app.use('/api', openRouterRoutes);
+app.use('/api', paymongoRoutes);
 
 // Direct test route
 app.post('/api/test-save', (req, res) => {
@@ -62,7 +64,7 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   console.error('Server error:', err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  res.status(err.status || 500).json({ error: err.message || 'Something went wrong!' });
 });
 
 app.listen(PORT, () => {

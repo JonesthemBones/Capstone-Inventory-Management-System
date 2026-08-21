@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupKeyboardShortcuts();
     handleProductSearch({ target: document.getElementById('product-search') });
     loadTodaysTransactions();
+    await handlePayMongoReturn();
 });
 
 // Send a rejected user to the page that's actually theirs, matching index.js's routing
@@ -441,6 +442,93 @@ function updateChangeDisplay() {
     }
 }
 
+const PAYMONGO_PENDING_KEY = 'amacar_pending_paymongo_checkout';
+
+async function startPayMongoCheckout(discountAmount) {
+    const checkoutBtn = document.getElementById('checkout-btn');
+    const { total } = POSCalculations.calculateTotals(currentCart, discountAmount);
+    const referenceNumber = `TXN-${Date.now()}`;
+    checkoutBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/paymongo/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount: Math.round(total * 100),
+                referenceNumber
+            })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to start PayMongo checkout.');
+
+        sessionStorage.setItem(PAYMONGO_PENDING_KEY, JSON.stringify({
+            checkoutId: result.checkoutId,
+            referenceNumber,
+            cart: currentCart,
+            discountAmount
+        }));
+        window.location.assign(result.checkoutUrl);
+    } catch (error) {
+        console.error('Error starting PayMongo checkout:', error);
+        alert(error.message);
+        checkoutBtn.disabled = false;
+    }
+}
+
+async function handlePayMongoReturn() {
+    const returnStatus = new URLSearchParams(window.location.search).get('paymongo');
+    if (!returnStatus) return;
+
+    const stored = sessionStorage.getItem(PAYMONGO_PENDING_KEY);
+    const pending = stored ? JSON.parse(stored) : null;
+    history.replaceState({}, document.title, window.location.pathname);
+
+    if (!pending) {
+        alert('The pending PayMongo checkout could not be found in this browser session.');
+        return;
+    }
+
+    currentCart = pending.cart || [];
+    document.getElementById('discount-input').value = pending.discountAmount || '';
+    document.getElementById('payment-method').value = 'bank_transfer';
+    handlePaymentMethodChange({ target: document.getElementById('payment-method') });
+    updateCartDisplay();
+    updateCartSummary();
+
+    if (returnStatus === 'cancelled') {
+        sessionStorage.removeItem(PAYMONGO_PENDING_KEY);
+        alert('QR payment was cancelled. The cart has been restored.');
+        return;
+    }
+
+    const checkoutBtn = document.getElementById('checkout-btn');
+    checkoutBtn.disabled = true;
+    try {
+        const response = await fetch(`/api/paymongo/checkout/${encodeURIComponent(pending.checkoutId)}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to verify PayMongo payment.');
+        if (!result.paid || result.referenceNumber !== pending.referenceNumber) {
+            throw new Error('PayMongo has not confirmed this payment as paid. The cart was not finalized.');
+        }
+
+        const transaction = await createPOSTransaction({
+            paymentMethod: 'bank_transfer',
+            transactionNumber: pending.referenceNumber
+        });
+        currentTransaction = transaction;
+        sessionStorage.removeItem(PAYMONGO_PENDING_KEY);
+        await loadTodaysTransactions();
+        displayReceipt(transaction);
+        clearCart(true);
+    } catch (error) {
+        console.error('Error verifying PayMongo checkout:', error);
+        alert(error.message);
+    } finally {
+        checkoutBtn.disabled = false;
+    }
+}
+
 async function handleCheckout() {
     if (currentCart.length === 0) {
         alert('Cart is empty. Add items to proceed.');
@@ -484,6 +572,11 @@ async function handleCheckout() {
             return;
         }
     }
+
+    if (paymentMethod === 'bank_transfer') {
+        await startPayMongoCheckout(discountAmount);
+        return;
+    }
     
     // Disable button to prevent double-click
     const checkoutBtn = document.getElementById('checkout-btn');
@@ -508,11 +601,11 @@ async function handleCheckout() {
     }
 }
 
-async function createPOSTransaction() {
+async function createPOSTransaction(options = {}) {
     try {
         const discountAmount = parseFloat(document.getElementById('discount-input').value) || 0;
         const { subtotal, tax, total } = POSCalculations.calculateTotals(currentCart, discountAmount);
-        const paymentMethod = document.getElementById('payment-method').value;
+        const paymentMethod = options.paymentMethod || document.getElementById('payment-method').value;
         const tenderAmount = parseFloat(document.getElementById('tender-amount')?.value || 0) || 0;
         const changeAmount = POSCalculations.calculateChange(total, tenderAmount);
         
@@ -522,7 +615,7 @@ async function createPOSTransaction() {
             .insert({
                 cashier_id: currentUserId,
                 transaction_datetime: new Date().toISOString(),
-                transaction_number: `TXN-${Date.now()}`,
+                transaction_number: options.transactionNumber || `TXN-${Date.now()}`,
                 subtotal: subtotal,
                 discount_amount: discountAmount,
                 tax_amount: tax,
@@ -539,20 +632,26 @@ async function createPOSTransaction() {
         
         console.log('Transaction created:', transaction);
         
-        // Step 2: Add items to transaction
-        const items = currentCart.map(item => ({
-            transaction_id: transaction.transaction_id,
-            product_id: item.productId,
-            quantity: item.quantity,
-            unit_price: item.price,
-            subtotal: item.price * item.quantity,
-            item_total: (item.price * item.quantity)
-        }));
-        
+        // Step 2: Store the complete line values required by the database.
+        const items = currentCart.map(item => {
+            const unitPrice = Number(item.price);
+            const quantity = Number(item.quantity);
+
+            return {
+                transaction_id: transaction.transaction_id,
+                product_id: item.productId,
+                product_name: item.productName,
+                quantity,
+                unit_price: unitPrice,
+                line_discount: 0,
+                line_total: Number((unitPrice * quantity).toFixed(2))
+            };
+        });
+
         const { error: itemsError } = await supabaseClient
             .from('pos_transaction_items')
             .insert(items);
-        
+
         if (itemsError) {
             // Rollback transaction if items insert fails
             await supabaseClient
@@ -577,14 +676,18 @@ async function createPOSTransaction() {
         
         return {
             ...transaction,
-            pos_transaction_items: currentCart.map(item => ({
-                product_id: item.productId,
-                product_name: item.productName,
-                quantity: item.quantity,
-                unit_price: item.price,
-                subtotal: item.price * item.quantity,
-                item_total: item.price * item.quantity
-            }))
+            pos_transaction_items: currentCart.map(item => {
+                const lineTotal = Number((item.price * item.quantity).toFixed(2));
+                return {
+                    product_id: item.productId,
+                    product_name: item.productName,
+                    quantity: item.quantity,
+                    unit_price: item.price,
+                    subtotal: lineTotal,
+                    line_total: lineTotal,
+                    item_total: lineTotal
+                };
+            })
         };
         
     } catch (error) {
@@ -616,11 +719,12 @@ async function finalizePOSTransaction(transactionId) {
             if (currentQuantity < item.quantity) {
                 throw new Error(`Insufficient stock for product ${item.product_id}.`);
             }
+            const updatedQuantity = currentQuantity - Number(item.quantity);
             
             const { error: stockUpdateError } = await supabaseClient
                 .from('inventory_stock')
                 .update({
-                    quantity: currentQuantity - item.quantity,
+                    quantity: updatedQuantity,
                     last_sale_date: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 })
@@ -635,10 +739,15 @@ async function finalizePOSTransaction(transactionId) {
                     product_id: item.product_id,
                     movement_type: 'outbound',
                     quantity_change: -item.quantity,
+                    quantity_before: currentQuantity,
+                    quantity_after: updatedQuantity,
                     movement_date: new Date().toISOString(),
-                    reference_type: 'pos_sale',
-                    pos_transaction_id: transactionId,
-                    movement_source: 'pos'
+                    // `outbound_order` is an allowed value in the database
+                    // reference_type check constraint and covers POS stock-outs.
+                    reference_type: 'outbound_order',
+                    reference_id: transactionId,
+                    performed_by: currentUserId,
+                    notes: 'Point of sale transaction'
                 });
 
             if (movementError) throw movementError;
@@ -661,8 +770,9 @@ async function createAuditLog(details) {
                 action_type: details.action_type,
                 table_affected: details.table_affected,
                 record_id: details.record_id,
-                action_details: details.action_details,
-                timestamp: new Date().toISOString()
+                new_values: { details: details.action_details },
+                user_agent: navigator.userAgent,
+                action_timestamp: new Date().toISOString()
             });
     } catch (error) {
         console.error('Error creating audit log:', error);
@@ -709,7 +819,7 @@ function displayRecentTransactions(transactions) {
             <div class="transaction-time">${new Date(transaction.transaction_datetime).toLocaleTimeString()}</div>
             <div class="transaction-items">${transaction.pos_transaction_items.length} items</div>
             <div class="transaction-amount">₱${parseFloat(transaction.total_amount).toFixed(2)}</div>
-            <div class="transaction-payment">${transaction.payment_method}</div>
+            <div class="transaction-payment">${transaction.payment_method === 'bank_transfer' ? 'QR / E-wallet' : transaction.payment_method}</div>
             <div class="transaction-actions">
                 <button class="btn-icon" onclick="showReceiptModal('${transaction.transaction_id}')" title="View Receipt">
                     <i class="fas fa-receipt"></i>

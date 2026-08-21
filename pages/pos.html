@@ -98,7 +98,7 @@
 
                             <!-- Discount Input -->
                             <div class="discount-section">
-                                <label>Discount Amount (₱)</label>
+                                <label for="discount-input">Discount Amount (₱)</label>
                                 <input 
                                     type="number" 
                                     id="discount-input" 
@@ -110,18 +110,16 @@
 
                             <!-- Payment Method -->
                             <div class="payment-section">
-                                <label>Payment Method</label>
+                                <label for="payment-method">Payment Method</label>
                                 <select id="payment-method">
                                     <option value="cash">Cash</option>
-                                    <option value="card">Debit/Credit Card</option>
-                                    <option value="check">Check</option>
-                                    <option value="bank_transfer">Bank Transfer</option>
+                                    <option value="bank_transfer">QR / E-wallet (PayMongo Test)</option>
                                 </select>
                             </div>
 
                             <!-- Tender Amount (for cash) -->
                             <div class="tender-section" id="tender-section">
-                                <label>Tender Amount (₱)</label>
+                                <label for="tender-amount">Tender Amount (₱)</label>
                                 <input 
                                     type="number" 
                                     id="tender-amount" 
@@ -203,11 +201,6 @@
                 </button>
             </div>
         </div>
-    </div>
-
-    <!-- Keyboard Shortcuts -->
-    <div class="shortcuts-hint">
-        <small>💡 Tip: Press <kbd>Ctrl+S</kbd> to Complete Sale, <kbd>Escape</kbd> to clear search</small>
     </div>
 
     <script src="../scripts/pos-calculation.js"></script>
