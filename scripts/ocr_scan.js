@@ -829,12 +829,17 @@ async function saveAcceptedItemsToInventory() {
 
     try {
         const currentUser = await window.authHelpers?.getCurrentUser?.();
+        const scanDate = new Date().toISOString();
         const response = await fetch('/api/save-items-to-inventory', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ items: currentItems, userId: currentUser?.id || null })
+            body: JSON.stringify({
+                items: currentItems,
+                userId: currentUser?.id || null,
+                scan_date: scanDate
+            })
         });
 
         const result = await response.json();
