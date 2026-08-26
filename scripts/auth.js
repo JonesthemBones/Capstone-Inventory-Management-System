@@ -103,9 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 .eq('user_id', data.user.id)
                 .single();
             
-            const redirectPage = userProfile?.role === 'cashier'
-                ? 'inventory.html'
-                : (userProfile?.role === 'staff' ? 'inventory.html' : 'dashboard.html');
+            const redirectPage = 'dashboard.html';
             
             window.history.replaceState({}, document.title, window.location.pathname);
             alert('✅ Email confirmed successfully!\n\nRedirecting...');
@@ -128,9 +126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .eq('user_id', user.id)
             .single();
         
-        const redirectPage = userProfile?.role === 'cashier'
-            ? 'inventory.html'
-            : (userProfile?.role === 'staff' ? 'inventory.html' : 'dashboard.html');
+        const redirectPage = 'dashboard.html';
         window.location.href = redirectPage;
         return;
     }
@@ -358,9 +354,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         localStorage.removeItem('loginAttempts');
         
         // Redirect based on role
-        const redirectPage = (userData?.role === 'cashier' || userData?.role === 'staff') 
-            ? 'inventory.html' 
-            : 'dashboard.html';
+        const redirectPage = 'dashboard.html';
         
         if (window.utils && window.utils.showToast) {
             window.utils.showToast('Welcome back! Logging you in...', 'success');

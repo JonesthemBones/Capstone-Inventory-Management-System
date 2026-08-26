@@ -82,11 +82,18 @@ async function requireRole(allowedRoles = []) {
     
     if (!normalizedAllowedRoles.includes(userRole)) {
         alert('Access Denied: You do not have permission to access this page.');
-        window.location.href = '../pages/inventory.html';
+        window.location.href = '../pages/dashboard.html';
         return false;
     }
     
     return true;
+}
+
+function revealProtectedContent() {
+    const content = document.querySelector('[data-protected-content]');
+    if (!content) return;
+    content.setAttribute('data-protected-ready', '');
+    content.setAttribute('aria-busy', 'false');
 }
 
 // Set up sign out button listener
@@ -141,5 +148,6 @@ window.authHelpers = {
     getCurrentUser,
     signOut,
     getUserRole,
-    requireRole
+    requireRole,
+    revealProtectedContent
 };

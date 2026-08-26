@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check role access - only admin and manager can access user management
     const hasAccess = await window.authHelpers.requireRole(['admin', 'manager']);
     if (!hasAccess) return;
+    window.authHelpers.revealProtectedContent();
     
     // Load users
     await loadUsers();

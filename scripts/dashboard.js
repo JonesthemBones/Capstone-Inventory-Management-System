@@ -1,16 +1,32 @@
 let salesTrendChart = null;
 let stockDistributionChart = null;
 let categoryChart = null;
+let dashboardRole = 'guest';
+let dashboardUserId = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();
     if (!session) return;
     
-    // Check role access - only admin and manager can access dashboard
-    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager']);
+    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager', 'cashier', 'staff']);
     if (!hasAccess) return;
-    
+
+    dashboardRole = await window.authHelpers.getUserRole();
+    dashboardUserId = session.user?.id || (await window.authHelpers.getCurrentUser())?.id;
+    configureDashboardForRole(dashboardRole);
     initializeCharts();
+    window.authHelpers.revealProtectedContent();
+
+    if (dashboardRole === 'cashier') {
+        await loadCashierDashboard();
+        await loadRecentActivity();
+        window.setInterval(() => {
+            loadCashierDashboard();
+            loadRecentActivity();
+        }, 120000);
+        return;
+    }
+
     await loadDashboardStats();
     await loadRecentActivity();
     await loadLowStockAlerts();
@@ -18,16 +34,119 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupRealtimeSubscriptions();
 });
 
+function configureDashboardForRole(role) {
+    const title = document.querySelector('.page-title');
+    const subtitle = document.querySelector('.page-subtitle');
+    const statTitles = [...document.querySelectorAll('.stat-title')];
+    const statChanges = [...document.querySelectorAll('.stat-change span')];
+    const panels = document.querySelectorAll('[data-dashboard-panel]');
+    const alerts = document.querySelector('.alerts-section');
+    const activityTitle = document.getElementById('activity-title');
+    const activitySubtitle = document.getElementById('activity-subtitle');
+    const trendTitle = document.getElementById('trend-title');
+    const trendSubtitle = document.getElementById('trend-subtitle');
+    const distributionTitle = document.getElementById('distribution-title');
+    const distributionSubtitle = document.getElementById('distribution-subtitle');
+
+    const setPanelVisibility = visiblePanels => {
+        panels.forEach(panel => {
+            panel.hidden = !visiblePanels.includes(panel.dataset.dashboardPanel);
+            panel.classList.remove('dashboard-panel-wide');
+        });
+    };
+
+    if (role === 'cashier') {
+        title.textContent = 'Cashier Dashboard';
+        subtitle.textContent = 'Your sales and transaction summary for today';
+        ['Today\'s Sales', 'Transactions', 'Items Sold', 'Average Sale'].forEach((label, index) => {
+            if (statTitles[index]) statTitles[index].textContent = label;
+        });
+        ['Your completed sales today', 'Your transaction count today', 'Units sold today', 'Average transaction value'].forEach((label, index) => {
+            if (statChanges[index]) statChanges[index].textContent = label;
+        });
+        setPanelVisibility(['sales-trend', 'stock-distribution', 'recent-activity']);
+        document.querySelector('[data-dashboard-panel="recent-activity"]')?.classList.add('dashboard-panel-wide');
+        if (alerts) alerts.style.display = 'none';
+        activityTitle.textContent = 'My Recent Transactions';
+        activitySubtitle.textContent = 'Your latest completed sales';
+        trendTitle.textContent = 'My Recent Sales';
+        trendSubtitle.textContent = 'Your completed sales over the last 7 days';
+        distributionTitle.textContent = 'Payment Methods';
+        distributionSubtitle.textContent = 'How customers paid during the last 7 days';
+    } else if (role === 'staff') {
+        title.textContent = 'Staff Inventory Dashboard';
+        subtitle.textContent = 'Priorities for receiving, counting, and keeping stock accurate';
+        ['Active Products', 'Healthy Stock', 'Low Stock', 'Out of Stock'].forEach((label, index) => {
+            if (statTitles[index]) statTitles[index].textContent = label;
+        });
+        ['Products in the catalog', 'Items above reorder level', 'Items at or below reorder level', 'Items needing immediate attention'].forEach((label, index) => {
+            if (statChanges[index]) statChanges[index].textContent = label;
+        });
+        setPanelVisibility(['sales-trend', 'stock-distribution', 'recent-activity']);
+        activityTitle.textContent = 'Recent Stock Movements';
+        activitySubtitle.textContent = 'Latest receiving and stock adjustments';
+        trendTitle.textContent = 'Stock Movement Activity';
+        trendSubtitle.textContent = 'Units received and released over the last 7 days';
+        distributionTitle.textContent = 'Stock Health';
+        distributionSubtitle.textContent = 'Active products compared with their reorder levels';
+    } else {
+        title.textContent = role === 'manager' ? 'Manager Dashboard' : 'Admin Dashboard';
+        subtitle.textContent = 'System-wide sales, inventory, and operational overview';
+        setPanelVisibility(['sales-trend', 'stock-distribution', 'product-value', 'recent-activity']);
+        trendTitle.textContent = 'Sales Trends';
+        trendSubtitle.textContent = 'Monthly sales performance';
+        distributionTitle.textContent = 'Stock Distribution';
+        distributionSubtitle.textContent = 'Products by status';
+    }
+}
+
+async function loadCashierDashboard() {
+    try {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 1);
+
+        const { data, error } = await supabaseClient
+            .from('pos_transactions')
+            .select('total_amount, pos_transaction_items(quantity)')
+            .eq('cashier_id', dashboardUserId)
+            .eq('is_voided', false)
+            .gte('transaction_datetime', start.toISOString())
+            .lt('transaction_datetime', end.toISOString());
+        if (error) throw error;
+
+        const transactions = data || [];
+        const sales = transactions.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+        const items = transactions.reduce((sum, transaction) => sum +
+            (transaction.pos_transaction_items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0), 0);
+        const average = transactions.length ? sales / transactions.length : 0;
+
+        document.getElementById('total-products').textContent = formatCurrency(sales);
+        document.getElementById('in-stock').textContent = transactions.length;
+        document.getElementById('low-stock').textContent = items;
+        document.getElementById('total-value').textContent = formatCurrency(average);
+        await updateCashierAnalytics(start);
+    } catch (error) {
+        console.error('Error loading cashier dashboard:', error);
+        showError('Failed to load your sales summary');
+    }
+}
+
 async function loadDashboardStats() {
     try {
         const { count: totalProducts } = await supabaseClient
             .from('products')
             .select('*', { count: 'exact', head: true });
+        const { count: activeProductCount } = await supabaseClient
+            .from('products')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_active', true);
         const { data: stockData, error: stockError } = await supabaseClient
             .from('inventory_stock')
             .select(`
                 quantity,
-                product:products(unit_price)
+                product:products(unit_price, selling_price, reorder_level, is_active)
             `);
         
         if (stockError) {
@@ -40,13 +159,17 @@ async function loadDashboardStats() {
         let inStock = 0;
         let lowStock = 0;
         let totalValue = 0;
+        let outOfStock = 0;
 
         for (const item of stockData || []) {
             const quantity = item.quantity || 0;
     
-            if (quantity >= 10) {
+            const reorderLevel = Number(item.product?.reorder_level || 0);
+            if (quantity <= 0) {
+                outOfStock++;
+            } else if (quantity > reorderLevel) {
                 inStock++;
-            } else if (quantity > 0 && quantity < 10) {
+            } else {
                 lowStock++;
             }
 
@@ -55,11 +178,15 @@ async function loadDashboardStats() {
         }
         
         console.log('Dashboard stats:', { totalProducts, inStock, lowStock, totalValue });
-        animateValue('total-products', 0, totalProducts || 0, 1000);
+        animateValue('total-products', 0, dashboardRole === 'staff' ? (activeProductCount || 0) : (totalProducts || 0), 1000);
         animateValue('in-stock', 0, inStock, 1000);
         animateValue('low-stock', 0, lowStock, 1000);
-        animateValue('total-value', 0, totalValue, 1000, true);
-        await updateAllCharts();
+        animateValue('total-value', 0, dashboardRole === 'staff' ? outOfStock : totalValue, 1000, dashboardRole !== 'staff');
+        if (dashboardRole === 'staff') {
+            await Promise.all([updateStockDistributionChart(), updateStaffMovementTrend()]);
+        } else {
+            await updateAllCharts();
+        }
         
     } catch (error) {
         console.error('Error loading dashboard stats:', error);
@@ -68,8 +195,12 @@ async function loadDashboardStats() {
 }
 
 async function loadRecentActivity() {
+    if (dashboardRole === 'staff') {
+        return loadRecentStockMovements();
+    }
+
     try {
-        const { data: transactions, error } = await supabaseClient
+        let query = supabaseClient
             .from('pos_transactions')
             .select(`
                 transaction_id,
@@ -79,7 +210,13 @@ async function loadRecentActivity() {
                 is_voided,
                 pos_transaction_items(quantity)
             `)
-            .eq('is_voided', false)
+            .eq('is_voided', false);
+
+        if (dashboardRole === 'cashier' && dashboardUserId) {
+            query = query.eq('cashier_id', dashboardUserId);
+        }
+
+        const { data: transactions, error } = await query
             .order('transaction_datetime', { ascending: false })
             .limit(8);
         
@@ -128,48 +265,65 @@ async function loadRecentActivity() {
     }
 }
 
+async function loadRecentStockMovements() {
+    const activityContainer = document.getElementById('recent-activity');
+    try {
+        const { data, error } = await supabaseClient
+            .from('stock_movements')
+            .select('movement_type, quantity_change, movement_date, product:products(product_name, product_code)')
+            .order('movement_date', { ascending: false })
+            .limit(10);
+        if (error) throw error;
+
+        if (!data?.length) {
+            activityContainer.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>No recent stock movements</p></div>';
+            return;
+        }
+
+        activityContainer.innerHTML = data.map(movement => `
+            <div class="activity-item">
+                <div class="activity-icon ${movement.movement_type === 'inbound' ? 'inbound' : 'outbound'}">
+                    <i class="fas fa-${movement.movement_type === 'inbound' ? 'arrow-down' : 'arrow-up'}"></i>
+                </div>
+                <div class="activity-content">
+                    <div class="activity-title">${movement.product?.product_name || 'Inventory item'}</div>
+                    <div class="activity-details">${movement.movement_type || 'movement'} • ${Math.abs(Number(movement.quantity_change || 0))} units</div>
+                </div>
+                <div class="activity-time">${getTimeAgo(new Date(movement.movement_date))}</div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading recent stock movements:', error);
+        activityContainer.innerHTML = '<div class="empty-state"><p>Recent movements could not be loaded</p></div>';
+    }
+}
+
 async function loadLowStockAlerts() {
     try {
-        const { data: lowStockItems, error: lowError } = await supabaseClient
+        const { data: stockItems, error } = await supabaseClient
             .from('inventory_stock')
             .select(`
                 stock_id,
                 quantity,
-                product:products(product_id, product_name, product_code)
-            `)
-            .lt('quantity', 10)
-            .gt('quantity', 0)
-            .limit(3);
+                product:products(product_id, product_name, product_code, reorder_level, is_active)
+            `);
+        if (error) throw error;
 
-        if (lowError) {
-            console.error('Error loading low stock items:', lowError);
-            throw lowError;
-        }
-
-        const { data: outOfStockItems, error: outError } = await supabaseClient
-            .from('inventory_stock')
-            .select(`
-                stock_id,
-                quantity,
-                product:products(product_id, product_name, product_code)
-            `)
-            .eq('quantity', 0)
-            .limit(2);
-
-        if (outError) {
-            console.error('Error loading out of stock items:', outError);
-            throw outError;
-        }
+        const attentionItems = (stockItems || [])
+            .filter(item => item.product?.is_active !== false && Number(item.quantity || 0) <= Number(item.product?.reorder_level || 0))
+            .sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0));
+        const outOfStockItems = attentionItems.filter(item => Number(item.quantity || 0) <= 0);
+        const lowStockItems = attentionItems.filter(item => Number(item.quantity || 0) > 0);
 
         const allAlerts = [
-            ...(outOfStockItems || []).map(item => ({ ...item, alertType: 'out_of_stock' })),
-            ...(lowStockItems || []).map(item => ({ ...item, alertType: 'low_stock' }))
-        ];
+            ...outOfStockItems.map(item => ({ ...item, alertType: 'out_of_stock' })),
+            ...lowStockItems.map(item => ({ ...item, alertType: 'low_stock' }))
+        ].slice(0, 5);
 
         const alertsContainer = document.getElementById('low-stock-alerts');
         const alertCount = document.getElementById('alert-count');
 
-        alertCount.textContent = allAlerts.length;
+        alertCount.textContent = attentionItems.length;
 
         if (allAlerts.length === 0) {
             alertsContainer.innerHTML = `
@@ -235,6 +389,9 @@ function initializeCharts() {
                     tooltip: {
                         callbacks: {
                             label: function(context) {
+                                if (dashboardRole === 'staff') {
+                                    return context.dataset.label + ': ' + Number(context.parsed.y || 0).toLocaleString() + ' units';
+                                }
                                 return context.dataset.label + ': ' + formatCurrency(context.parsed.y || 0);
                             }
                         }
@@ -248,6 +405,7 @@ function initializeCharts() {
                         },
                         ticks: {
                             callback: function(value) {
+                                if (dashboardRole === 'staff') return Number(value).toLocaleString();
                                 return '₱' + Number(value).toLocaleString();
                             }
                         }
@@ -353,6 +511,110 @@ function initializeCharts() {
     }
 }
 
+function getLastSevenDays() {
+    const days = [];
+    for (let offset = 6; offset >= 0; offset--) {
+        const date = new Date();
+        date.setHours(0, 0, 0, 0);
+        date.setDate(date.getDate() - offset);
+        days.push(date);
+    }
+    return days;
+}
+
+function dateKey(value) {
+    const date = new Date(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+async function updateCashierAnalytics() {
+    try {
+        const days = getLastSevenDays();
+        const rangeStart = days[0].toISOString();
+        const rangeEnd = new Date(days[6]);
+        rangeEnd.setDate(rangeEnd.getDate() + 1);
+
+        const { data, error } = await supabaseClient
+            .from('pos_transactions')
+            .select('transaction_datetime, total_amount, payment_method')
+            .eq('cashier_id', dashboardUserId)
+            .eq('is_voided', false)
+            .gte('transaction_datetime', rangeStart)
+            .lt('transaction_datetime', rangeEnd.toISOString());
+        if (error) throw error;
+
+        const salesByDay = Object.fromEntries(days.map(day => [dateKey(day), 0]));
+        const payments = {};
+        (data || []).forEach(transaction => {
+            const key = dateKey(transaction.transaction_datetime);
+            if (key in salesByDay) salesByDay[key] += Number(transaction.total_amount || 0);
+            const method = String(transaction.payment_method || 'Other').trim().toLowerCase();
+            const label = method ? method.charAt(0).toUpperCase() + method.slice(1) : 'Other';
+            payments[label] = (payments[label] || 0) + 1;
+        });
+
+        if (salesTrendChart) {
+            salesTrendChart.data.labels = days.map(day => day.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }));
+            salesTrendChart.data.datasets = [{
+                label: 'My Sales',
+                data: Object.values(salesByDay),
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                tension: 0.35,
+                fill: true
+            }];
+            salesTrendChart.update();
+        }
+
+        if (stockDistributionChart) {
+            const labels = Object.keys(payments);
+            stockDistributionChart.data.labels = labels.length ? labels : ['No sales yet'];
+            stockDistributionChart.data.datasets[0].data = labels.length ? Object.values(payments) : [1];
+            stockDistributionChart.data.datasets[0].backgroundColor = labels.length
+                ? ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#64748b']
+                : ['#e5e7eb'];
+            stockDistributionChart.update();
+        }
+    } catch (error) {
+        console.error('Error loading cashier analytics:', error);
+    }
+}
+
+async function updateStaffMovementTrend() {
+    try {
+        const days = getLastSevenDays();
+        const rangeStart = days[0].toISOString();
+        const rangeEnd = new Date(days[6]);
+        rangeEnd.setDate(rangeEnd.getDate() + 1);
+        const { data, error } = await supabaseClient
+            .from('stock_movements')
+            .select('movement_date, quantity_change')
+            .gte('movement_date', rangeStart)
+            .lt('movement_date', rangeEnd.toISOString());
+        if (error) throw error;
+
+        const received = Object.fromEntries(days.map(day => [dateKey(day), 0]));
+        const released = Object.fromEntries(days.map(day => [dateKey(day), 0]));
+        (data || []).forEach(movement => {
+            const key = dateKey(movement.movement_date);
+            const change = Number(movement.quantity_change || 0);
+            if (change > 0 && key in received) received[key] += change;
+            if (change < 0 && key in released) released[key] += Math.abs(change);
+        });
+
+        if (salesTrendChart) {
+            salesTrendChart.data.labels = days.map(day => day.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }));
+            salesTrendChart.data.datasets = [
+                { label: 'Received', data: Object.values(received), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.12)', tension: 0.3, fill: false },
+                { label: 'Released', data: Object.values(released), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)', tension: 0.3, fill: false }
+            ];
+            salesTrendChart.update();
+        }
+    } catch (error) {
+        console.error('Error loading staff movement analytics:', error);
+    }
+}
+
 async function updateAllCharts() {
     try {
         console.log('Updating all charts with real data...');
@@ -369,7 +631,7 @@ async function updateStockDistributionChart() {
     try {
         const { data: stockData, error } = await supabaseClient
             .from('inventory_stock')
-            .select('quantity');
+            .select('quantity, product:products(reorder_level, is_active)');
         
         if (error) throw error;
         
@@ -377,10 +639,11 @@ async function updateStockDistributionChart() {
         let lowStock = 0;
         let outOfStock = 0;
         
-        // Updated to use single quantity field
         stockData?.forEach(item => {
-            const quantity = item.quantity || 0;
-            if (quantity >= 10) inStock++;
+            if (item.product?.is_active === false) return;
+            const quantity = Number(item.quantity || 0);
+            const reorderLevel = Number(item.product?.reorder_level || 0);
+            if (quantity > reorderLevel) inStock++;
             else if (quantity > 0) lowStock++;
             else outOfStock++;
         });
@@ -554,25 +817,18 @@ function formatCurrency(value) {
 
 async function showLowStockNotifications() {
     try {
-        // Updated to use single quantity field
-        const { data: lowStockItems } = await supabaseClient
+        const { data: stockItems, error } = await supabaseClient
             .from('inventory_stock')
             .select(`
                 quantity,
-                product:products(product_name)
-            `)
-            .lt('quantity', 10)
-            .gt('quantity', 0)
-            .limit(3);
-
-        const { data: outOfStockItems } = await supabaseClient
-            .from('inventory_stock')
-            .select(`
-                quantity,
-                product:products(product_name)
-            `)
-            .eq('quantity', 0)
-            .limit(3);
+                product:products(product_name, reorder_level, is_active)
+            `);
+        if (error) throw error;
+        const attentionItems = (stockItems || []).filter(item =>
+            item.product?.is_active !== false && Number(item.quantity || 0) <= Number(item.product?.reorder_level || 0)
+        );
+        const outOfStockItems = attentionItems.filter(item => Number(item.quantity || 0) <= 0);
+        const lowStockItems = attentionItems.filter(item => Number(item.quantity || 0) > 0);
 
         if (outOfStockItems && outOfStockItems.length > 0) {
             const notificationMessage = `Out of stock alert: ${outOfStockItems.length} item${outOfStockItems.length > 1 ? 's' : ''} ${outOfStockItems.length === 1 ? 'is' : 'are'} out of stock!`;

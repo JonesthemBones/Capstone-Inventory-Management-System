@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Apply role-based access controls
     applyRoleBasedAccess();
+    window.authHelpers.revealProtectedContent();
     
     await loadInventory();
     initImageUpload();
@@ -36,16 +37,19 @@ async function loadUserRole() {
 }
 
 function applyRoleBasedAccess() {
-    // Hide backup/restore buttons for staff and cashier roles
+    // Staff and cashiers have a read-only inventory catalog.
     if (currentUserRole === 'staff' || currentUserRole === 'cashier') {
+        const title = document.querySelector('.page-title');
+        const subtitle = document.querySelector('.page-subtitle');
+        if (title) title.textContent = currentUserRole === 'cashier' ? 'Inventory Lookup' : 'Inventory Catalog';
+        if (subtitle) subtitle.textContent = 'View product availability and current stock levels (read-only)';
         const backupRestoreButtons = document.querySelectorAll('.role-backup-restore');
         backupRestoreButtons.forEach(btn => {
             btn.style.display = 'none';
         });
     }
     
-    // For cashiers: hide buttons that require staff or admin access
-    if (currentUserRole === 'cashier') {
+    if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
         const staffButtons = document.querySelectorAll('.role-requires-staff-or-admin');
         staffButtons.forEach(btn => {
             btn.style.display = 'none';
@@ -158,6 +162,10 @@ async function loadInventory(filters = {}) {
 }
 
 async function backfillMissingProductCodes(products) {
+    if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
+        return;
+    }
+
     if (!Array.isArray(products) || products.length === 0) {
         return;
     }
@@ -384,8 +392,7 @@ function displayInventory(products) {
         
         // Generate action buttons based on role
         let actionButtons = '';
-        if (currentUserRole === 'cashier') {
-            // Cashiers get no action buttons (read-only view)
+        if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
             actionButtons = '<span style="color: var(--text-secondary); font-size: 12px;">View Only</span>';
         } else {
             // Staff and admins get full action buttons
@@ -414,6 +421,14 @@ function displayInventory(products) {
                          class="product-thumbnail"
                          onclick="openImagePreviewModal('${product.image_url}', '${product.product_name.replace(/'/g, "\\'")}')"
                          loading="lazy">
+                </td>
+            `;
+        } else if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
+            thumbnailCell = `
+                <td class="product-thumbnail-cell">
+                    <div class="product-thumbnail-placeholder" title="No product image available">
+                        <i class="fas fa-image"></i>
+                    </div>
                 </td>
             `;
         } else {
@@ -454,8 +469,8 @@ function displayInventory(products) {
         `;
     }).join('');
     
-    // Only attach event listeners if the buttons exist (not for cashiers)
-    if (currentUserRole !== 'cashier') {
+    // Only attach mutation listeners for inventory managers.
+    if (currentUserRole !== 'cashier' && currentUserRole !== 'staff') {
         document.querySelectorAll('.adjust-btn').forEach(btn => {
             btn.addEventListener('click', () => openStockAdjustmentModal(btn.dataset.id));
         });

@@ -721,10 +721,13 @@ async function processReceiptImage() {
     document.getElementById('ocr-raw-output').hidden = true;
 
     try {
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
+        if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
         const response = await fetch(OCR_API_ENDPOINT, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
             },
             body: JSON.stringify({ imageDataUrl })
         });
@@ -828,18 +831,15 @@ async function saveAcceptedItemsToInventory() {
     if (saveBtn) saveBtn.disabled = true;
 
     try {
-        const currentUser = await window.authHelpers?.getCurrentUser?.();
-        const scanDate = new Date().toISOString();
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
+        if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
         const response = await fetch('/api/save-items-to-inventory', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
             },
-            body: JSON.stringify({
-                items: currentItems,
-                userId: currentUser?.id || null,
-                scan_date: scanDate
-            })
+            body: JSON.stringify({ items: currentItems, userId: currentUser?.id || null })
         });
 
         const result = await response.json();
@@ -918,6 +918,11 @@ async function saveAcceptedItemsToInventory() {
 }
 
 async function initReceiptScanner() {
+    const session = await window.authHelpers?.requireAuth?.();
+    if (!session) return;
+    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager', 'staff']);
+    if (!hasAccess) return;
+
     const imageInput = document.getElementById('receipt-image-input');
     const processButton = document.getElementById('process-receipt-btn');
     const clearButton = document.getElementById('clear-receipt-btn');
@@ -1037,6 +1042,7 @@ async function initReceiptScanner() {
     }
 
     await initAdminOCRSettings();
+    window.authHelpers.revealProtectedContent();
     clearReceiptSelection();
 }
 

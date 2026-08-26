@@ -4,6 +4,7 @@ const cors = require('cors');
 const passwordResetRoutes = require('./password-reset');
 const openRouterRoutes = require('./openrouter');
 const paymongoRoutes = require('./paymongo');
+const posRoutes = require('./pos-api');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,6 +49,7 @@ app.use(express.static(__dirname));
 app.use('/api', passwordResetRoutes);
 app.use('/api', openRouterRoutes);
 app.use('/api', paymongoRoutes);
+app.use('/api', posRoutes);
 
 // Direct test route
 app.post('/api/test-save', (req, res) => {
