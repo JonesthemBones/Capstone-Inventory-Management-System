@@ -57,6 +57,40 @@ function applyRoleBasedAccess() {
     }
 }
 
+function normalizeInboundPrice(value) {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : value;
+}
+
+function detectInboundPriceMismatch(movements) {
+    if (!Array.isArray(movements) || movements.length <= 1) {
+        return { hasMismatch: false, fields: [] };
+    }
+
+    const latestMovement = movements[0];
+    const latestPrices = {
+        unit_price: normalizeInboundPrice(latestMovement.unit_price),
+        selling_price: normalizeInboundPrice(latestMovement.selling_price)
+    };
+    const differentFields = new Set();
+
+    movements.slice(1).forEach(movement => {
+        ['unit_price', 'selling_price'].forEach(field => {
+            if (normalizeInboundPrice(movement[field]) !== latestPrices[field]) {
+                differentFields.add(field);
+            }
+        });
+    });
+
+    return {
+        hasMismatch: differentFields.size > 0,
+        fields: Array.from(differentFields)
+    };
+}
+
 async function loadInventory(filters = {}) {
     try {
         console.log('Starting inventory load...');
@@ -80,6 +114,29 @@ async function loadInventory(filters = {}) {
             throw error;
         }
         console.log('Query results:', products);
+
+        const { data: inboundMovements, error: movementsError } = await supabaseClient
+            .from('stock_movements')
+            .select('movement_id, product_id, quantity_change, unit_price, selling_price, movement_date, reference_type, notes')
+            .eq('movement_type', 'inbound')
+            .order('movement_date', { ascending: false });
+
+        if (movementsError) {
+            console.error('Stock Movements Query Error:', movementsError);
+            throw movementsError;
+        }
+
+        const inboundMovementsByProductId = (inboundMovements || []).reduce((lookup, movement) => {
+            if (!lookup[movement.product_id]) {
+                lookup[movement.product_id] = [];
+            }
+            lookup[movement.product_id].push(movement);
+            return lookup;
+        }, {});
+
+        (products || []).forEach(product => {
+            product.inbound_movements = inboundMovementsByProductId[product.product_id] || [];
+        });
 
         let filteredProducts = products || [];
         if (filters.status) {
@@ -133,13 +190,168 @@ async function backfillMissingProductCodes(products) {
     }
 }
 
+function parseBatchPrice(value) {
+    if (value.trim() === '') return null;
+    const price = Number(value);
+    if (!Number.isFinite(price) || price < 0) {
+        throw new Error('Prices must be valid non-negative numbers.');
+    }
+    return price;
+}
+
+function renderBatchMovementEditRow(movement) {
+    return `
+        <td>${movement.movement_date ? new Date(movement.movement_date).toLocaleString() : 'N/A'}</td>
+        <td>${movement.reference_type || 'N/A'}</td>
+        <td>${movement.quantity_change ?? 0}</td>
+        <td><input class="batch-price-input" type="number" min="0" step="0.01" data-field="unit_price" value="${movement.unit_price ?? ''}"></td>
+        <td><input class="batch-price-input" type="number" min="0" step="0.01" data-field="selling_price" value="${movement.selling_price ?? ''}"></td>
+        <td>${movement.notes || ''}</td>
+        <td class="batch-actions-cell">
+            <button type="button" class="icon-btn batch-save-btn" title="Save batch prices" aria-label="Save batch prices">
+                <i class="fas fa-check"></i>
+            </button>
+            <button type="button" class="icon-btn batch-cancel-btn" title="Cancel batch edit" aria-label="Cancel batch edit">
+                <i class="fas fa-times"></i>
+            </button>
+        </td>
+    `;
+}
+
+async function saveBatchMovementPrices(product, movement, row) {
+    const unitPriceInput = row.querySelector('[data-field="unit_price"]');
+    const sellingPriceInput = row.querySelector('[data-field="selling_price"]');
+    const unitPrice = parseBatchPrice(unitPriceInput.value);
+    const sellingPrice = parseBatchPrice(sellingPriceInput.value);
+
+    const { error } = await supabaseClient
+        .from('stock_movements')
+        .update({ unit_price: unitPrice, selling_price: sellingPrice })
+        .eq('movement_id', movement.movement_id);
+
+    if (error) throw error;
+
+    movement.unit_price = unitPrice;
+    movement.selling_price = sellingPrice;
+
+    if (product.inbound_movements?.[0]?.movement_id === movement.movement_id) {
+        const { error: productError } = await supabaseClient
+            .from('products')
+            .update({ unit_price: unitPrice, selling_price: sellingPrice })
+            .eq('product_id', product.product_id);
+
+        if (productError) throw productError;
+    }
+
+    await loadInventory(getFilters());
+}
+
+function renderInboundBatchHistory(product, batchRow) {
+    const movements = Array.isArray(product.inbound_movements) ? product.inbound_movements : [];
+    const batchCell = batchRow.querySelector('.batch-history-cell');
+
+    if (!batchCell) return;
+    if (movements.length === 0) {
+        batchCell.innerHTML = '<div class="batch-history-empty">No inbound stock movements found.</div>';
+        return;
+    }
+
+    const latestMovement = movements[0];
+    batchCell.innerHTML = `
+        <table class="batch-history-table">
+            <thead>
+                <tr>
+                    <th>Date Added</th>
+                    <th>Reference Type</th>
+                    <th>Quantity</th>
+                    <th>Unit Price</th>
+                    <th>Selling Price</th>
+                    <th>Notes</th>
+                    ${currentUserRole !== 'cashier' ? '<th>Actions</th>' : ''}
+                </tr>
+            </thead>
+            <tbody>
+                ${movements.map(movement => {
+                    const unitPriceMismatch = normalizeInboundPrice(movement.unit_price) !== normalizeInboundPrice(latestMovement.unit_price);
+                    const sellingPriceMismatch = normalizeInboundPrice(movement.selling_price) !== normalizeInboundPrice(latestMovement.selling_price);
+                    const dateAdded = movement.movement_date
+                        ? new Date(movement.movement_date).toLocaleString()
+                        : 'N/A';
+
+                    return `
+                        <tr data-movement-id="${movement.movement_id}">
+                            <td>${dateAdded}</td>
+                            <td>${movement.reference_type || 'N/A'}</td>
+                            <td>${movement.quantity_change ?? 0}</td>
+                            <td class="${unitPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.unit_price || 0)}</td>
+                            <td class="${sellingPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.selling_price || 0)}</td>
+                            <td>${movement.notes || ''}</td>
+                            ${currentUserRole !== 'cashier' ? '<td class="batch-actions-cell"><button type="button" class="icon-btn batch-edit-btn" title="Edit batch prices" aria-label="Edit batch prices"><i class="fas fa-pen"></i></button></td>' : ''}
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+
+    batchCell.querySelectorAll('.batch-edit-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const row = button.closest('tr');
+            const movement = product.inbound_movements?.find(item => item.movement_id === row?.dataset.movementId);
+            if (!row || !movement) return;
+
+            row.innerHTML = renderBatchMovementEditRow(movement);
+            row.querySelector('.batch-save-btn').addEventListener('click', async () => {
+                try {
+                    await saveBatchMovementPrices(product, movement, row);
+                } catch (error) {
+                    alert('Error saving batch prices: ' + error.message);
+                }
+            });
+            row.querySelector('.batch-cancel-btn').addEventListener('click', () => {
+                renderInboundBatchHistory(product, row.closest('.batch-history-row'));
+            });
+        });
+    });
+}
+
+function setupBatchHistoryToggles(products) {
+    const productsById = new Map(products.map(product => [product.product_id, product]));
+
+    document.querySelectorAll('.batch-toggle-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const productId = button.dataset.productId;
+            const batchRow = document.getElementById(`batch-history-${productId}`);
+            const product = productsById.get(productId);
+            if (!batchRow || !product) return;
+
+            const isOpening = batchRow.hidden;
+            if (isOpening && !batchRow.dataset.rendered) {
+                renderInboundBatchHistory(product, batchRow);
+                batchRow.dataset.rendered = 'true';
+            }
+
+            batchRow.hidden = !isOpening;
+            button.setAttribute('aria-expanded', String(isOpening));
+            button.setAttribute('aria-label', `${isOpening ? 'Hide' : 'Show'} batch history`);
+            button.title = `${isOpening ? 'Hide' : 'Show'} batch history`;
+            const icon = button.querySelector('i');
+            if (icon) {
+                icon.classList.remove('fa-chevron-down');
+                icon.classList.add('fa-chevron-right');
+            }
+        });
+    });
+
+}
+
 function displayInventory(products) {
     const tbody = document.getElementById('inventory-table-body');
     
     if (!products || products.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <td colspan="11" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                     No products found
                 </td>
             </tr>
@@ -151,6 +363,14 @@ function displayInventory(products) {
         const inventory = product.inventory_stock?.[0] || product.inventory_stock || product.inventory?.[0] || {};
         const quantity = inventory.quantity || 0;
         const totalValue = quantity * (product.unit_price || 0);
+        const latestSellingPrice = product.inbound_movements?.[0]?.selling_price ?? product.selling_price ?? 0;
+        const priceMismatch = detectInboundPriceMismatch(product.inbound_movements);
+        const unitCostMismatchBadge = priceMismatch.fields.includes('unit_price')
+            ? '<span class="price-mismatch-badge unit-cost-mismatch-badge" title="Inbound batches have different unit costs"><i class="fas fa-triangle-exclamation"></i> Unit cost varies</span>'
+            : '';
+        const sellingPriceMismatchBadge = priceMismatch.fields.includes('selling_price')
+            ? '<span class="price-mismatch-badge selling-price-mismatch-badge" title="Inbound batches have different selling prices"><i class="fas fa-triangle-exclamation"></i> Selling price varies</span>'
+            : '';
         
         console.log(`Displaying ${product.product_name}:`, {
             quantity: quantity
@@ -225,18 +445,26 @@ function displayInventory(products) {
         
         return `
             <tr data-product-id="${product.product_id}">
+                <td>
+                    <button type="button" class="icon-btn batch-toggle-btn" data-product-id="${product.product_id}" aria-expanded="false" aria-label="Show batch history" title="Show batch history">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </td>
                 ${thumbnailCell}
                 <td><strong>${product.product_name}</strong></td>
                 <td>${product.product_code || 'N/A'}</td>
                 <td>${product.unit_of_measure || 'N/A'}</td>
                 <td><strong>${quantity}</strong></td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                <td>${formatCurrency(product.unit_price || 0)}</td>
-                <td>${formatCurrency(product.selling_price || 0)}</td>
+                <td>${formatCurrency(product.unit_price || 0)}${unitCostMismatchBadge}</td>
+                <td>${formatCurrency(latestSellingPrice)}${sellingPriceMismatchBadge}</td>
                 <td><strong>${formatCurrency(totalValue)}</strong></td>
                 <td>
                     ${actionButtons}
                 </td>
+            </tr>
+            <tr id="batch-history-${product.product_id}" class="batch-history-row" data-product-id="${product.product_id}" hidden>
+                <td colspan="11" class="batch-history-cell"></td>
             </tr>
         `;
     }).join('');
@@ -255,6 +483,8 @@ function displayInventory(products) {
             btn.addEventListener('click', () => deleteProduct(btn.dataset.id));
         });
     }
+
+    setupBatchHistoryToggles(products);
 }
 
 function getStockAdjustmentElements() {

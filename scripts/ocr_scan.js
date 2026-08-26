@@ -839,7 +839,7 @@ async function saveAcceptedItemsToInventory() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${session.access_token}`
             },
-            body: JSON.stringify({ items: currentItems })
+            body: JSON.stringify({ items: currentItems, userId: currentUser?.id || null })
         });
 
         const result = await response.json();

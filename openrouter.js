@@ -356,8 +356,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
     if (!operator) return;
 
     try {
-        const { items } = req.body;
-        const userId = operator.user.id;
+        const { items, userId } = req.body;
         
         console.log('Save items request received:', items ? items.length : 'no items');
         
@@ -426,16 +425,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
             }
         });
 
-        const normalizeName = (text) => String(text || '')
-            .trim()
-            .replace(/\s+/g, ' ')
-            .toLowerCase();
-
-        const deduped = acceptedItems.reduce((map, item) => {
+        const dedupedItems = acceptedItems.map(item => {
             const productName = (item.name || '').trim();
-            const normalizedName = normalizeName(productName);
-            if (!normalizedName) return map;
-
             const quantity = parseInt(item.real_quantity) || parseInt(item.receipt_quantity) || 1;
             const price = parseFloat(item.price) || 0;
             const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
@@ -443,38 +434,18 @@ router.post('/save-items-to-inventory', async (req, res) => {
             const unitOfMeasure = String(item.unit_of_measure || item.unit || 'unit').trim() || 'unit';
             const comment = (item.comment || '').trim();
 
-            if (!map.has(normalizedName)) {
-                map.set(normalizedName, {
-                    originalName: productName,
-                    normalizedName,
-                    quantity,
-                    price,
-                    unit_price: unitPrice,
-                    selling_price: sellingPrice,
-                    unit_of_measure: unitOfMeasure,
-                    thumbnailUrl: item.thumbnailUrl || null,
-                    comments: comment ? [comment] : [],
-                    rawItems: [item]
-                });
-            } else {
-                const entry = map.get(normalizedName);
-                entry.quantity += quantity;
-                if (!entry.price && price) entry.price = price;
-                if (!entry.unit_price && unitPrice) entry.unit_price = unitPrice;
-                if (!entry.selling_price && sellingPrice) entry.selling_price = sellingPrice;
-                if (!entry.unit_of_measure && unitOfMeasure) entry.unit_of_measure = unitOfMeasure;
-                if (!entry.thumbnailUrl && item.thumbnailUrl) entry.thumbnailUrl = item.thumbnailUrl;
-                if (comment) entry.comments.push(comment);
-                entry.rawItems.push(item);
-            }
-            return map;
-        }, new Map());
-
-        const dedupedItems = Array.from(deduped.values()).map(entry => ({
-            ...entry,
-            quantity: entry.quantity,
-            comment: entry.comments.filter(Boolean).join(' | ')
-        }));
+            return {
+                ...item,
+                originalName: productName,
+                quantity,
+                price,
+                unit_price: unitPrice,
+                selling_price: sellingPrice,
+                unit_of_measure: unitOfMeasure,
+                thumbnailUrl: item.thumbnailUrl || null,
+                comment
+            };
+        });
 
         const results = {
             successful: [],
@@ -604,6 +575,9 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             quantity_before: previousQuantity,
                             quantity_after: newQuantity,
                             reference_type: 'receipt_scan',
+                            movement_date: scanDate,
+                            unit_price: unitPrice,
+                            selling_price: sellingPrice,
                             notes: `Receipt scan update. Receipt qty: ${quantity}` + (comment ? `. ${comment}` : '')
                         }]);
 
@@ -680,6 +654,9 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             quantity_before: 0,
                             quantity_after: quantity,
                             reference_type: 'receipt_scan',
+                            movement_date: scanDate,
+                            unit_price: unitPrice,
+                            selling_price: sellingPrice,
                             notes: `Receipt scan import. Receipt qty: ${item.receipt_quantity}` + (comment ? `. ${comment}` : '')
                         }]);
 
