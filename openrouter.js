@@ -117,7 +117,7 @@ async function ensureProductCodeForProduct(productId, productName, currentCode) 
     return productCode;
 }
 
-async function requireAdmin(req, res) {
+async function requireRoles(req, res, allowedRoles, errorMessage = 'Access denied.') {
     const authHeader = req.headers.authorization || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
     if (!token) {
@@ -143,12 +143,17 @@ async function requireAdmin(req, res) {
         return null;
     }
 
-    if ((userProfile.role || '').toLowerCase() !== 'admin') {
-        res.status(403).json({ error: 'Admin access required.' });
+    const normalizedRole = (userProfile.role || '').toLowerCase();
+    if (!allowedRoles.includes(normalizedRole)) {
+        res.status(403).json({ error: errorMessage });
         return null;
     }
 
-    return { user: data.user, role: userProfile.role.toLowerCase() };
+    return { user: data.user, role: normalizedRole };
+}
+
+async function requireAdmin(req, res) {
+    return requireRoles(req, res, ['admin'], 'Admin access required.');
 }
 
 async function logReceiptAuditEvent({ userId, actionType, tableAffected = 'receipt_scan', recordId = null, oldValues = {}, newValues = {} }) {
@@ -213,6 +218,9 @@ function imageExtension(mediaType) {
 }
 
 router.post('/ocr-scan', async (req, res) => {
+    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'VLM extraction access required.');
+    if (!operator) return;
+
     let tempDir;
     let tempFile;
 
@@ -344,8 +352,12 @@ router.post('/ocr-config', async (req, res) => {
 });
 
 router.post('/save-items-to-inventory', async (req, res) => {
+    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Inventory import access required.');
+    if (!operator) return;
+
     try {
-        const { items, userId } = req.body;
+        const { items } = req.body;
+        const userId = operator.user.id;
         
         console.log('Save items request received:', items ? items.length : 'no items');
         

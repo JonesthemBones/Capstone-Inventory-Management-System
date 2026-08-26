@@ -1803,6 +1803,38 @@ body {
   border-color: var(--text-primary);
 }
 
+/* Prevent role-specific pages from briefly displaying their default/admin
+   markup while authentication and role checks are still running. */
+.main-content[data-protected-content] {
+  position: relative;
+}
+
+.main-content[data-protected-content]:not([data-protected-ready]) > .page {
+  visibility: hidden;
+}
+
+.main-content[data-protected-content]:not([data-protected-ready])::before {
+  content: "Loading your workspace...";
+  position: fixed;
+  top: 50%;
+  left: var(--sidebar-width);
+  right: 0;
+  transform: translateY(-50%);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.main-content[data-protected-content][data-protected-ready] > .page {
+  animation: role-content-ready 160ms ease-out;
+}
+
+@keyframes role-content-ready {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Mobile Overlay (behind the dropdown) */
 .mobile-overlay {
   display: none;
@@ -1828,6 +1860,10 @@ body {
   .main-content {
     margin-left: 0;
     margin-top: 56px;
+  }
+
+  .main-content[data-protected-content]:not([data-protected-ready])::before {
+    top: calc(50% + 28px);
   }
 
   .page {

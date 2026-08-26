@@ -1,4 +1,4 @@
-const SIDEBAR_CACHE_VERSION = 'v2';
+const SIDEBAR_CACHE_VERSION = 'v3';
 
 const sidebarConfig = [
     {
@@ -6,11 +6,11 @@ const sidebarConfig = [
         title: 'Dashboard',
         icon: 'fas fa-tachometer-alt',
         path: 'pages/dashboard.html',
-        permission: ['admin', 'manager']
+        permission: ['admin', 'manager', 'cashier', 'staff']
     },
     {
         id: 'inventory',
-        title: 'Inventory Management',
+        title: 'Inventory',
         icon: 'fas fa-box',
         path: 'pages/inventory.html',
         permission: ['admin', 'manager', 'cashier', 'staff']
@@ -27,7 +27,7 @@ const sidebarConfig = [
         title: 'Reports',
         icon: 'fas fa-file-alt',
         path: 'pages/reports.html',
-        permission: ['admin', 'manager']
+        permission: ['admin', 'manager', 'cashier', 'staff']
     },
     {
         id: 'users',

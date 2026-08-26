@@ -1,12 +1,18 @@
 console.log('=== PROFESSIONAL REPORTS SCRIPT LOADING ===');
+let reportsRole = 'guest';
+let reportsUserId = null;
 
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('=== DOM CONTENT LOADED ===');
     
     // Require authentication and role check
     await window.authHelpers.requireAuth();
-    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager']);
+    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager', 'cashier', 'staff']);
     if (!hasAccess) return;
+    reportsRole = await window.authHelpers.getUserRole();
+    reportsUserId = (await window.authHelpers.getCurrentUser())?.id || null;
+    configureReportsForRole();
+    window.authHelpers.revealProtectedContent();
     
     // Check jsPDF library
     let jsPDFConstructor = null;
@@ -107,6 +113,14 @@ function updateReportPreview() {
     if (!preview) return;
     
     const previews = {
+        'cashier-sales': {
+            icon: 'fa-cash-register',
+            items: [
+                { icon: 'fa-peso-sign', title: 'Sales Summary', desc: 'Your revenue, transaction count, items sold, and average sale' },
+                { icon: 'fa-receipt', title: 'Transaction History', desc: 'Your transactions for the selected date range' },
+                { icon: 'fa-credit-card', title: 'Payment Breakdown', desc: 'Cash, QR/e-wallet, and other payment totals' }
+            ]
+        },
         'complete': {
             icon: 'fa-file-alt',
             items: [
@@ -230,6 +244,9 @@ async function generateReport(reportType, fromDate, toDate) {
     
     try {
         switch (reportType) {
+            case 'cashier-sales':
+                await generateCashierSalesReport(fromDate, toDate);
+                break;
             case 'complete':
                 await generateCompleteInventoryReport();
                 break;
@@ -249,6 +266,79 @@ async function generateReport(reportType, fromDate, toDate) {
         console.error('Report generation error:', error);
         throw error;
     }
+}
+
+function configureReportsForRole() {
+    const title = document.querySelector('.page-title');
+    const subtitle = document.querySelector('.page-subtitle');
+    const select = document.getElementById('report-type');
+    const quickReports = document.querySelectorAll('.quick-report-card');
+
+    if (reportsRole === 'cashier') {
+        if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Cashier Sales Reports';
+        if (subtitle) subtitle.textContent = 'Generate reports for your own sales and transactions';
+        if (select) select.innerHTML = '<option value="cashier-sales">My Sales & Transaction Report</option>';
+        quickReports.forEach(card => { card.style.display = 'none'; });
+    } else if (reportsRole === 'staff') {
+        if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Inventory Reports';
+        if (subtitle) subtitle.textContent = 'Generate inventory status, valuation, alerts, and movement reports';
+    } else {
+        if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Admin Reports';
+        if (subtitle) subtitle.textContent = 'Generate system-wide inventory and operational reports';
+    }
+}
+
+async function generateCashierSalesReport(fromDate, toDate) {
+    if (!reportsUserId) throw new Error('Unable to identify the current cashier');
+
+    const start = fromDate ? new Date(`${fromDate}T00:00:00`) : new Date();
+    if (!fromDate) start.setHours(0, 0, 0, 0);
+    const end = toDate ? new Date(`${toDate}T23:59:59.999`) : new Date(start);
+    if (!toDate) end.setHours(23, 59, 59, 999);
+
+    const { data, error } = await window.supabaseClient
+        .from('pos_transactions')
+        .select('transaction_number, transaction_datetime, total_amount, payment_method, pos_transaction_items(quantity)')
+        .eq('cashier_id', reportsUserId)
+        .eq('is_voided', false)
+        .gte('transaction_datetime', start.toISOString())
+        .lte('transaction_datetime', end.toISOString())
+        .order('transaction_datetime', { ascending: false });
+    if (error) throw error;
+    if (!data?.length) throw new Error('No transactions recorded for the selected period');
+
+    const totalSales = data.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
+    const itemsSold = data.reduce((sum, row) => sum +
+        (row.pos_transaction_items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0), 0);
+    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    let yPos = addReportHeader(doc, 'CASHIER SALES REPORT', 20);
+    yPos = addSectionHeader(doc, 'CASHIER ACCOUNT SUMMARY', yPos + 10);
+    doc.autoTable({
+        startY: yPos + 5,
+        body: [
+            ['Period', `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`],
+            ['Total Sales', formatPeso(totalSales)],
+            ['Transactions', String(data.length)],
+            ['Items Sold', String(itemsSold)],
+            ['Average Transaction', formatPeso(totalSales / data.length)]
+        ],
+        theme: 'grid'
+    });
+    yPos = doc.lastAutoTable.finalY + 10;
+    yPos = addSectionHeader(doc, 'TRANSACTION HISTORY', yPos);
+    doc.autoTable({
+        startY: yPos + 5,
+        head: [['Transaction', 'Date/Time', 'Items', 'Payment', 'Total']],
+        body: data.map(row => [
+            row.transaction_number || 'N/A',
+            new Date(row.transaction_datetime).toLocaleString(),
+            String((row.pos_transaction_items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0)),
+            row.payment_method || 'cash',
+            formatPeso(Number(row.total_amount || 0))
+        ]),
+        styles: { fontSize: 8 }
+    });
+    doc.save(`cashier-sales-${start.toISOString().slice(0, 10)}.pdf`);
 }
 
 function formatPeso(amount) {

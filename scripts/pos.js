@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         redirectByRole(currentUserRole);
         return;
     }
+    window.authHelpers.revealProtectedContent();
     
     setupEventListeners();
     setupKeyboardShortcuts();
@@ -25,9 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Send a rejected user to the page that's actually theirs, matching index.js's routing
 function redirectByRole(role) {
-    const target = (role === 'cashier' || role === 'staff')
-        ? '../pages/inventory.html'
-        : '../pages/dashboard.html';
+    const target = '../pages/dashboard.html';
     window.location.href = target;
 }
 
@@ -521,6 +520,7 @@ async function handlePayMongoReturn() {
         await loadTodaysTransactions();
         displayReceipt(transaction);
         clearCart(true);
+        await handleProductSearch({ target: document.getElementById('product-search') });
     } catch (error) {
         console.error('Error verifying PayMongo checkout:', error);
         alert(error.message);
@@ -591,11 +591,12 @@ async function handleCheckout() {
             await loadTodaysTransactions();
             displayReceipt(transaction);
             clearCart(true);
+            await handleProductSearch({ target: document.getElementById('product-search') });
         }
         
     } catch (error) {
         console.error('Error during checkout:', error);
-        alert('Error processing transaction. Please try again.');
+        alert(`Error processing transaction: ${error.message || 'Please try again.'}`);
     } finally {
         checkoutBtn.disabled = false;
     }
@@ -698,60 +699,15 @@ async function createPOSTransaction(options = {}) {
 
 async function finalizePOSTransaction(transactionId) {
     try {
-        // Get transaction items
-        const { data: items, error: itemsError } = await supabaseClient
-            .from('pos_transaction_items')
-            .select('product_id, quantity')
-            .eq('transaction_id', transactionId);
-        
-        if (itemsError) throw itemsError;
-        
-        // For each item, decrement inventory and create movement record
-        for (const item of items) {
-            const { data: currentStock, error: stockReadError } = await supabaseClient
-                .from('inventory_stock')
-                .select('quantity')
-                .eq('product_id', item.product_id)
-                .single();
+        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+        if (sessionError || !session) throw sessionError || new Error('Your session has expired.');
 
-            if (stockReadError) throw stockReadError;
-            const currentQuantity = Number(currentStock?.quantity || 0);
-            if (currentQuantity < item.quantity) {
-                throw new Error(`Insufficient stock for product ${item.product_id}.`);
-            }
-            const updatedQuantity = currentQuantity - Number(item.quantity);
-            
-            const { error: stockUpdateError } = await supabaseClient
-                .from('inventory_stock')
-                .update({
-                    quantity: updatedQuantity,
-                    last_sale_date: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('product_id', item.product_id);
-
-            if (stockUpdateError) throw stockUpdateError;
-            
-            // Create stock movement record
-            const { error: movementError } = await supabaseClient
-                .from('stock_movements')
-                .insert({
-                    product_id: item.product_id,
-                    movement_type: 'outbound',
-                    quantity_change: -item.quantity,
-                    quantity_before: currentQuantity,
-                    quantity_after: updatedQuantity,
-                    movement_date: new Date().toISOString(),
-                    // `outbound_order` is an allowed value in the database
-                    // reference_type check constraint and covers POS stock-outs.
-                    reference_type: 'outbound_order',
-                    reference_id: transactionId,
-                    performed_by: currentUserId,
-                    notes: 'Point of sale transaction'
-                });
-
-            if (movementError) throw movementError;
-        }
+        const response = await fetch(`/api/pos/transactions/${encodeURIComponent(transactionId)}/finalize`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to update inventory.');
         
         console.log('Inventory finalized for transaction:', transactionId);
         

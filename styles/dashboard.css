@@ -1,5 +1,9 @@
 /* Additional Dashboard-specific styles */
 
+[hidden] {
+    display: none !important;
+}
+
 .badge {
     display: inline-flex;
     align-items: center;
@@ -159,6 +163,11 @@
 /* Chart hover effects */
 .chart-card {
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chart-card.dashboard-panel-wide {
+    grid-column: 1 / -1;
+    width: 100%;
 }
 
 .chart-card:hover {

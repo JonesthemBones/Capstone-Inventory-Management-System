@@ -911,6 +911,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check role access - only admin and manager can access audit logs
     const hasAccess = await window.authHelpers.requireRole(['admin', 'manager']);
     if (!hasAccess) return;
+    window.authHelpers.revealProtectedContent();
     
     initializeEventListeners();
     await populateFilterDropdowns();
