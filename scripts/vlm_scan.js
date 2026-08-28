@@ -1,4 +1,5 @@
-const OCR_API_ENDPOINT = 'http://localhost:3001/api/ocr-scan';
+const VLM_API_ENDPOINTS = ['/api/vlm-scan', '/api/ocr-scan'];
+const VLM_CONFIG_ENDPOINTS = ['/api/vlm-config', '/api/ocr-config'];
 let currentReceiptImage = null;
 let currentItems = [];
 let thumbnailModalContext = {
@@ -9,11 +10,22 @@ let thumbnailModalContext = {
     pendingThumbnailFile: null
 };
 
+async function fetchWithLegacyFallback(endpoints, options) {
+    let response;
+
+    for (const endpoint of endpoints) {
+        response = await fetch(endpoint, options);
+        if (response.status !== 404) return response;
+    }
+
+    return response;
+}
+
 function setStatus(message, variant = 'neutral') {
-    const statusElement = document.getElementById('ocr-status');
+    const statusElement = document.getElementById('vlm-status');
     if (!statusElement) return;
     statusElement.textContent = message;
-    statusElement.className = `ocr-status ocr-status-${variant}`;
+    statusElement.className = `vlm-status vlm-status-${variant}`;
 }
 
 function setPreviewImage(dataUrl) {
@@ -45,7 +57,7 @@ function openReceiptImagePreview() {
 function closeReceiptImagePreview(event) {
     const modal = document.getElementById('receipt-image-modal');
     if (!modal) return;
-    if (event && event.target !== modal && event.target.closest('.ocr-image-modal-content')) {
+    if (event && event.target !== modal && event.target.closest('.vlm-image-modal-content')) {
         return;
     }
     modal.classList.remove('active');
@@ -59,13 +71,13 @@ function clearReceiptSelection() {
     currentReceiptImage = null;
     setPreviewImage(null);
     setStatus('No receipt selected. Choose or capture a receipt to begin.');
-    document.getElementById('ocr-items-grid').innerHTML = '';
-    document.getElementById('ocr-raw-output').hidden = true;
+    document.getElementById('vlm-items-grid').innerHTML = '';
+    document.getElementById('vlm-raw-output').hidden = true;
     currentItems = [];
     updateSaveButton();
 }
 
-function parseOCRResponse(responseBody) {
+function parseVLMResponse(responseBody) {
     if (!responseBody) return null;
 
     // If the backend already returned a structured object.
@@ -141,7 +153,7 @@ async function mergeWithExistingProductDefaults(items) {
             };
         });
     } catch (error) {
-        console.warn('Unable to merge OCR items with existing product defaults:', error);
+        console.warn('Unable to merge VLM items with existing product defaults:', error);
         return items;
     }
 }
@@ -192,7 +204,7 @@ async function lookupThumbnails(extractedItems) {
             };
         });
     } catch (error) {
-        console.warn('Unable to look up OCR item thumbnails:', error);
+        console.warn('Unable to look up VLM item thumbnails:', error);
         return unmatchedItems;
     }
 }
@@ -229,7 +241,7 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const comment = item.comment ?? item.notes ?? '';
         const accepted = item.accepted === true;
         return {
-            id: `ocr-item-${idx}`,
+            id: `vlm-item-${idx}`,
             name,
             price,
             unit_price: unitPrice,
@@ -259,19 +271,19 @@ function formatConfidence(value) {
 }
 
 function renderItems(items) {
-    const grid = document.getElementById('ocr-items-grid');
+    const grid = document.getElementById('vlm-items-grid');
     if (!grid) return;
 
     if (items.length === 0) {
-        grid.innerHTML = '<div class="ocr-empty-state">No items available. Scan a receipt to load items.</div>';
+        grid.innerHTML = '<div class="vlm-empty-state">No items available. Scan a receipt to load items.</div>';
         return;
     }
 
     grid.innerHTML = items.map((item, index) => {
-        const removedClass = item.removed ? 'ocr-card-removed' : '';
-        const acceptedClass = item.accepted && !item.removed ? 'ocr-card-accepted' : '';
+        const removedClass = item.removed ? 'vlm-card-removed' : '';
+        const acceptedClass = item.accepted && !item.removed ? 'vlm-card-accepted' : '';
         const statusLabel = item.removed ? 'Rejected' : item.accepted ? 'Accepted' : 'Pending';
-        const statusClass = item.removed ? 'ocr-item-status-rejected' : item.accepted ? 'ocr-item-status-accepted' : 'ocr-item-status-pending';
+        const statusClass = item.removed ? 'vlm-item-status-rejected' : item.accepted ? 'vlm-item-status-accepted' : 'vlm-item-status-pending';
         const acceptLabel = item.accepted && !item.removed ? 'Accepted' : 'Accept';
         const acceptIcon = item.accepted && !item.removed ? 'fa-check-circle' : 'fa-check';
         const rejectLabel = item.removed ? 'Restore' : 'Reject';
@@ -282,43 +294,43 @@ function renderItems(items) {
             : '<div class="product-thumbnail-placeholder" aria-label="No thumbnail"><i class="fas fa-image"></i></div>';
 
         return `
-            <article class="ocr-card-item ${removedClass} ${acceptedClass}" data-index="${index}">
-                <div class="ocr-card-item-header">
-                    <button type="button" class="ocr-card-item-thumbnail-column ocr-thumbnail-trigger" data-action="edit-thumbnail" data-index="${index}" aria-label="Change ${escapeHtml(item.name)} thumbnail">
+            <article class="vlm-card-item ${removedClass} ${acceptedClass}" data-index="${index}">
+                <div class="vlm-card-item-header">
+                    <button type="button" class="vlm-card-item-thumbnail-column vlm-thumbnail-trigger" data-action="edit-thumbnail" data-index="${index}" aria-label="Change ${escapeHtml(item.name)} thumbnail">
                         ${thumbnailHtml}
                     </button>
                     <div>
                         <h3>${escapeHtml(item.name)}</h3>
-                        <p class="ocr-card-item-meta">Unit Price: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
-                        <span class="ocr-item-status ${statusClass}">${statusLabel}</span>
+                        <p class="vlm-card-item-meta">Unit Price: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
+                        <span class="vlm-item-status ${statusClass}">${statusLabel}</span>
                     </div>
-                    <div class="ocr-card-item-actions">
-                        <button type="button" class="btn btn-secondary ocr-item-accept-btn" data-action="toggle-accept" ${disableAccept}>
+                    <div class="vlm-card-item-actions">
+                        <button type="button" class="btn btn-secondary vlm-item-accept-btn" data-action="toggle-accept" ${disableAccept}>
                             <i class="fas ${acceptIcon}"></i>
                             ${acceptLabel}
                         </button>
-                        <button type="button" class="btn btn-danger ocr-item-remove-btn" data-action="toggle-remove">
+                        <button type="button" class="btn btn-danger vlm-item-remove-btn" data-action="toggle-remove">
                             <i class="fas ${rejectIcon}"></i>
                             ${rejectLabel}
                         </button>
                     </div>
                 </div>
-                <div class="ocr-card-item-row">
-                    <div class="ocr-card-item-field">
+                <div class="vlm-card-item-row">
+                    <div class="vlm-card-item-field">
                         <label>Unit</label>
                         <input type="text" value="${escapeHtml(item.unit_of_measure || 'unit')}" data-field="unit_of_measure" data-index="${index}">
                     </div>
-                    <div class="ocr-card-item-field">
+                    <div class="vlm-card-item-field">
                         <label>Selling Price</label>
                         <input type="number" step="0.01" min="0" value="${Number.isFinite(item.selling_price) ? item.selling_price.toFixed(2) : '0.00'}" data-field="selling_price" data-index="${index}">
                     </div>
                 </div>
-                <div class="ocr-card-item-row">
-                    <div class="ocr-card-item-field">
+                <div class="vlm-card-item-row">
+                    <div class="vlm-card-item-field">
                         <label>Real Quantity</label>
                         <input type="number" step="1" min="0" value="${item.real_quantity}" data-field="real_quantity" data-index="${index}">
                     </div>
-                    <div class="ocr-card-item-field">
+                    <div class="vlm-card-item-field">
                         <label>Comment</label>
                         <textarea rows="2" data-field="comment" data-index="${index}">${escapeHtml(item.comment)}</textarea>
                     </div>
@@ -410,7 +422,7 @@ async function uploadThumbnailToStorage(file, inventoryId) {
     }
 
     const extension = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-    const itemPrefix = inventoryId ? `product-${inventoryId}` : 'ocr-item';
+    const itemPrefix = inventoryId ? `product-${inventoryId}` : 'vlm-item';
     const filePath = `product-images/${itemPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
     const { error: uploadError } = await window.supabaseClient.storage
         .from('product-images')
@@ -497,24 +509,24 @@ async function getSupabaseAccessToken() {
     return sessionResult?.data?.session?.access_token || null;
 }
 
-function getOcrConfigStatusElement() {
-    return document.getElementById('ocr-config-status');
+function getVlmConfigStatusElement() {
+    return document.getElementById('vlm-config-status');
 }
 
-function setOcrConfigStatus(message, variant = 'neutral') {
-    const status = getOcrConfigStatusElement();
+function setVlmConfigStatus(message, variant = 'neutral') {
+    const status = getVlmConfigStatusElement();
     if (!status) return;
     status.textContent = message;
     status.style.color = variant === 'error' ? '#b91c1c' : variant === 'success' ? '#047857' : 'var(--text-secondary)';
 }
 
-async function fetchAdminOCRConfig() {
+async function fetchAdminVLMConfig() {
     const token = await getSupabaseAccessToken();
     if (!token) {
         throw new Error('User is not authenticated.');
     }
 
-    const response = await fetch('http://localhost:3001/api/ocr-config', {
+    const response = await fetchWithLegacyFallback(VLM_CONFIG_ENDPOINTS, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
@@ -524,29 +536,29 @@ async function fetchAdminOCRConfig() {
 
     const result = await response.json();
     if (!response.ok) {
-        throw new Error(result?.error || 'Failed to load OCR config.');
+        throw new Error(result?.error || 'Failed to load VLM config.');
     }
 
     return result.config;
 }
 
-async function saveAdminOCRConfig() {
+async function saveAdminVLMConfig() {
     const token = await getSupabaseAccessToken();
     if (!token) {
-        alert('Unable to save OCR settings because you are not authenticated.');
+        alert('Unable to save VLM settings because you are not authenticated.');
         return;
     }
 
-    const apiKeyInput = document.getElementById('ocr-api-key-input');
-    const modelInput = document.getElementById('ocr-model-input');
-    const saveButton = document.getElementById('save-ocr-config-btn');
+    const apiKeyInput = document.getElementById('vlm-api-key-input');
+    const modelInput = document.getElementById('vlm-model-input');
+    const saveButton = document.getElementById('save-vlm-config-btn');
 
     if (!apiKeyInput || !modelInput || !saveButton) return;
 
     const apiKey = apiKeyInput.value.trim();
     const model = modelInput.value.trim();
     if (!apiKey || !model) {
-        setOcrConfigStatus('API key and model name are both required.', 'error');
+        setVlmConfigStatus('API key and model name are both required.', 'error');
         return;
     }
 
@@ -554,7 +566,7 @@ async function saveAdminOCRConfig() {
     saveButton.textContent = 'Saving...';
 
     try {
-        const response = await fetch('http://localhost:3001/api/ocr-config', {
+        const response = await fetchWithLegacyFallback(VLM_CONFIG_ENDPOINTS, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -565,23 +577,23 @@ async function saveAdminOCRConfig() {
 
         const result = await response.json();
         if (!response.ok) {
-            throw new Error(result?.error || 'Unable to save OCR settings.');
+            throw new Error(result?.error || 'Unable to save VLM settings.');
         }
 
-        setOcrConfigStatus('OCR settings saved successfully.', 'success');
+        setVlmConfigStatus('VLM settings saved successfully.', 'success');
         apiKeyInput.value = result.config?.apiKey || apiKey;
         modelInput.value = result.config?.model || model;
     } catch (error) {
-        console.error('OCR config save failed:', error);
-        setOcrConfigStatus(error.message || 'Failed to save OCR settings.', 'error');
+        console.error('VLM config save failed:', error);
+        setVlmConfigStatus(error.message || 'Failed to save VLM settings.', 'error');
     } finally {
         saveButton.disabled = false;
-        saveButton.innerHTML = '<i class="fas fa-save"></i> Save OCR Settings';
+        saveButton.innerHTML = '<i class="fas fa-save"></i> Save VLM Settings';
     }
 }
 
-async function initAdminOCRSettings() {
-    const adminSettings = document.getElementById('ocr-admin-settings');
+async function initAdminVLMSettings() {
+    const adminSettings = document.getElementById('vlm-admin-settings');
     if (!adminSettings) return;
 
     const role = await window.authHelpers.getUserRole?.();
@@ -591,30 +603,30 @@ async function initAdminOCRSettings() {
     }
 
     adminSettings.classList.remove('hidden');
-    setOcrConfigStatus('Loading admin OCR settings...', 'neutral');
+    setVlmConfigStatus('Loading admin VLM settings...', 'neutral');
 
-    const saveButton = document.getElementById('save-ocr-config-btn');
+    const saveButton = document.getElementById('save-vlm-config-btn');
     if (saveButton) {
         saveButton.addEventListener('click', (event) => {
             event.preventDefault();
-            saveAdminOCRConfig();
+            saveAdminVLMConfig();
         });
     }
 
     try {
-        const config = await fetchAdminOCRConfig();
-        const apiKeyInput = document.getElementById('ocr-api-key-input');
-        const modelInput = document.getElementById('ocr-model-input');
+        const config = await fetchAdminVLMConfig();
+        const apiKeyInput = document.getElementById('vlm-api-key-input');
+        const modelInput = document.getElementById('vlm-model-input');
         if (apiKeyInput) apiKeyInput.value = config?.apiKey || '';
         if (modelInput) modelInput.value = config?.model || '';
-        setOcrConfigStatus('Admin OCR settings loaded.', 'success');
+        setVlmConfigStatus('Admin VLM settings loaded.', 'success');
     } catch (error) {
-        console.error('Unable to load admin OCR settings:', error);
-        setOcrConfigStatus('Unable to load admin settings.', 'error');
+        console.error('Unable to load admin VLM settings:', error);
+        setVlmConfigStatus('Unable to load admin settings.', 'error');
     }
 }
 
-function handleOcrItemGridInput(event) {
+function handleVlmItemGridInput(event) {
     const target = event.target;
     if (!target) return;
 
@@ -638,12 +650,12 @@ function handleOcrItemGridInput(event) {
     currentItems[index][field] = value;
 }
 
-function handleOcrItemGridClick(event) {
+function handleVlmItemGridClick(event) {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
     event.preventDefault();
 
-    const parentCard = button.closest('.ocr-card-item');
+    const parentCard = button.closest('.vlm-card-item');
     const index = Number(parentCard?.getAttribute('data-index'));
     if (Number.isNaN(index) || !currentItems[index]) return;
 
@@ -717,13 +729,13 @@ async function processReceiptImage() {
     }
 
     setStatus('Scanning receipt... please wait.', 'warning');
-    document.getElementById('ocr-items-grid').innerHTML = '';
-    document.getElementById('ocr-raw-output').hidden = true;
+    document.getElementById('vlm-items-grid').innerHTML = '';
+    document.getElementById('vlm-raw-output').hidden = true;
 
     try {
         const { data: { session } } = await window.supabaseClient.auth.getSession();
         if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
-        const response = await fetch(OCR_API_ENDPOINT, {
+        const response = await fetchWithLegacyFallback(VLM_API_ENDPOINTS, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -734,16 +746,16 @@ async function processReceiptImage() {
 
         const result = await response.json();
         if (!response.ok) {
-            const message = result?.error || result?.message || 'Unable to scan receipt.';
+            const message = result?.details || result?.error || result?.message || 'Unable to scan receipt.';
             setStatus(`Scan failed: ${message}`, 'danger');
             return;
         }
 
-        const parsed = parseOCRResponse(result.receipt ?? result);
+        const parsed = parseVLMResponse(result.receipt ?? result);
         if (!parsed) {
-            setStatus('Unable to parse OCR output. Please try again with a clearer receipt image.', 'danger');
-            document.getElementById('ocr-raw-output').textContent = JSON.stringify(result.rawResponse || result, null, 2);
-            document.getElementById('ocr-raw-output').hidden = false;
+            setStatus('Unable to parse VLM output. Please try again with a clearer receipt image.', 'danger');
+            document.getElementById('vlm-raw-output').textContent = JSON.stringify(result.rawResponse || result, null, 2);
+            document.getElementById('vlm-raw-output').hidden = false;
             return;
         }
 
@@ -758,7 +770,7 @@ async function processReceiptImage() {
         currentItems = await lookupThumbnails(currentItems);
         renderItems(currentItems);
         setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.`, 'success');
-        const rawOutput = document.getElementById('ocr-raw-output');
+        const rawOutput = document.getElementById('vlm-raw-output');
         rawOutput.textContent = JSON.stringify(parsed, null, 2);
         rawOutput.hidden = false;
     } catch (error) {
@@ -898,7 +910,7 @@ async function saveAcceptedItemsToInventory() {
         }
 
         detailsHtml += `</ul>`;
-        const resultsDiv = document.getElementById('ocr-raw-output');
+        const resultsDiv = document.getElementById('vlm-raw-output');
         if (resultsDiv) {
             resultsDiv.innerHTML = detailsHtml;
             resultsDiv.hidden = false;
@@ -1035,13 +1047,13 @@ async function initReceiptScanner() {
         });
     }
 
-    const itemsGrid = document.getElementById('ocr-items-grid');
+    const itemsGrid = document.getElementById('vlm-items-grid');
     if (itemsGrid) {
-        itemsGrid.addEventListener('input', handleOcrItemGridInput);
-        itemsGrid.addEventListener('click', handleOcrItemGridClick);
+        itemsGrid.addEventListener('input', handleVlmItemGridInput);
+        itemsGrid.addEventListener('click', handleVlmItemGridClick);
     }
 
-    await initAdminOCRSettings();
+    await initAdminVLMSettings();
     window.authHelpers.revealProtectedContent();
     clearReceiptSelection();
 }

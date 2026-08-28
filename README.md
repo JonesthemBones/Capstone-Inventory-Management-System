@@ -22,7 +22,7 @@ A web-based inventory and point-of-sale system for Amacar Hardware. The current 
 - Frontend: HTML, CSS, vanilla JavaScript, Chart.js, and Supabase JS
 - Backend: Node.js and Express
 - Database/authentication/storage: Supabase (PostgreSQL, Auth, Realtime, and Storage)
-- Receipt extraction: OpenRouter vision models with a Python OCR helper
+- Receipt extraction: OpenRouter vision models with a Python VLM helper
 - Payments: PayMongo test checkout for QR/e-wallet payments
 - Email: Nodemailer/SMTP for OTP password reset
 
@@ -33,11 +33,11 @@ Capstone-Inventory-Management-System/
 |-- index.html                 # Login-aware application entry point
 |-- server.js                  # Express server and static hosting
 |-- password-reset.js          # OTP and password-reset API routes
-|-- openrouter.js              # VLM/OCR and inventory-import API routes
+|-- openrouter.js              # VLM extraction and inventory-import API routes
 |-- paymongo.js                # PayMongo checkout API routes
 |-- pos-api.js                 # Authenticated POS stock finalization
-|-- python_ocr.py              # Python receipt-image helper
-|-- ocr_settings.json          # Selected vision model configuration
+|-- python_vlm.py              # Python receipt-image helper
+|-- vlm_settings.json          # Selected vision model configuration
 |-- pages/                     # Application HTML pages
 |-- scripts/                   # Page logic and shared browser helpers
 |-- styles/                    # Shared and page-specific styles
@@ -74,7 +74,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-service-role-key
 
 OPENROUTER_API_KEY=your-openrouter-key
-VISION_MODEL=your-vision-model
+VLM_MODEL=your-vision-language-model
 PYTHON_BINARY=python
 
 EMAIL_USER=your-email@example.com
@@ -92,8 +92,8 @@ The browser Supabase URL and anonymous key are currently configured in `scripts/
 
 | Role | Main access |
 | --- | --- |
-| `admin` | Full navigation, user management, audit logs, inventory, reports, OCR, and POS |
-| `manager` | Dashboard, inventory, reports, OCR, and POS; selected management operations |
+| `admin` | Full navigation, user management, audit logs, inventory, reports, VLM, and POS |
+| `manager` | Dashboard, inventory, reports, VLM, and POS; selected management operations |
 | `cashier` | Dashboard, POS, and cashier-focused sales reports |
 | `staff` | Dashboard, inventory, reports, and VLM extraction workflows |
 
@@ -108,13 +108,15 @@ All routes are mounted under `/api`.
 | `POST` | `/send-otp` | Send a password-reset OTP |
 | `POST` | `/verify-otp` | Verify a password-reset OTP |
 | `POST` | `/reset-password` | Reset a user password |
-| `POST` | `/ocr-scan` | Process a receipt image |
-| `GET` | `/ocr-config` | Read the active OCR/VLM configuration |
-| `POST` | `/ocr-config` | Update OCR/VLM configuration |
+| `POST` | `/vlm-scan` | Process a receipt image |
+| `GET` | `/vlm-config` | Read the active VLM configuration |
+| `POST` | `/vlm-config` | Update VLM configuration |
 | `POST` | `/save-items-to-inventory` | Save extracted receipt items into inventory |
 | `POST` | `/paymongo/checkout` | Create a PayMongo test checkout session |
 | `GET` | `/paymongo/checkout/:checkoutId` | Verify a PayMongo checkout session |
 | `POST` | `/pos/transactions/:transactionId/finalize` | Deduct sold quantities and record stock movements |
+
+The former `/ocr-scan` and `/ocr-config` routes remain available as deprecated aliases for existing clients. New integrations should use the `/vlm-*` routes.
 
 Most product, transaction, report, and audit operations use the Supabase client directly rather than custom REST endpoints.
 
@@ -187,7 +189,7 @@ Check the SMTP variables and use an app password when required by the email prov
 
 ### Receipt extraction fails
 
-Check `OPENROUTER_API_KEY`, `VISION_MODEL`, `PYTHON_BINARY`, and the server console. The OCR configuration can also be inspected through `/api/ocr-config`.
+Check `OPENROUTER_API_KEY`, `VLM_MODEL`, `PYTHON_BINARY`, and the server console. The VLM configuration can also be inspected through `/api/vlm-config`.
 
 ## License
 

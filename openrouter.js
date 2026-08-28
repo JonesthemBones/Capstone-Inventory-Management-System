@@ -12,24 +12,24 @@ router.use((req, res, next) => {
     next();
 });
 
-const OCR_CONFIG_FILE = path.resolve(__dirname, './ocr_settings.json');
+const VLM_CONFIG_FILE = path.resolve(__dirname, './vlm_settings.json');
 const PYTHON_BINARY = process.env.PYTHON_BINARY || 'python';
-const PYTHON_SCRIPT = path.resolve(__dirname, './python_ocr.py');
+const PYTHON_SCRIPT = path.resolve(__dirname, './python_vlm.py');
 
 // Supabase client initialization
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wxhkhxsxftundtrahpst.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aGtoeHN4ZnR1bmR0cmFocHN0Iiwicm9zZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDU3ODc3NywiZXhwIjoyMDc2MTU0Nzc3fQ.R_J7gu9Z7T0CEp0t0Ky8XC0kHvHxDtpqX2t5Vz_K6lE';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-function loadOCRConfig() {
+function loadVLMConfig() {
     const defaults = {
         apiKey: process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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',
-        model: process.env.VISION_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
+        model: process.env.VLM_MODEL || process.env.VISION_MODEL || 'openrouter/free'
     };
 
     try {
-        if (fs.existsSync(OCR_CONFIG_FILE)) {
-            const raw = fs.readFileSync(OCR_CONFIG_FILE, 'utf8');
+        if (fs.existsSync(VLM_CONFIG_FILE)) {
+            const raw = fs.readFileSync(VLM_CONFIG_FILE, 'utf8');
             const parsed = JSON.parse(raw);
             if (parsed?.apiKey) {
                 defaults.apiKey = parsed.apiKey;
@@ -39,23 +39,23 @@ function loadOCRConfig() {
             }
         }
     } catch (error) {
-        console.error('Unable to load OCR settings file:', error);
+        console.error('Unable to load VLM settings file:', error);
     }
 
     return defaults;
 }
 
-function persistOCRConfig({ apiKey, model }) {
+function persistVLMConfig({ apiKey, model }) {
     const payload = {
         apiKey: String(apiKey || '').trim(),
         model: String(model || '').trim()
     };
 
     if (!payload.apiKey || !payload.model) {
-        throw new Error('Both apiKey and model are required to persist OCR settings.');
+        throw new Error('Both apiKey and model are required to persist VLM settings.');
     }
 
-    fs.writeFileSync(OCR_CONFIG_FILE, JSON.stringify(payload, null, 2), 'utf8');
+    fs.writeFileSync(VLM_CONFIG_FILE, JSON.stringify(payload, null, 2), 'utf8');
     return payload;
 }
 
@@ -217,7 +217,7 @@ function imageExtension(mediaType) {
     }
 }
 
-router.post('/ocr-scan', async (req, res) => {
+router.post(['/vlm-scan', '/ocr-scan'], async (req, res) => {
     const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'VLM extraction access required.');
     if (!operator) return;
 
@@ -238,19 +238,20 @@ router.post('/ocr-scan', async (req, res) => {
             return res.status(400).json({ error: 'Unable to parse the receipt image data URL.' });
         }
 
-        const ocrConfig = loadOCRConfig();
-        if (!ocrConfig.apiKey) {
+        const vlmConfig = loadVLMConfig();
+        if (!vlmConfig.apiKey) {
             return res.status(500).json({ error: 'OpenRouter API key is not configured on the server.' });
         }
 
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ocr-'));
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vlm-'));
         tempFile = path.join(tempDir, `receipt.${imageExtension(parsedImage.mediaType)}`);
         fs.writeFileSync(tempFile, Buffer.from(parsedImage.base64Data, 'base64'));
 
         const pythonEnv = {
             ...process.env,
-            OPENROUTER_API_KEY: ocrConfig.apiKey,
-            VISION_MODEL: ocrConfig.model
+            OPENROUTER_API_KEY: vlmConfig.apiKey,
+            VLM_MODEL: vlmConfig.model,
+            VISION_MODEL: vlmConfig.model
         };
 
         const child = spawn(PYTHON_BINARY, [PYTHON_SCRIPT, tempFile], {
@@ -275,25 +276,25 @@ router.post('/ocr-scan', async (req, res) => {
             fs.rmSync(tempDir, { recursive: true, force: true });
         }
 
-        console.log(`OCR subprocess exited with code ${exitCode}`);
+        console.log(`VLM subprocess exited with code ${exitCode}`);
         if (stderr) console.error('Python stderr:', stderr);
         if (stdout) console.log('Python stdout:', stdout);
 
         if (exitCode !== 0) {
-            console.error('OCR subprocess stderr:', stderr);
-            console.error('OCR subprocess stdout:', stdout);
+            console.error('VLM subprocess stderr:', stderr);
+            console.error('VLM subprocess stdout:', stdout);
             return res.status(502).json({
-                error: 'OCR subprocess failed.',
-                details: stderr.trim() || 'No stderr output from Python OCR subprocess.',
+                error: 'VLM subprocess failed.',
+                details: stderr.trim() || 'No stderr output from Python VLM subprocess.',
                 rawOutput: stdout.trim()
             });
         }
 
         const parsed = extractJsonObject(stdout.trim());
         if (!parsed) {
-            console.warn('Unable to parse JSON from Python OCR output');
+            console.warn('Unable to parse JSON from Python VLM output');
             return res.status(502).json({
-                error: 'Unable to parse JSON from OCR output.',
+                error: 'Unable to parse JSON from VLM output.',
                 rawContent: stdout.trim(),
                 stderr: stderr.trim()
             });
@@ -308,29 +309,29 @@ router.post('/ocr-scan', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('OCR scan error:', error);
+        console.error('VLM scan error:', error);
         if (tempDir) {
             try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (cleanupError) { /* ignore */ }
         }
         return res.status(500).json({
-            error: 'OCR scan failed on the server.',
+            error: 'VLM scan failed on the server.',
             message: error?.message || 'Unknown error.'
         });
     }
 });
 
-router.get('/ocr-config', async (req, res) => {
+router.get(['/vlm-config', '/ocr-config'], async (req, res) => {
     const admin = await requireAdmin(req, res);
     if (!admin) return;
 
-    const config = loadOCRConfig();
+    const config = loadVLMConfig();
     res.json({
         success: true,
         config
     });
 });
 
-router.post('/ocr-config', async (req, res) => {
+router.post(['/vlm-config', '/ocr-config'], async (req, res) => {
     const admin = await requireAdmin(req, res);
     if (!admin) return;
 
@@ -340,14 +341,14 @@ router.post('/ocr-config', async (req, res) => {
     }
 
     try {
-        const saved = persistOCRConfig({ apiKey, model });
+        const saved = persistVLMConfig({ apiKey, model });
         return res.json({
             success: true,
             config: saved
         });
     } catch (err) {
-        console.error('Unable to save OCR config:', err);
-        return res.status(500).json({ error: 'Unable to save OCR settings.' });
+        console.error('Unable to save VLM config:', err);
+        return res.status(500).json({ error: 'Unable to save VLM settings.' });
     }
 });
 
