@@ -357,7 +357,9 @@ router.post('/save-items-to-inventory', async (req, res) => {
     if (!operator) return;
 
     try {
-        const { items, userId } = req.body;
+        const { items } = req.body;
+        const userId = operator.user.id;
+        const scanDate = new Date().toISOString();
         
         console.log('Save items request received:', items ? items.length : 'no items');
         
@@ -577,6 +579,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             quantity_after: newQuantity,
                             reference_type: 'receipt_scan',
                             movement_date: scanDate,
+                            performed_by: userId,
                             unit_price: unitPrice,
                             selling_price: sellingPrice,
                             notes: `Receipt scan update. Receipt qty: ${quantity}` + (comment ? `. ${comment}` : '')
@@ -656,6 +659,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             quantity_after: quantity,
                             reference_type: 'receipt_scan',
                             movement_date: scanDate,
+                            performed_by: userId,
                             unit_price: unitPrice,
                             selling_price: sellingPrice,
                             notes: `Receipt scan import. Receipt qty: ${item.receipt_quantity}` + (comment ? `. ${comment}` : '')
