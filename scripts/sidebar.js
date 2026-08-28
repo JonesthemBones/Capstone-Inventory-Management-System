@@ -447,10 +447,16 @@ async function checkLowStockItems() {
     try {
         const { data: lowStockItems } = await window.supabaseClient
             .from('inventory_stock')
-            .select('quantity') 
-            .lt('quantity', 10)
-            .gt('quantity', 0);
-        return lowStockItems && lowStockItems.length > 0;
+            .select('quantity, product:products(reorder_level, maximum_stock, is_active)');
+        return (lowStockItems || []).some(item => {
+            if (item.product?.is_active === false) return false;
+            const quantity = Number(item.quantity || 0);
+            const maximumStock = Number(item.product?.maximum_stock || 0);
+            const lowThreshold = maximumStock > 0
+                ? Math.ceil(maximumStock * 0.25)
+                : Number(item.product?.reorder_level || 0);
+            return quantity > 0 && lowThreshold > 0 && quantity <= lowThreshold;
+        });
     } catch (error) {
         console.warn('⚠️  Error checking low stock:', error.message);
         return false;
@@ -461,9 +467,9 @@ async function checkOutOfStockItems() {
     try {
         const { data: outOfStockItems } = await window.supabaseClient
             .from('inventory_stock')
-            .select('quantity')
-            .eq('quantity', 0);
-        return outOfStockItems && outOfStockItems.length > 0;
+            .select('quantity, product:products(is_active)')
+            .lte('quantity', 0);
+        return (outOfStockItems || []).some(item => item.product?.is_active !== false);
     } catch (error) {
         console.warn('⚠️  Error checking out of stock:', error.message);
         return false;
@@ -508,21 +514,31 @@ function setupMobileMenu() {
         return;
     }
 
+    const setMenuOpen = (isOpen) => {
+        mobileNavDropdown.classList.toggle('open', isOpen);
+        mobileMenuToggle.setAttribute('aria-expanded', String(isOpen));
+        mobileMenuToggle.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+        mobileNavDropdown.setAttribute('aria-hidden', String(!isOpen));
+        document.body.classList.toggle('mobile-nav-open', isOpen);
+
+        const icon = mobileMenuToggle.querySelector('i');
+        icon?.classList.toggle('fa-bars', !isOpen);
+        icon?.classList.toggle('fa-times', isOpen);
+    };
+
+    mobileMenuToggle.setAttribute('aria-controls', mobileNavDropdown.id);
+    setMenuOpen(false);
+
     // Toggle menu open/close
     mobileMenuToggle.addEventListener('click', (e) => {
         e.stopPropagation();
-        mobileNavDropdown.classList.toggle('open');
-        const icon = mobileMenuToggle.querySelector('i');
-        icon.classList.toggle('fa-bars');
-        icon.classList.toggle('fa-times');
+        setMenuOpen(!mobileNavDropdown.classList.contains('open'));
     });
 
     // Close menu when item is clicked
     document.querySelectorAll('.mobile-nav-item').forEach(item => {
         item.addEventListener('click', () => {
-            mobileNavDropdown.classList.remove('open');
-            mobileMenuToggle.querySelector('i').classList.add('fa-bars');
-            mobileMenuToggle.querySelector('i').classList.remove('fa-times');
+            setMenuOpen(false);
         });
     });
 
@@ -532,9 +548,20 @@ function setupMobileMenu() {
                             mobileMenuToggle.contains(event.target);
         
         if (!isClickInside && mobileNavDropdown.classList.contains('open')) {
-            mobileNavDropdown.classList.remove('open');
-            mobileMenuToggle.querySelector('i').classList.add('fa-bars');
-            mobileMenuToggle.querySelector('i').classList.remove('fa-times');
+            setMenuOpen(false);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && mobileNavDropdown.classList.contains('open')) {
+            setMenuOpen(false);
+            mobileMenuToggle.focus();
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 768 && mobileNavDropdown.classList.contains('open')) {
+            setMenuOpen(false);
         }
     });
 }

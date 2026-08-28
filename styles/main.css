@@ -757,6 +757,11 @@ body {
   color: #92400e;
 }
 
+.status-critical {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
 .status-in {
   background-color: #d1fae5;
   color: #065f46;

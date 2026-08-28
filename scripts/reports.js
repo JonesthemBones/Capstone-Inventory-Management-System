@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Require authentication and role check
     await window.authHelpers.requireAuth();
-    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager', 'cashier', 'staff']);
+    const hasAccess = await window.authHelpers.requireRole(['admin', 'cashier', 'staff']);
     if (!hasAccess) return;
     reportsRole = await window.authHelpers.getUserRole();
     reportsUserId = (await window.authHelpers.getCurrentUser())?.id || null;
@@ -59,11 +59,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Quick report cards
     document.querySelectorAll('.quick-report-card').forEach(card => {
-        card.addEventListener('click', function() {
+        const selectQuickReport = function() {
             const type = this.getAttribute('data-type');
             if (reportTypeSelect) {
                 reportTypeSelect.value = type;
                 updateReportPreview();
+            }
+        };
+        card.addEventListener('click', selectQuickReport);
+        card.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                selectQuickReport.call(this);
             }
         });
     });
@@ -78,9 +85,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         console.log('Report params:', { reportType, fromDate, toDate });
         
-        // Validate date range for movement report
-        if (reportType === 'movement' && (!fromDate || !toDate)) {
-            alert('Please select a date range for Stock Movement Report');
+        const datedReports = ['movement', 'outbound-activity', 'sales-summary', 'product-sales', 'cashier-performance', 'voided-sales', 'cashier-sales', 'cashier-products', 'cashier-payments'];
+        if (datedReports.includes(reportType) && (!fromDate || !toDate)) {
+            alert('Please select both From and To dates for this report');
+            return;
+        }
+        if (fromDate && toDate && fromDate > toDate) {
+            alert('The From date cannot be later than the To date');
             return;
         }
         
@@ -119,6 +130,20 @@ function updateReportPreview() {
                 { icon: 'fa-peso-sign', title: 'Sales Summary', desc: 'Your revenue, transaction count, items sold, and average sale' },
                 { icon: 'fa-receipt', title: 'Transaction History', desc: 'Your transactions for the selected date range' },
                 { icon: 'fa-credit-card', title: 'Payment Breakdown', desc: 'Cash, QR/e-wallet, and other payment totals' }
+            ]
+        },
+        'cashier-products': {
+            items: [
+                { icon: 'fa-ranking-star', title: 'Your Product Ranking', desc: 'Products ranked from your own completed transactions' },
+                { icon: 'fa-boxes-stacked', title: 'Units and Revenue', desc: 'Units sold and line sales for each product' },
+                { icon: 'fa-chart-pie', title: 'Sales Contribution', desc: 'Each product’s share of your sales' }
+            ]
+        },
+        'cashier-payments': {
+            items: [
+                { icon: 'fa-credit-card', title: 'Your Payment Breakdown', desc: 'Cash and QR/e-wallet totals from your completed transactions' },
+                { icon: 'fa-tags', title: 'Your Discounts', desc: 'Discount totals and discount rate for the selected period' },
+                { icon: 'fa-calendar-day', title: 'Daily Reconciliation', desc: 'Daily transaction count and collected sales totals' }
             ]
         },
         'complete': {
@@ -220,6 +245,41 @@ function updateReportPreview() {
                     desc: 'Sales, damages, and outgoing adjustments'
                 }
             ]
+        },
+        'sales-summary': {
+            items: [
+                { icon: 'fa-peso-sign', title: 'Sales KPIs', desc: 'Net sales, transaction count, units, average sale, tax, and discounts' },
+                { icon: 'fa-calendar-day', title: 'Daily Sales Breakdown', desc: 'Revenue and transaction totals for every active sales day' },
+                { icon: 'fa-credit-card', title: 'Payment Methods', desc: 'Cash and QR/e-wallet transaction totals' },
+                { icon: 'fa-receipt', title: 'Transaction Detail', desc: 'Complete non-voided POS transaction register' }
+            ]
+        },
+        'product-sales': {
+            items: [
+                { icon: 'fa-ranking-star', title: 'Best-selling Products', desc: 'Products ranked by sales revenue' },
+                { icon: 'fa-boxes-stacked', title: 'Units Sold', desc: 'Quantity and transaction frequency per product' },
+                { icon: 'fa-coins', title: 'Sales Contribution', desc: 'Revenue and percentage contribution per item' }
+            ]
+        },
+        'voided-sales': {
+            items: [
+                { icon: 'fa-ban', title: 'Void Summary', desc: 'Voided transaction count and cancelled sales value' },
+                { icon: 'fa-list-check', title: 'Void Register', desc: 'Transaction, date, payment method, amount, and reason' }
+            ]
+        },
+        'cashier-performance': {
+            items: [
+                { icon: 'fa-users', title: 'Cashier Comparison', desc: 'Revenue, transaction count, units, discounts, and average sale by cashier' },
+                { icon: 'fa-ranking-star', title: 'Performance Ranking', desc: 'Cashiers ranked by completed sales value' },
+                { icon: 'fa-credit-card', title: 'Payment Activity', desc: 'Cash and QR/e-wallet totals handled by each cashier' }
+            ]
+        },
+        'outbound-activity': {
+            items: [
+                { icon: 'fa-arrow-up-from-bracket', title: 'Outbound Summary', desc: 'Dispatch count, total units, and unique products' },
+                { icon: 'fa-tags', title: 'Reason Breakdown', desc: 'Sales, returns, damage, transfers, and other outbound reasons' },
+                { icon: 'fa-clipboard-list', title: 'Dispatch Register', desc: 'Products, references, quantities, notes, and responsible users' }
+            ]
         }
     };
     
@@ -259,6 +319,27 @@ async function generateReport(reportType, fromDate, toDate) {
             case 'movement':
                 await generateMovementReport(fromDate, toDate);
                 break;
+            case 'sales-summary':
+                await generateSalesSummaryReport(fromDate, toDate);
+                break;
+            case 'product-sales':
+                await generateProductSalesReport(fromDate, toDate);
+                break;
+            case 'voided-sales':
+                await generateVoidedSalesReport(fromDate, toDate);
+                break;
+            case 'cashier-performance':
+                await generateCashierPerformanceReport(fromDate, toDate);
+                break;
+            case 'cashier-products':
+                await generateProductSalesReport(fromDate, toDate, reportsUserId, 'My-Product-Sales');
+                break;
+            case 'cashier-payments':
+                await generateCashierPaymentReport(fromDate, toDate);
+                break;
+            case 'outbound-activity':
+                await generateOutboundActivityReport(fromDate, toDate);
+                break;
             default:
                 throw new Error('Invalid report type');
         }
@@ -272,20 +353,248 @@ function configureReportsForRole() {
     const title = document.querySelector('.page-title');
     const subtitle = document.querySelector('.page-subtitle');
     const select = document.getElementById('report-type');
-    const quickReports = document.querySelectorAll('.quick-report-card');
 
     if (reportsRole === 'cashier') {
         if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Cashier Sales Reports';
         if (subtitle) subtitle.textContent = 'Generate reports for your own sales and transactions';
-        if (select) select.innerHTML = '<option value="cashier-sales">My Sales & Transaction Report</option>';
-        quickReports.forEach(card => { card.style.display = 'none'; });
+        if (select) select.innerHTML = `
+            <option value="cashier-sales">My Sales & Transaction Report</option>
+            <option value="cashier-products">My Product Sales Performance</option>
+            <option value="cashier-payments">My Payment & Discount Summary</option>`;
+        renderRoleQuickReports([
+            ['cashier-sales', 'fa-receipt', 'My Sales & Transactions', 'Revenue, transactions, items sold, and average sale'],
+            ['cashier-products', 'fa-ranking-star', 'My Product Performance', 'Your best-selling products, units, and sales contribution'],
+            ['cashier-payments', 'fa-credit-card', 'My Payment Summary', 'Cash, QR/e-wallet, discounts, tax, and daily reconciliation']
+        ]);
     } else if (reportsRole === 'staff') {
         if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Inventory Reports';
-        if (subtitle) subtitle.textContent = 'Generate inventory status, valuation, alerts, and movement reports';
+        if (subtitle) subtitle.textContent = 'Generate inventory status, valuation, alerts, movement, and outbound reports';
+        if (select) select.querySelector('optgroup[label="Point of Sale"]')?.remove();
+        renderRoleQuickReports([
+            ['complete', 'fa-boxes-stacked', 'Current Inventory', 'Complete product and stock status listing'],
+            ['low-stock', 'fa-triangle-exclamation', 'Low Stock Alert', 'Products requiring replenishment'],
+            ['valuation', 'fa-coins', 'Inventory Valuation', 'Cost, selling value, and potential margin'],
+            ['movement', 'fa-right-left', 'Stock Movement', 'Inbound, outbound, and adjustment history'],
+            ['outbound-activity', 'fa-truck-ramp-box', 'Outbound Activity', 'Dispatches, reasons, products, and quantities']
+        ]);
     } else {
         if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Admin Reports';
-        if (subtitle) subtitle.textContent = 'Generate system-wide inventory and operational reports';
+        if (subtitle) subtitle.textContent = 'Generate system-wide inventory, POS, cashier, and operational reports';
+        renderRoleQuickReports([
+            ['complete', 'fa-boxes-stacked', 'Current Inventory', 'Complete product and stock status listing'],
+            ['low-stock', 'fa-triangle-exclamation', 'Low Stock Alert', 'Products requiring replenishment'],
+            ['valuation', 'fa-coins', 'Inventory Valuation', 'Cost, selling value, and potential margin'],
+            ['movement', 'fa-right-left', 'Stock Movement', 'Inbound, outbound, and adjustment history'],
+            ['outbound-activity', 'fa-truck-ramp-box', 'Outbound Activity', 'Dispatches, reasons, products, and quantities'],
+            ['sales-summary', 'fa-chart-line', 'POS Sales Summary', 'Revenue, payments, discounts, and daily totals'],
+            ['product-sales', 'fa-ranking-star', 'Product Performance', 'Best sellers, units sold, and revenue'],
+            ['cashier-performance', 'fa-users', 'Sales by Cashier', 'Compare cashier sales and transaction activity'],
+            ['voided-sales', 'fa-ban', 'Voided Transactions', 'Cancelled sales value and void reasons']
+        ]);
     }
+}
+
+function renderRoleQuickReports(reports) {
+    const grid = document.getElementById('quick-report-grid');
+    if (!grid) return;
+    grid.innerHTML = reports.map(([type, icon, title, description]) => `
+        <div class="quick-report-card" data-type="${type}" tabindex="0" role="button"
+             aria-label="Select ${title} report"
+             style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+            <i class="fas ${icon}" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
+            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">${title}</h4>
+            <p style="font-size: 12px; color: var(--text-secondary);">${description}</p>
+        </div>
+    `).join('');
+}
+
+function reportPeriod(fromDate, toDate) {
+    return {
+        start: new Date(`${fromDate}T00:00:00`),
+        end: new Date(`${toDate}T23:59:59.999`)
+    };
+}
+
+async function fetchPosTransactions(fromDate, toDate, active, cashierId = null) {
+    const { start, end } = reportPeriod(fromDate, toDate);
+    let query = window.supabaseClient
+        .from('pos_transactions')
+        .select('cashier_id, transaction_number, transaction_datetime, subtotal, discount_amount, tax_amount, total_amount, payment_method, is_active, void_reason, pos_transaction_items(product_id, product_name, quantity, unit_price, line_total)')
+        .eq('is_active', active)
+        .gte('transaction_datetime', start.toISOString())
+        .lte('transaction_datetime', end.toISOString());
+    if (cashierId) query = query.eq('cashier_id', cashierId);
+    const { data, error } = await query.order('transaction_datetime', { ascending: false });
+    if (error) throw error;
+    return { rows: data || [], start, end };
+}
+
+async function generateSalesSummaryReport(fromDate, toDate) {
+    const { rows, start, end } = await fetchPosTransactions(fromDate, toDate, true);
+    if (!rows.length) throw new Error('No completed POS sales found for the selected period');
+    const sum = key => rows.reduce((total, row) => total + Number(row[key] || 0), 0);
+    const units = rows.reduce((total, row) => total + (row.pos_transaction_items || []).reduce((n, item) => n + Number(item.quantity || 0), 0), 0);
+    const payments = {};
+    const daily = {};
+    rows.forEach(row => {
+        const method = row.payment_method === 'bank_transfer' ? 'QR / E-wallet' : (row.payment_method || 'Cash');
+        payments[method] ||= { count: 0, total: 0 };
+        payments[method].count++;
+        payments[method].total += Number(row.total_amount || 0);
+        const day = new Date(row.transaction_datetime).toLocaleDateString('en-PH');
+        daily[day] ||= { count: 0, total: 0 };
+        daily[day].count++;
+        daily[day].total += Number(row.total_amount || 0);
+    });
+    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    let y = addReportHeader(doc, 'POS SALES SUMMARY REPORT', 20);
+    y = addSectionHeader(doc, 'PERFORMANCE SUMMARY', y + 10);
+    doc.autoTable({ startY: y, body: [
+        ['Period', `${start.toLocaleDateString('en-PH')} - ${end.toLocaleDateString('en-PH')}`],
+        ['Net Sales', formatPeso(sum('total_amount'))], ['Transactions', String(rows.length)],
+        ['Units Sold', String(units)], ['Average Transaction', formatPeso(sum('total_amount') / rows.length)],
+        ['Discounts Given', formatPeso(sum('discount_amount'))], ['Tax Collected', formatPeso(sum('tax_amount'))]
+    ], theme: 'grid' });
+    y = addSectionHeader(doc, 'DAILY SALES', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Date', 'Transactions', 'Net Sales']], body: Object.entries(daily).map(([day, v]) => [day, String(v.count), formatPeso(v.total)]), theme: 'striped' });
+    y = addSectionHeader(doc, 'PAYMENT METHOD BREAKDOWN', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Payment Method', 'Transactions', 'Amount']], body: Object.entries(payments).map(([method, v]) => [method, String(v.count), formatPeso(v.total)]), theme: 'striped' });
+    y = addSectionHeader(doc, 'TRANSACTION REGISTER', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Transaction', 'Date/Time', 'Payment', 'Discount', 'Total']], body: rows.map(r => [r.transaction_number || 'N/A', new Date(r.transaction_datetime).toLocaleString('en-PH'), r.payment_method || 'cash', formatPeso(Number(r.discount_amount || 0)), formatPeso(Number(r.total_amount || 0))]), styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.save(`POS-Sales-Summary-${fromDate}-to-${toDate}.pdf`);
+}
+
+async function generateProductSalesReport(fromDate, toDate, cashierId = null, filenamePrefix = 'Product-Sales-Performance') {
+    const { rows } = await fetchPosTransactions(fromDate, toDate, true, cashierId);
+    if (!rows.length) throw new Error('No completed POS sales found for the selected period');
+    const products = {};
+    rows.forEach(row => (row.pos_transaction_items || []).forEach(item => {
+        const key = item.product_id || item.product_name;
+        products[key] ||= { name: item.product_name || 'Unknown product', units: 0, revenue: 0, transactions: 0 };
+        products[key].units += Number(item.quantity || 0);
+        products[key].revenue += Number(item.line_total ?? (Number(item.unit_price || 0) * Number(item.quantity || 0)));
+        products[key].transactions++;
+    }));
+    const ranked = Object.values(products).sort((a, b) => b.revenue - a.revenue);
+    const totalRevenue = ranked.reduce((sum, item) => sum + item.revenue, 0);
+    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    let y = addReportHeader(doc, 'PRODUCT SALES PERFORMANCE REPORT', 20);
+    y = addSectionHeader(doc, 'PRODUCT RANKING', y + 10);
+    doc.autoTable({ startY: y, head: [['Rank', 'Product', 'Units Sold', 'Line Sales', 'Sales Share']], body: ranked.map((item, i) => [String(i + 1), item.name, String(item.units), formatPeso(item.revenue), totalRevenue ? `${(item.revenue / totalRevenue * 100).toFixed(1)}%` : '0.0%']), theme: 'striped', styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.save(`${filenamePrefix}-${fromDate}-to-${toDate}.pdf`);
+}
+
+async function generateCashierPerformanceReport(fromDate, toDate) {
+    const { rows } = await fetchPosTransactions(fromDate, toDate, true);
+    if (!rows.length) throw new Error('No completed POS sales found for the selected period');
+    const cashierIds = [...new Set(rows.map(row => row.cashier_id).filter(Boolean))];
+    let users = [];
+    if (cashierIds.length) {
+        const { data, error: usersError } = await window.supabaseClient
+            .from('users').select('user_id, first_name, last_name, email').in('user_id', cashierIds);
+        if (usersError) throw usersError;
+        users = data || [];
+    }
+    const names = Object.fromEntries((users || []).map(user => [user.user_id, `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'Unknown cashier']));
+    const stats = {};
+    rows.forEach(row => {
+        const id = row.cashier_id || 'unknown';
+        stats[id] ||= { sales: 0, transactions: 0, units: 0, discounts: 0, cash: 0, digital: 0 };
+        const item = stats[id];
+        const sale = Number(row.total_amount || 0);
+        item.sales += sale;
+        item.transactions++;
+        item.discounts += Number(row.discount_amount || 0);
+        item.units += (row.pos_transaction_items || []).reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+        if (row.payment_method === 'bank_transfer') item.digital += sale;
+        else item.cash += sale;
+    });
+    const ranked = Object.entries(stats).sort((a, b) => b[1].sales - a[1].sales);
+    const doc = new (window.jspdf?.jsPDF || window.jsPDF)('landscape');
+    let y = addReportHeader(doc, 'SALES BY CASHIER REPORT', 20);
+    y = addSectionHeader(doc, 'CASHIER PERFORMANCE RANKING', y + 10);
+    doc.autoTable({ startY: y, head: [['Rank', 'Cashier', 'Transactions', 'Units', 'Net Sales', 'Average Sale', 'Discounts', 'Cash', 'QR / E-wallet']], body: ranked.map(([id, v], index) => [String(index + 1), names[id] || 'Unknown cashier', String(v.transactions), String(v.units), formatPeso(v.sales), formatPeso(v.sales / v.transactions), formatPeso(v.discounts), formatPeso(v.cash), formatPeso(v.digital)]), styles: { fontSize: 8 }, theme: 'striped', didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.save(`Sales-by-Cashier-${fromDate}-to-${toDate}.pdf`);
+}
+
+async function generateCashierPaymentReport(fromDate, toDate) {
+    if (!reportsUserId) throw new Error('Unable to identify the current cashier');
+    const { rows } = await fetchPosTransactions(fromDate, toDate, true, reportsUserId);
+    if (!rows.length) throw new Error('You have no completed POS sales for the selected period');
+    const payments = {};
+    const daily = {};
+    let grossSales = 0;
+    let netSales = 0;
+    let discounts = 0;
+    let tax = 0;
+    rows.forEach(row => {
+        const method = row.payment_method === 'bank_transfer' ? 'QR / E-wallet' : (row.payment_method || 'Cash');
+        payments[method] ||= { count: 0, amount: 0 };
+        payments[method].count++;
+        payments[method].amount += Number(row.total_amount || 0);
+        const day = new Date(row.transaction_datetime).toLocaleDateString('en-PH');
+        daily[day] ||= { count: 0, amount: 0 };
+        daily[day].count++;
+        daily[day].amount += Number(row.total_amount || 0);
+        grossSales += Number(row.subtotal || 0);
+        netSales += Number(row.total_amount || 0);
+        discounts += Number(row.discount_amount || 0);
+        tax += Number(row.tax_amount || 0);
+    });
+    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    let y = addReportHeader(doc, 'MY PAYMENT AND DISCOUNT SUMMARY', 20);
+    y = addSectionHeader(doc, 'RECONCILIATION SUMMARY', y + 10);
+    doc.autoTable({ startY: y, body: [
+        ['Transactions', String(rows.length)], ['Gross Sales', formatPeso(grossSales)],
+        ['Discounts Given', formatPeso(discounts)], ['Discount Rate', grossSales ? `${(discounts / grossSales * 100).toFixed(2)}%` : '0.00%'],
+        ['Tax Collected', formatPeso(tax)], ['Net Sales Collected', formatPeso(netSales)]
+    ], theme: 'grid' });
+    y = addSectionHeader(doc, 'PAYMENT METHOD BREAKDOWN', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Payment Method', 'Transactions', 'Amount']], body: Object.entries(payments).map(([method, value]) => [method, String(value.count), formatPeso(value.amount)]), theme: 'striped' });
+    y = addSectionHeader(doc, 'DAILY RECONCILIATION', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Date', 'Transactions', 'Collected']], body: Object.entries(daily).map(([day, value]) => [day, String(value.count), formatPeso(value.amount)]), theme: 'striped', didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.save(`My-Payment-Discount-Summary-${fromDate}-to-${toDate}.pdf`);
+}
+
+async function generateOutboundActivityReport(fromDate, toDate) {
+    const { data: rows, error } = await window.supabaseClient.from('stock_movements').select(`movement_date, reference_id, quantity_change, notes, performed_by, products(product_code, product_name)`).eq('movement_type', 'outbound').gte('movement_date', `${fromDate}T00:00:00`).lte('movement_date', `${toDate}T23:59:59.999`).order('movement_date', { ascending: false });
+    if (error) throw error;
+    if (!rows?.length) throw new Error('No outbound activity found for the selected period');
+    const userIds = [...new Set(rows.map(row => row.performed_by).filter(Boolean))];
+    let names = {};
+    if (userIds.length) {
+        const { data: users } = await window.supabaseClient.from('users').select('user_id, first_name, last_name').in('user_id', userIds);
+        names = Object.fromEntries((users || []).map(user => [user.user_id, `${user.first_name || ''} ${user.last_name || ''}`.trim()]));
+    }
+    const reasons = {};
+    rows.forEach(row => {
+        const reason = (row.notes || 'Other').split(':')[0].trim() || 'Other';
+        reasons[reason] = (reasons[reason] || 0) + Math.abs(Number(row.quantity_change || 0));
+    });
+    const units = rows.reduce((sum, row) => sum + Math.abs(Number(row.quantity_change || 0)), 0);
+    const products = new Set(rows.map(row => row.products?.product_code).filter(Boolean)).size;
+    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    let y = addReportHeader(doc, 'OUTBOUND ACTIVITY REPORT', 20);
+    y = addSectionHeader(doc, 'OUTBOUND SUMMARY', y + 10);
+    doc.autoTable({ startY: y, body: [['Transactions', String(rows.length)], ['Units Dispatched', String(units)], ['Unique Products', String(products)]], theme: 'grid' });
+    y = addSectionHeader(doc, 'OUTBOUND BY REASON', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Reason', 'Units']], body: Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([reason, count]) => [reason, String(count)]), theme: 'striped' });
+    y = addSectionHeader(doc, 'DISPATCH REGISTER', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Date', 'Product', 'Reference', 'Qty', 'Performed By', 'Notes']], body: rows.map(row => [new Date(row.movement_date).toLocaleString('en-PH'), `${row.products?.product_code || ''} ${row.products?.product_name || 'Unknown'}`.trim(), row.reference_id || 'N/A', String(Math.abs(Number(row.quantity_change || 0))), names[row.performed_by] || 'System', row.notes || '']), styles: { fontSize: 7 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.save(`Outbound-Activity-${fromDate}-to-${toDate}.pdf`);
+}
+
+async function generateVoidedSalesReport(fromDate, toDate) {
+    const { rows } = await fetchPosTransactions(fromDate, toDate, false);
+    if (!rows.length) throw new Error('No voided POS transactions found for the selected period');
+    const value = rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
+    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    let y = addReportHeader(doc, 'VOIDED POS TRANSACTIONS REPORT', 20);
+    y = addSectionHeader(doc, 'VOID SUMMARY', y + 10);
+    doc.autoTable({ startY: y, body: [['Voided Transactions', String(rows.length)], ['Cancelled Sales Value', formatPeso(value)]], theme: 'grid' });
+    y = addSectionHeader(doc, 'VOID REGISTER', doc.lastAutoTable.finalY + 12);
+    doc.autoTable({ startY: y, head: [['Transaction', 'Date/Time', 'Payment', 'Amount', 'Reason']], body: rows.map(r => [r.transaction_number || 'N/A', new Date(r.transaction_datetime).toLocaleString('en-PH'), r.payment_method || 'cash', formatPeso(Number(r.total_amount || 0)), r.void_reason || 'Not provided']), styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.save(`Voided-POS-Transactions-${fromDate}-to-${toDate}.pdf`);
 }
 
 async function generateCashierSalesReport(fromDate, toDate) {
@@ -300,7 +609,7 @@ async function generateCashierSalesReport(fromDate, toDate) {
         .from('pos_transactions')
         .select('transaction_number, transaction_datetime, total_amount, payment_method, pos_transaction_items(quantity)')
         .eq('cashier_id', reportsUserId)
-        .eq('is_voided', false)
+        .eq('is_active', true)
         .gte('transaction_datetime', start.toISOString())
         .lte('transaction_datetime', end.toISOString())
         .order('transaction_datetime', { ascending: false });
@@ -877,14 +1186,16 @@ async function generateMovementReport(fromDate, toDate) {
 // ===== HELPER FUNCTIONS =====
 
 function addReportHeader(doc, title, yPos) {
+    const pageWidth = doc.internal.pageSize.width;
+    const centerX = pageWidth / 2;
     // Company/System name
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
-    doc.text('AMACAR HARDWARE INVENTORY SYSTEM', 105, yPos, { align: 'center' });
+    doc.text('AMACAR HARDWARE INVENTORY SYSTEM', centerX, yPos, { align: 'center' });
     
     // Report title
     doc.setFontSize(16);
-    doc.text(title, 105, yPos + 8, { align: 'center' });
+    doc.text(title, centerX, yPos + 8, { align: 'center' });
     
     // Date and time
     doc.setFontSize(9);
@@ -900,11 +1211,11 @@ function addReportHeader(doc, title, yPos) {
         minute: '2-digit',
         hour12: true
     });
-    doc.text(`Generated: ${dateStr} at ${timeStr}`, 105, yPos + 14, { align: 'center' });
+    doc.text(`Generated: ${dateStr} at ${timeStr}`, centerX, yPos + 14, { align: 'center' });
     
     // Divider line
     doc.setDrawColor(200, 200, 200);
-    doc.line(14, yPos + 18, 196, yPos + 18);
+    doc.line(14, yPos + 18, pageWidth - 14, yPos + 18);
     
     return yPos + 18;
 }
@@ -922,11 +1233,12 @@ function addSectionHeader(doc, title, yPos) {
 
 function addPageFooter(doc, pageNumber) {
     const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
     doc.text(
         `Page ${pageNumber}`,
-        105,
+        pageWidth / 2,
         pageHeight - 10,
         { align: 'center' }
     );

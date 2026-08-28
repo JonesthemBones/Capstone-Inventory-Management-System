@@ -78,7 +78,7 @@ app.listen(PORT, () => {
   console.log(`  POST /api/send-otp`);
   console.log(`  POST /api/verify-otp`);
   console.log(`  POST /api/reset-password`);
-  console.log(`  POST /api/ocr-scan`);
+  console.log(`  POST /api/vlm-scan`);
   console.log(`  POST /api/save-items-to-inventory`);
   console.log(`\n`);
 });

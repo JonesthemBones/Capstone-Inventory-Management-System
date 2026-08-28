@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="../styles/help.css">
     <link rel="stylesheet" href="../styles/dark-mode.css">
     <link rel="stylesheet" href="../styles/inventory-thumbnail.css">
+    <link rel="stylesheet" href="../styles/inventory.css">
+    <link rel="stylesheet" href="../styles/mobile.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -20,7 +22,6 @@
     <script src="../scripts/sidebar.js"></script>
     <script src="../scripts/help.js"></script>
     <script src="../scripts/dark-mode.js"></script>
-    <script src="../scripts/mobile-responsive.js"></script>
 
     <div class="app-container">
         <main class="main-content" data-protected-content aria-busy="true">
@@ -38,57 +39,41 @@
                             <h3 class="table-title">Inventory Items</h3>
                             <p class="table-subtitle" id="inventory-count">0 items in inventory</p>
                         </div>
-                        <div class="table-actions">
+                        <div class="inventory-toolbar">
                             <div class="search-box">
                                 <i class="fas fa-search"></i>
-                                <input type="text" id="inventory-search" placeholder="Search items...">
+                                <input type="text" id="inventory-search" placeholder="Search name or product code..." aria-label="Search inventory">
                             </div>
-                            <select id="status-filter" class="inventory-filter-control">
-                                <option value="">All Status</option>
-                                <option value="in_stock">In Stock</option>
-                                <option value="low_stock">Low Stock</option>
-                                <option value="out_of_stock">Out of Stock</option>
-                                <option value="overstocked">Overstocked</option>
-                            </select>
-                            <button class="btn btn-primary role-requires-staff-or-admin" id="add-item-btn">
-                                <i class="fas fa-plus"></i>
-                                Add Item
-                            </button>
-                            <button class="btn role-requires-staff-or-admin" id="create-outbound-btn" style="background-color: #059669; color: white; border-color: #059669;">
-                                <i class="fas fa-shipping-fast"></i>
-                                Create Outbound
-                            </button>
-                            <button class="btn" id="export-csv-btn" style="background-color: #10b981; color: white; border-color: #10b981;">
-                                <i class="fas fa-file-csv"></i>
-                                Export CSV
-                            </button>
-                            <button class="btn role-backup-restore" id="export-backup-btn" style="background-color: #0891b2; color: white; border-color: #0891b2;">
-                                <i class="fas fa-download"></i>
-                                Export Backup
-                            </button>
-                            <button class="btn role-backup-restore" id="import-restore-btn" style="background-color: #7c3aed; color: white; border-color: #7c3aed;">
-                                <i class="fas fa-upload"></i>
-                                Restore Backup
-                            </button>
+                            <div class="inventory-primary-actions">
+                                <button class="btn btn-primary role-requires-staff-or-admin" id="add-item-btn"><i class="fas fa-plus"></i>Add Item</button>
+                                <button class="btn btn-success role-requires-staff-or-admin" id="create-outbound-btn"><i class="fas fa-shipping-fast"></i>Create Outbound</button>
+                            </div>
+                            <div class="inventory-utility-actions" aria-label="Export and backup actions">
+                                <button class="btn btn-soft" id="export-csv-btn"><i class="fas fa-file-csv"></i>Export CSV</button>
+                                <button class="btn btn-soft role-backup-restore" id="export-backup-btn"><i class="fas fa-download"></i>Backup</button>
+                                <button class="btn btn-soft role-backup-restore" id="import-restore-btn"><i class="fas fa-upload"></i>Restore</button>
+                            </div>
                         </div>
                     </div>
 
                     <div class="inventory-filter-panel" aria-label="Inventory filters">
-                        <select id="unit-filter" class="inventory-filter-control" aria-label="Filter by unit"><option value="">All Units</option></select>
-                        <select id="active-filter" class="inventory-filter-control" aria-label="Filter by product status">
+                        <div class="filter-panel-heading"><i class="fas fa-sliders"></i><span>Filters</span></div>
+                        <label class="inventory-filter-field"><span>Status</span><select id="status-filter" class="inventory-filter-control">
+                            <option value="">All Statuses</option><option value="in_stock">In Stock</option><option value="low_stock">Low Stock</option><option value="critical">Critical</option><option value="out_of_stock">Out of Stock</option><option value="overstocked">Overstocked</option>
+                        </select></label>
+                        <label class="inventory-filter-field"><span>Unit</span><select id="unit-filter" class="inventory-filter-control"><option value="">All Units</option></select></label>
+                        <label class="inventory-filter-field"><span>Availability</span><select id="active-filter" class="inventory-filter-control">
                             <option value="">All Products</option><option value="active">Active</option><option value="inactive">Inactive</option>
-                        </select>
-                        <input type="number" id="min-quantity-filter" class="inventory-filter-control" min="0" placeholder="Min quantity" aria-label="Minimum quantity">
-                        <input type="number" id="max-quantity-filter" class="inventory-filter-control" min="0" placeholder="Max quantity" aria-label="Maximum quantity">
-                        <input type="number" id="min-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Min selling price" aria-label="Minimum selling price">
-                        <input type="number" id="max-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Max selling price" aria-label="Maximum selling price">
-                        <select id="inventory-sort" class="inventory-filter-control" aria-label="Sort inventory">
+                        </select></label>
+                        <fieldset class="inventory-range-field"><legend>Quantity</legend><input type="number" id="min-quantity-filter" class="inventory-filter-control" min="0" placeholder="Min" aria-label="Minimum quantity"><span>to</span><input type="number" id="max-quantity-filter" class="inventory-filter-control" min="0" placeholder="Max" aria-label="Maximum quantity"></fieldset>
+                        <fieldset class="inventory-range-field"><legend>Selling price</legend><input type="number" id="min-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Min" aria-label="Minimum selling price"><span>to</span><input type="number" id="max-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Max" aria-label="Maximum selling price"></fieldset>
+                        <label class="inventory-filter-field inventory-sort-field"><span>Sort by</span><select id="inventory-sort" class="inventory-filter-control">
                             <option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option>
                             <option value="quantity_asc">Quantity: Low to High</option><option value="quantity_desc">Quantity: High to Low</option>
                             <option value="price_asc">Selling Price: Low to High</option><option value="price_desc">Selling Price: High to Low</option>
                             <option value="value_desc">Stock Value: High to Low</option>
-                        </select>
-                        <button type="button" class="btn" id="reset-inventory-filters"><i class="fas fa-rotate-left"></i> Reset</button>
+                        </select></label>
+                        <button type="button" class="btn btn-reset" id="reset-inventory-filters"><i class="fas fa-rotate-left"></i>Reset</button>
                     </div>
 
                     <div class="table-scroll">
@@ -112,6 +97,7 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="inventory-mobile-grid" class="inventory-mobile-grid" aria-live="polite"></div>
                 </div>
             </div>
         </main>
@@ -269,7 +255,7 @@
     <!-- Outbound Modal -->
    <!-- Outbound Modal - UPDATED WITH THUMBNAIL GRID -->
     <div id="outbound-modal" class="modal">
-        <div class="modal-content" style="max-width: 900px;">
+        <div class="modal-content outbound-modal-content">
             <div class="modal-header">
                 <h2>Create Outbound Transaction</h2>
                 <button class="modal-close" id="close-outbound-modal">
@@ -278,7 +264,7 @@
             </div>
             <form id="outbound-form">
                 <!-- Product Selection Grid -->
-                <div style="padding: 24px; border-bottom: 1px solid var(--border-color);">
+                <div class="outbound-modal-section">
                     <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
                         <i class="fas fa-box" style="margin-right: 8px;"></i>Select Product
                     </h3>
@@ -291,7 +277,7 @@
                 </div>
 
                 <!-- Selected Product Display -->
-                <div style="padding: 24px; border-bottom: 1px solid var(--border-color);">
+                <div class="outbound-modal-section">
                     <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Selected Product</h3>
                     <div id="outbound-product-display">
                         <div style="padding: 24px; text-align: center; background-color: var(--bg-light); border-radius: 8px; border: 2px dashed var(--border-color);">
@@ -300,7 +286,7 @@
                         </div>
                     </div>
                     
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <div class="outbound-details-grid outbound-product-meta">
                         <div class="form-group">
                             <label for="available-quantity">Available Quantity</label>
                             <input type="text" id="available-quantity" disabled>
@@ -313,11 +299,11 @@
                 </div>
 
                 <!-- Outbound Details -->
-                <div style="padding: 24px; border-bottom: 1px solid var(--border-color);">
+                <div class="outbound-modal-section">
                     <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
                         <i class="fas fa-truck" style="margin-right: 8px;"></i>Outbound Details
                     </h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="outbound-details-grid">
                         <div class="form-group">
                             <label for="outbound-quantity">Quantity to Dispatch *</label>
                             <input type="number" id="outbound-quantity" min="1" required placeholder="Enter quantity">
@@ -345,7 +331,7 @@
                 </div>
 
                 <!-- Additional Notes -->
-                <div style="padding: 24px;">
+                <div class="outbound-modal-section outbound-modal-section-last">
                     <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
                         <i class="fas fa-sticky-note" style="margin-right: 8px;"></i>Additional Information
                     </h3>
@@ -400,7 +386,7 @@
 
                 <div id="backup-preview" style="display: none; margin-top: 20px; padding: 16px; background-color: var(--bg-secondary); border-radius: 8px;">
                     <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Backup File Preview</h4>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 13px;">
+                    <div class="backup-preview-grid">
                         <div>
                             <span style="color: var(--text-secondary);">Total Products:</span>
                             <strong id="preview-count">0</strong>

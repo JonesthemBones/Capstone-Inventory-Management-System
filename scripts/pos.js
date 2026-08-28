@@ -91,6 +91,17 @@ function setupEventListeners() {
         handleProductSearch({ target: productSearch });
     });
 
+    const mobileFilterToggle = document.getElementById('pos-mobile-filter-toggle');
+    const posToolbar = document.getElementById('pos-toolbar');
+    mobileFilterToggle?.addEventListener('click', () => {
+        const isOpen = posToolbar.classList.toggle('mobile-open');
+        mobileFilterToggle.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    document.getElementById('pos-mobile-cart-bar')?.addEventListener('click', openMobileCart);
+    document.getElementById('pos-cart-close')?.addEventListener('click', closeMobileCart);
+    document.getElementById('pos-cart-overlay')?.addEventListener('click', closeMobileCart);
+
     document.getElementById('product-grid').addEventListener('click', event => {
         const card = event.target.closest('.product-card-grid');
         if (!card || card.disabled) return;
@@ -112,6 +123,10 @@ function setupEventListeners() {
     // Escape key to clear search
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            if (document.body.classList.contains('pos-cart-open')) {
+                closeMobileCart();
+                return;
+            }
             document.getElementById('product-search').value = '';
             document.getElementById('product-suggestions').innerHTML = '';
             handleProductSearch({ target: document.getElementById('product-search') });
@@ -177,6 +192,20 @@ function getProductImageUrl(imagePath) {
     return `${storageBaseUrl}/${relativePath}`;
 }
 
+function openMobileCart() {
+    if (window.innerWidth > 768) return;
+    document.body.classList.add('pos-cart-open');
+    document.getElementById('pos-mobile-cart-bar')?.setAttribute('aria-expanded', 'true');
+    document.getElementById('pos-cart-overlay')?.setAttribute('aria-hidden', 'false');
+    document.getElementById('pos-cart-close')?.focus();
+}
+
+function closeMobileCart() {
+    document.body.classList.remove('pos-cart-open');
+    document.getElementById('pos-mobile-cart-bar')?.setAttribute('aria-expanded', 'false');
+    document.getElementById('pos-cart-overlay')?.setAttribute('aria-hidden', 'true');
+}
+
 function getPOSProductQuantity(product) {
     const inventory = Array.isArray(product.inventory_stock) ? (product.inventory_stock[0] || {}) : (product.inventory_stock || {});
     return Number(inventory.quantity || 0);
@@ -234,7 +263,10 @@ function renderProductGrid(products) {
                 <div class="product-card-info">
                     <div class="product-card-name">${safeName}</div>
                     <div class="product-card-code">${safeCode}</div>
-                    <div class="product-card-price">₱${Number(product.selling_price || 0).toFixed(2)}</div>
+                    <div class="product-card-footer">
+                        <div class="product-card-price">₱${Number(product.selling_price || 0).toFixed(2)}</div>
+                        <span class="product-card-add" aria-hidden="true"><i class="fas fa-plus"></i></span>
+                    </div>
                 </div>
             </button>
         `;
@@ -445,6 +477,15 @@ function updateCartSummary() {
     document.getElementById('summary-discount').textContent = `-${POSCalculations.formatCurrency(discountAmount)}`;
     document.getElementById('summary-tax').textContent = POSCalculations.formatCurrency(tax);
     document.getElementById('summary-total').textContent = POSCalculations.formatCurrency(total);
+
+    const itemCount = currentCart.reduce((sum, item) => sum + item.quantity, 0);
+    const mobileCount = document.getElementById('mobile-cart-count');
+    const mobileTotal = document.getElementById('mobile-cart-total');
+    if (mobileCount) mobileCount.textContent = itemCount === 0
+        ? 'Cart is empty'
+        : `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
+    if (mobileTotal) mobileTotal.textContent = POSCalculations.formatCurrency(total);
+    document.getElementById('pos-mobile-cart-bar')?.classList.toggle('has-items', itemCount > 0);
 
     // If cash payment, recalculate change
     if (document.getElementById('payment-method').value === 'cash') {

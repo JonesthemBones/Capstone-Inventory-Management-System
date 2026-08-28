@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="../styles/main.css">
     <link rel="stylesheet" href="../styles/help.css">
     <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="../styles/mobile.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -17,7 +18,6 @@
     <script src="../scripts/sidebar.js"></script>
     <script src="../scripts/help.js"></script>
     <script src="../scripts/dark-mode.js"></script>
-    <script src="../scripts/mobile-responsive.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     
@@ -33,7 +33,7 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px;">
+                <div class="reports-layout">
                     <!-- Configure Report Section -->
                     <div style="background: var(--bg-white); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
                         <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Configure Report</h3>
@@ -46,12 +46,19 @@
                                 <option value="low-stock">Low Stock Alert Report</option>
                                 <option value="valuation">Inventory Valuation Report</option>
                                 <option value="movement">Stock Movement Report</option>
+                                <option value="outbound-activity">Outbound Activity Report</option>
+                                <optgroup label="Point of Sale">
+                                    <option value="sales-summary">Sales Summary Report</option>
+                                    <option value="product-sales">Product Sales Performance</option>
+                                    <option value="cashier-performance">Sales by Cashier</option>
+                                    <option value="voided-sales">Voided Transactions Report</option>
+                                </optgroup>
                             </select>
                         </div>
 
                         <div class="form-group" style="margin-bottom: 24px;">
-                            <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px;">Date Range (Optional)</label>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px;">Date Range (Required for activity reports)</label>
+                            <div class="reports-date-grid">
                                 <div>
                                     <label style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block;">From</label>
                                     <input type="date" id="date-from" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
@@ -105,7 +112,7 @@
                     <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Quick Reports</h3>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;">Generate commonly used reports instantly</p>
 
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                    <div id="quick-report-grid" class="quick-report-grid">
                         <div class="quick-report-card" data-type="complete" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
                             <i class="fas fa-file-alt" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
                             <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Current Inventory</h4>
@@ -115,6 +122,26 @@
                             <i class="fas fa-exclamation-triangle" style="font-size: 32px; color: var(--warning); margin-bottom: 12px;"></i>
                             <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Low Stock Alert</h4>
                             <p style="font-size: 12px; color: var(--text-secondary);">Items to reorder</p>
+                        </div>
+                        <div class="quick-report-card pos-report" data-type="sales-summary" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-chart-line" style="font-size: 32px; color: var(--success); margin-bottom: 12px;"></i>
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">POS Sales Summary</h4>
+                            <p style="font-size: 12px; color: var(--text-secondary);">Revenue, payments, discounts, and daily totals</p>
+                        </div>
+                        <div class="quick-report-card pos-report" data-type="product-sales" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-ranking-star" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Product Performance</h4>
+                            <p style="font-size: 12px; color: var(--text-secondary);">Best sellers, units sold, and revenue</p>
+                        </div>
+                        <div class="quick-report-card management-report" data-type="cashier-performance" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-users" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Sales by Cashier</h4>
+                            <p style="font-size: 12px; color: var(--text-secondary);">Compare cashier sales and transaction activity</p>
+                        </div>
+                        <div class="quick-report-card staff-report" data-type="outbound-activity" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-truck-ramp-box" style="font-size: 32px; color: var(--warning); margin-bottom: 12px;"></i>
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Outbound Activity</h4>
+                            <p style="font-size: 12px; color: var(--text-secondary);">Dispatches, reasons, products, and quantities</p>
                         </div>
                     </div>
                 </div>
@@ -129,7 +156,7 @@
     <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
         <div class="help-content">
             <div class="help-header">
-                <h2>Receipt Generation Guide</h2>
+                <h2>Report Generation Guide</h2>
                 <button class="close-help" onclick="closeHelp()">&times;</button>
             </div>
             <div class="help-body">
@@ -140,7 +167,7 @@
                     <h3>Overview</h3>
                     <ul>
                         <li>
-                            This page lets you generate a complete summary reports of inventory, sales, category distribution, and stock movements. You can customize the type of report and date range as wanted.
+                            Available reports depend on your role. Admins receive system-wide inventory, POS, cashier, and operational reports; staff receive inventory and outbound reports; cashiers receive reports limited to their own sales.
                         </li>            
                     </ul>
                 </div>
@@ -158,7 +185,7 @@
                     <h3>Quick Reports</h3>
                     <ul>
                        <li>
-                        You can instantly produce commonly used reports like Current Inventory and Low Stock Alerts by clicking the respective cards.
+                        Admin and staff users can instantly select commonly used inventory and outbound reports. Cashiers choose from their personal sales, product performance, and payment summaries.
                        </li>
                     </ul>
                 </div>

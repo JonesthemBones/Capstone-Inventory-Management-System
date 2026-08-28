@@ -177,7 +177,7 @@ def parse_receipt_response(text):
 
 
 def get_env_model():
-    return os.getenv('VISION_MODEL', 'nvidia/nemotron-nano-12b-v2-vl:free')
+    return os.getenv('VLM_MODEL') or os.getenv('VISION_MODEL', 'openrouter/free')
 
 
 def get_api_key():
@@ -305,7 +305,7 @@ Example:
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print('Usage: python_ocr.py <image_file_path>', file=sys.stderr)
+        print('Usage: python_vlm.py <image_file_path>', file=sys.stderr)
         sys.exit(1)
 
     api_key = get_api_key()

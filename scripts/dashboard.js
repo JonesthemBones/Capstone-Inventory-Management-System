@@ -4,6 +4,42 @@ let categoryChart = null;
 let dashboardRole = 'guest';
 let dashboardUserId = null;
 
+const LOW_STOCK_PERCENTAGE = 0.25;
+const CRITICAL_STOCK_PERCENTAGE = 0.10;
+
+function getStockThresholds(product = {}) {
+    const maximumStock = Number(product.maximum_stock || 0);
+    const reorderLevel = Math.max(0, Number(product.reorder_level || 0));
+
+    if (maximumStock > 0) {
+        return {
+            low: Math.ceil(maximumStock * LOW_STOCK_PERCENTAGE),
+            critical: Math.ceil(maximumStock * CRITICAL_STOCK_PERCENTAGE)
+        };
+    }
+
+    return {
+        low: reorderLevel,
+        critical: reorderLevel > 0 ? Math.max(1, Math.ceil(reorderLevel * (CRITICAL_STOCK_PERCENTAGE / LOW_STOCK_PERCENTAGE))) : 0
+    };
+}
+
+function getDashboardStockStatus(quantity, product = {}) {
+    const currentQuantity = Number(quantity || 0);
+    const thresholds = getStockThresholds(product);
+
+    if (currentQuantity <= 0) return 'out_of_stock';
+    if (thresholds.critical > 0 && currentQuantity <= thresholds.critical) return 'critical';
+    if (thresholds.low > 0 && currentQuantity <= thresholds.low) return 'low_stock';
+    return 'in_stock';
+}
+
+function formatProductNames(items, limit = 3) {
+    const names = items.slice(0, limit).map(item => item.product?.product_name || 'Unknown product');
+    const remaining = items.length - names.length;
+    return `${names.join(', ')}${remaining > 0 ? `, and ${remaining} more` : ''}`;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();
     if (!session) return;
@@ -146,7 +182,7 @@ async function loadDashboardStats() {
             .from('inventory_stock')
             .select(`
                 quantity,
-                product:products(unit_price, selling_price, reorder_level, is_active)
+                product:products(unit_price, selling_price, reorder_level, maximum_stock, is_active)
             `);
         
         if (stockError) {
@@ -164,10 +200,10 @@ async function loadDashboardStats() {
         for (const item of stockData || []) {
             const quantity = item.quantity || 0;
     
-            const reorderLevel = Number(item.product?.reorder_level || 0);
-            if (quantity <= 0) {
+            const status = getDashboardStockStatus(quantity, item.product);
+            if (status === 'out_of_stock') {
                 outOfStock++;
-            } else if (quantity > reorderLevel) {
+            } else if (status === 'in_stock') {
                 inStock++;
             } else {
                 lowStock++;
@@ -305,20 +341,17 @@ async function loadLowStockAlerts() {
             .select(`
                 stock_id,
                 quantity,
-                product:products(product_id, product_name, product_code, reorder_level, is_active)
+                product:products(product_id, product_name, product_code, unit_of_measure, reorder_level, maximum_stock, is_active)
             `);
         if (error) throw error;
 
         const attentionItems = (stockItems || [])
-            .filter(item => item.product?.is_active !== false && Number(item.quantity || 0) <= Number(item.product?.reorder_level || 0))
+            .map(item => ({ ...item, alertType: getDashboardStockStatus(item.quantity, item.product) }))
+            .filter(item => item.product?.is_active !== false && item.alertType !== 'in_stock')
             .sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0));
-        const outOfStockItems = attentionItems.filter(item => Number(item.quantity || 0) <= 0);
-        const lowStockItems = attentionItems.filter(item => Number(item.quantity || 0) > 0);
-
-        const allAlerts = [
-            ...outOfStockItems.map(item => ({ ...item, alertType: 'out_of_stock' })),
-            ...lowStockItems.map(item => ({ ...item, alertType: 'low_stock' }))
-        ].slice(0, 5);
+        const severityOrder = { out_of_stock: 0, critical: 1, low_stock: 2 };
+        const allAlerts = attentionItems
+            .sort((a, b) => severityOrder[a.alertType] - severityOrder[b.alertType] || Number(a.quantity || 0) - Number(b.quantity || 0));
 
         const alertsContainer = document.getElementById('low-stock-alerts');
         const alertCount = document.getElementById('alert-count');
@@ -336,11 +369,14 @@ async function loadLowStockAlerts() {
         }
 
         alertsContainer.innerHTML = allAlerts.map(item => {
-            const isOutOfStock = item.alertType === 'out_of_stock';
-            const iconClass = isOutOfStock ? 'fas fa-times-circle' : 'fas fa-exclamation-triangle';
-            const iconBgColor = isOutOfStock ? '#fee2e2' : '#fef3c7';
-            const iconColor = isOutOfStock ? 'var(--danger)' : 'var(--warning)';
-            const alertText = isOutOfStock ? 'Out of stock!' : `Only ${item.quantity} units remaining`;
+            const isUrgent = item.alertType === 'out_of_stock' || item.alertType === 'critical';
+            const iconClass = item.alertType === 'out_of_stock' ? 'fas fa-times-circle' : 'fas fa-exclamation-triangle';
+            const iconBgColor = isUrgent ? '#fee2e2' : '#fef3c7';
+            const iconColor = isUrgent ? 'var(--danger)' : 'var(--warning)';
+            const unit = item.product?.unit_of_measure || 'units';
+            const alertText = item.alertType === 'out_of_stock'
+                ? 'Out of stock!'
+                : `${item.alertType === 'critical' ? 'Critical' : 'Low stock'}: only ${item.quantity} ${unit} remaining`;
 
             return `
                 <div class="alert-item">
@@ -631,7 +667,7 @@ async function updateStockDistributionChart() {
     try {
         const { data: stockData, error } = await supabaseClient
             .from('inventory_stock')
-            .select('quantity, product:products(reorder_level, is_active)');
+            .select('quantity, product:products(reorder_level, maximum_stock, is_active)');
         
         if (error) throw error;
         
@@ -642,10 +678,10 @@ async function updateStockDistributionChart() {
         stockData?.forEach(item => {
             if (item.product?.is_active === false) return;
             const quantity = Number(item.quantity || 0);
-            const reorderLevel = Number(item.product?.reorder_level || 0);
-            if (quantity > reorderLevel) inStock++;
-            else if (quantity > 0) lowStock++;
-            else outOfStock++;
+            const status = getDashboardStockStatus(quantity, item.product);
+            if (status === 'in_stock') inStock++;
+            else if (status === 'out_of_stock') outOfStock++;
+            else lowStock++;
         });
         
         console.log('Stock distribution:', { inStock, lowStock, outOfStock });
@@ -758,6 +794,7 @@ function setupRealtimeSubscriptions() {
                 console.log('Inventory stock change:', payload);
                 loadDashboardStats();
                 loadLowStockAlerts();
+                showLowStockNotifications();
             }
         )
         .subscribe();
@@ -821,21 +858,24 @@ async function showLowStockNotifications() {
             .from('inventory_stock')
             .select(`
                 quantity,
-                product:products(product_name, reorder_level, is_active)
+                product:products(product_name, reorder_level, maximum_stock, is_active)
             `);
         if (error) throw error;
-        const attentionItems = (stockItems || []).filter(item =>
-            item.product?.is_active !== false && Number(item.quantity || 0) <= Number(item.product?.reorder_level || 0)
-        );
-        const outOfStockItems = attentionItems.filter(item => Number(item.quantity || 0) <= 0);
-        const lowStockItems = attentionItems.filter(item => Number(item.quantity || 0) > 0);
+        const attentionItems = (stockItems || [])
+            .map(item => ({ ...item, alertType: getDashboardStockStatus(item.quantity, item.product) }))
+            .filter(item => item.product?.is_active !== false && item.alertType !== 'in_stock');
+        const outOfStockItems = attentionItems.filter(item => item.alertType === 'out_of_stock');
+        const criticalItems = attentionItems.filter(item => item.alertType === 'critical');
+        const lowStockItems = attentionItems.filter(item => item.alertType === 'low_stock');
 
-        if (outOfStockItems && outOfStockItems.length > 0) {
-            const notificationMessage = `Out of stock alert: ${outOfStockItems.length} item${outOfStockItems.length > 1 ? 's' : ''} ${outOfStockItems.length === 1 ? 'is' : 'are'} out of stock!`;
-            showToast(notificationMessage, 'error');
-        } else if (lowStockItems && lowStockItems.length > 0) {
-            const notificationMessage = `Low stock alert: ${lowStockItems.length} item${lowStockItems.length > 1 ? 's' : ''} need${lowStockItems.length === 1 ? 's' : ''} attention.`;
-            showToast(notificationMessage, 'warning');
+        if (outOfStockItems.length > 0) {
+            showToast(`Out of stock: ${formatProductNames(outOfStockItems)}.`, 'error');
+        }
+        if (criticalItems.length > 0) {
+            showToast(`Critical stock: ${formatProductNames(criticalItems)}.`, 'error');
+        }
+        if (lowStockItems.length > 0) {
+            showToast(`Low stock: ${formatProductNames(lowStockItems)}.`, 'warning');
         }
     } catch (error) {
         console.error('Error showing low stock notifications:', error);
