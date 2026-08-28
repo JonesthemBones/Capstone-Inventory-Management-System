@@ -6,10 +6,11 @@
     <title>Inventory Management - Receipt Extraction</title>
     <link rel="stylesheet" href="../styles/main.css">
     <link rel="stylesheet" href="../styles/modal.css">
-    <link rel="stylesheet" href="../styles/vlm_scan.css">
     <link rel="stylesheet" href="../styles/inventory-thumbnail.css">
     <link rel="stylesheet" href="../styles/help.css">
     <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="../styles/vlm_scan.css">
+    <link rel="stylesheet" href="../styles/mobile.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -20,7 +21,6 @@
     <script src="../scripts/sidebar.js"></script>
     <script src="../scripts/help.js"></script>
     <script src="../scripts/dark-mode.js"></script>
-    <script src="../scripts/mobile-responsive.js"></script>
 
     <div class="app-container">
         <main class="main-content" data-protected-content aria-busy="true">
@@ -42,14 +42,16 @@
                         </div>
 
                         <div class="vlm-upload-section">
-                            <div class="form-group">
-                                <label for="receipt-image-input">Receipt Image</label>
+                            <label class="vlm-file-drop" for="receipt-image-input">
                                 <input type="file" id="receipt-image-input" accept="image/*" capture="environment">
-                            </div>
+                                <span class="vlm-file-icon"><i class="fas fa-cloud-arrow-up"></i></span>
+                                <span class="vlm-file-copy"><strong>Choose or capture a receipt</strong><small>JPG, PNG or WEBP · tap to open your camera or files</small></span>
+                                <span class="btn btn-secondary vlm-browse-button">Browse</span>
+                            </label>
 
                             <div class="vlm-image-preview-wrapper">
                                 <div class="vlm-preview-label">Preview</div>
-                                <div id="receipt-image-preview" class="vlm-image-preview">No image selected</div>
+                                <div id="receipt-image-preview" class="vlm-image-preview"><span><i class="far fa-image"></i>No image selected</span></div>
                                 <button type="button" class="btn btn-secondary" id="view-receipt-image-btn" style="display:none;" onclick="openReceiptImagePreview()">
                                     <i class="fas fa-expand"></i>
                                     View Full Receipt
@@ -117,7 +119,7 @@
                             </div>
                         </div>
 
-                        <div id="vlm-status" class="vlm-status">No receipt scanned yet.</div>
+                        <div id="vlm-status" class="vlm-status vlm-status-neutral">No receipt scanned yet.</div>
                         <div class="vlm-save-section">
                             <button type="button" class="btn btn-success btn-large" id="save-to-inventory-btn" disabled>
                                 <i class="fas fa-save"></i>

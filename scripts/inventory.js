@@ -98,12 +98,17 @@ function getInventoryQuantity(product) {
 
 function getProductStockStatus(product) {
     const quantity = getInventoryQuantity(product);
-    const reorderLevel = Number(product.reorder_level ?? 10);
     const maximumStock = Number(product.maximum_stock || 0);
+    const reorderLevel = Math.max(0, Number(product.reorder_level ?? 10));
+    const lowThreshold = maximumStock > 0 ? Math.ceil(maximumStock * 0.25) : reorderLevel;
+    const criticalThreshold = maximumStock > 0
+        ? Math.ceil(maximumStock * 0.10)
+        : (reorderLevel > 0 ? Math.max(1, Math.ceil(reorderLevel * 0.40)) : 0);
 
     if (quantity <= 0) return 'out_of_stock';
     if (maximumStock > 0 && quantity > maximumStock) return 'overstocked';
-    if (quantity <= reorderLevel) return 'low_stock';
+    if (criticalThreshold > 0 && quantity <= criticalThreshold) return 'critical';
+    if (lowThreshold > 0 && quantity <= lowThreshold) return 'low_stock';
     return 'in_stock';
 }
 
@@ -393,6 +398,7 @@ function setupBatchHistoryToggles(products) {
 
 function displayInventory(products) {
     const tbody = document.getElementById('inventory-table-body');
+    renderMobileInventoryCards(products);
     
     if (!products || products.length === 0) {
         tbody.innerHTML = `
@@ -432,6 +438,9 @@ function displayInventory(products) {
         } else if (status === 'low_stock') {
             statusClass = 'status-low';
             statusText = 'Low Stock';
+        } else if (status === 'critical') {
+            statusClass = 'status-critical';
+            statusText = 'Critical';
         } else if (status === 'overstocked') {
             statusClass = 'status-over';
             statusText = 'Overstocked';
@@ -532,6 +541,107 @@ function displayInventory(products) {
     }
 
     setupBatchHistoryToggles(products);
+}
+
+function escapeInventoryHTML(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[character]);
+}
+
+function getInventoryStatusMeta(product) {
+    const status = getProductStockStatus(product);
+    const statuses = {
+        in_stock: { className: 'status-in', label: 'In Stock' },
+        low_stock: { className: 'status-low', label: 'Low Stock' },
+        critical: { className: 'status-critical', label: 'Critical' },
+        overstocked: { className: 'status-over', label: 'Overstocked' },
+        out_of_stock: { className: 'status-out', label: 'Out of Stock' }
+    };
+    return statuses[status] || statuses.out_of_stock;
+}
+
+function renderMobileInventoryCards(products) {
+    const grid = document.getElementById('inventory-mobile-grid');
+    if (!grid) return;
+
+    if (!products?.length) {
+        grid.innerHTML = `
+            <div class="inventory-mobile-empty">
+                <i class="fas fa-box-open"></i>
+                <strong>No products found</strong>
+                <span>Try changing your search or filters.</span>
+            </div>`;
+        return;
+    }
+
+    const canManage = currentUserRole !== 'cashier' && currentUserRole !== 'staff';
+    grid.innerHTML = products.map(product => {
+        const quantity = getInventoryQuantity(product);
+        const unitPrice = Number(product.unit_price || 0);
+        const sellingPrice = Number(product.inbound_movements?.[0]?.selling_price ?? product.selling_price ?? 0);
+        const totalValue = quantity * unitPrice;
+        const status = getInventoryStatusMeta(product);
+        const safeId = escapeInventoryHTML(product.product_id);
+        const safeName = escapeInventoryHTML(product.product_name || 'Unnamed product');
+        const safeCode = escapeInventoryHTML(product.product_code || 'N/A');
+        const safeUnit = escapeInventoryHTML(product.unit_of_measure || 'N/A');
+        const safeImage = escapeInventoryHTML(product.image_url || '');
+        const image = product.image_url
+            ? `<button type="button" class="inventory-card-image-button" data-image-url="${safeImage}" data-image-name="${safeName}" aria-label="View image for ${safeName}">
+                    <img src="${safeImage}" alt="${safeName}" loading="lazy">
+               </button>`
+            : `<div class="inventory-card-image-placeholder"><i class="fas fa-image"></i></div>`;
+        const actions = canManage
+            ? `<div class="inventory-card-actions" aria-label="Actions for ${safeName}">
+                    <button type="button" class="btn inventory-card-action adjust-btn" data-id="${safeId}"><i class="fas fa-boxes"></i> Adjust</button>
+                    <button type="button" class="btn inventory-card-action edit-btn" data-id="${safeId}"><i class="fas fa-edit"></i> Edit</button>
+                    <button type="button" class="btn inventory-card-action inventory-card-delete delete-btn" data-id="${safeId}" aria-label="Delete ${safeName}"><i class="fas fa-trash"></i></button>
+               </div>`
+            : '<span class="inventory-card-readonly"><i class="fas fa-eye"></i> View only</span>';
+
+        return `
+            <article class="inventory-mobile-card" data-product-id="${safeId}">
+                <div class="inventory-card-top">
+                    ${image}
+                    <div class="inventory-card-identity">
+                        <span class="status-badge ${status.className}">${status.label}</span>
+                        <h3>${safeName}</h3>
+                        <span class="inventory-card-code">${safeCode}</span>
+                    </div>
+                </div>
+                <div class="inventory-card-summary">
+                    <div><span>Available</span><strong>${quantity} ${safeUnit}</strong></div>
+                    <div><span>Selling price</span><strong>${formatCurrency(sellingPrice)}</strong></div>
+                </div>
+                <button type="button" class="inventory-card-details-toggle" aria-expanded="false">
+                    <span>More details</span><i class="fas fa-chevron-down" aria-hidden="true"></i>
+                </button>
+                <div class="inventory-card-details" hidden>
+                    <dl>
+                        <div><dt>Unit cost</dt><dd>${formatCurrency(unitPrice)}</dd></div>
+                        <div><dt>Stock value</dt><dd>${formatCurrency(totalValue)}</dd></div>
+                        <div><dt>Reorder level</dt><dd>${Number(product.reorder_level || 0)} ${safeUnit}</dd></div>
+                        <div><dt>Maximum stock</dt><dd>${Number(product.maximum_stock || 0)} ${safeUnit}</dd></div>
+                    </dl>
+                </div>
+                <div class="inventory-card-footer">${actions}</div>
+            </article>`;
+    }).join('');
+
+    grid.querySelectorAll('.inventory-card-details-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+            const details = button.nextElementSibling;
+            const isOpen = button.getAttribute('aria-expanded') === 'true';
+            button.setAttribute('aria-expanded', String(!isOpen));
+            button.querySelector('span').textContent = isOpen ? 'More details' : 'Less details';
+            details.hidden = isOpen;
+        });
+    });
+
+    grid.querySelectorAll('.inventory-card-image-button').forEach(button => {
+        button.addEventListener('click', () => openImagePreviewModal(button.dataset.imageUrl, button.dataset.imageName));
+    });
 }
 
 function getStockAdjustmentElements() {
@@ -990,6 +1100,7 @@ async function exportToCSV() {
             const statusLabels = {
                 out_of_stock: 'Out of Stock',
                 low_stock: 'Low Stock',
+                critical: 'Critical',
                 in_stock: 'In Stock',
                 overstocked: 'Overstocked'
             };
