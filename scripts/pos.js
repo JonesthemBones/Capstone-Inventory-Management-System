@@ -75,6 +75,21 @@ function setupEventListeners() {
     if (stockFilter) {
         stockFilter.addEventListener('change', () => handleProductSearch({ target: productSearch }));
     }
+    ['pos-unit-filter', 'pos-sort'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', () => handleProductSearch({ target: productSearch }));
+    });
+    ['pos-min-price', 'pos-max-price'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', debounce(() => handleProductSearch({ target: productSearch }), 250));
+    });
+    document.getElementById('pos-reset-filters')?.addEventListener('click', () => {
+        productSearch.value = '';
+        document.getElementById('pos-stock-filter').value = 'available';
+        document.getElementById('pos-unit-filter').value = '';
+        document.getElementById('pos-min-price').value = '';
+        document.getElementById('pos-max-price').value = '';
+        document.getElementById('pos-sort').value = 'name_asc';
+        handleProductSearch({ target: productSearch });
+    });
 
     document.getElementById('product-grid').addEventListener('click', event => {
         const card = event.target.closest('.product-card-grid');
@@ -162,6 +177,29 @@ function getProductImageUrl(imagePath) {
     return `${storageBaseUrl}/${relativePath}`;
 }
 
+function getPOSProductQuantity(product) {
+    const inventory = Array.isArray(product.inventory_stock) ? (product.inventory_stock[0] || {}) : (product.inventory_stock || {});
+    return Number(inventory.quantity || 0);
+}
+
+function getPOSStockStatus(product) {
+    const quantity = getPOSProductQuantity(product);
+    const reorderLevel = Number(product.reorder_level ?? 10);
+    if (quantity <= 0) return 'out_of_stock';
+    if (quantity <= reorderLevel) return 'low_stock';
+    return 'in_stock';
+}
+
+function updatePOSUnitOptions(products) {
+    const select = document.getElementById('pos-unit-filter');
+    if (!select) return;
+    const selected = select.value;
+    const units = [...new Set((products || []).map(product => String(product.unit_of_measure || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    select.replaceChildren(new Option('All units', ''), ...units.map(unit => new Option(unit, unit)));
+    if (units.includes(selected)) select.value = selected;
+}
+
 function renderProductGrid(products) {
     const productGrid = document.getElementById('product-grid');
     if (!productGrid) return;
@@ -172,9 +210,8 @@ function renderProductGrid(products) {
     }
 
     productGrid.innerHTML = products.map(product => {
-        const inventory = Array.isArray(product.inventory_stock) ? (product.inventory_stock[0] || {}) : (product.inventory_stock || {});
-        const quantity = Number(inventory.quantity || 0);
-        const stockStatus = quantity === 0 ? 'out-of-stock' : quantity < 10 ? 'low-stock' : 'in-stock';
+        const quantity = getPOSProductQuantity(product);
+        const stockStatus = getPOSStockStatus(product).replaceAll('_', '-');
         const imageUrl = product.image_url || getProductImageUrl(product.image_path);
         const safeName = escapeHTML(product.product_name);
         const safeCode = escapeHTML(product.product_code || 'N/A');
@@ -210,7 +247,11 @@ async function handleProductSearch(e) {
     const suggestionsDiv = document.getElementById('product-suggestions');
     const productGrid = document.getElementById('product-grid');
     const stockFilter = document.getElementById('pos-stock-filter');
-    const filterValue = stockFilter ? stockFilter.value : 'all';
+    const filterValue = stockFilter ? stockFilter.value : 'available';
+    const unitFilter = document.getElementById('pos-unit-filter')?.value || '';
+    const minPrice = document.getElementById('pos-min-price')?.value ?? '';
+    const maxPrice = document.getElementById('pos-max-price')?.value ?? '';
+    const sortValue = document.getElementById('pos-sort')?.value || 'name_asc';
 
     if (query.length >= 2 && suggestionsDiv) {
         suggestionsDiv.innerHTML = '';
@@ -227,6 +268,7 @@ async function handleProductSearch(e) {
                 image_url,
                 image_path,
                 unit_of_measure,
+                reorder_level,
                 is_active,
                 inventory_stock!inventory_stock_product_id_fkey(quantity)
             `)
@@ -240,15 +282,27 @@ async function handleProductSearch(e) {
         const { data: products, error } = await productQuery;
         if (error) throw error;
 
+        updatePOSUnitOptions(products);
         const filteredProducts = (products || []).filter(product => {
-            const inventory = Array.isArray(product.inventory_stock) ? (product.inventory_stock[0] || {}) : (product.inventory_stock || {});
-            const quantity = Number(inventory.quantity || 0);
-
-            if (filterValue === 'in_stock') return quantity > 0 && quantity >= 10;
-            if (filterValue === 'low_stock') return quantity > 0 && quantity < 10;
-            if (filterValue === 'out_of_stock') return quantity === 0;
+            const quantity = getPOSProductQuantity(product);
+            const price = Number(product.selling_price || 0);
+            const status = getPOSStockStatus(product);
+            if (filterValue === 'available' && quantity <= 0) return false;
+            if (['in_stock', 'low_stock', 'out_of_stock'].includes(filterValue) && status !== filterValue) return false;
+            if (unitFilter && product.unit_of_measure !== unitFilter) return false;
+            if (minPrice !== '' && price < Number(minPrice)) return false;
+            if (maxPrice !== '' && price > Number(maxPrice)) return false;
             return true;
         });
+
+        const sorters = {
+            name_asc: (a, b) => String(a.product_name || '').localeCompare(String(b.product_name || '')),
+            name_desc: (a, b) => String(b.product_name || '').localeCompare(String(a.product_name || '')),
+            price_asc: (a, b) => Number(a.selling_price || 0) - Number(b.selling_price || 0),
+            price_desc: (a, b) => Number(b.selling_price || 0) - Number(a.selling_price || 0),
+            stock_desc: (a, b) => getPOSProductQuantity(b) - getPOSProductQuantity(a)
+        };
+        filteredProducts.sort(sorters[sortValue] || sorters.name_asc);
 
         renderProductGrid(filteredProducts);
         if (suggestionsDiv) {

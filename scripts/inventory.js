@@ -91,6 +91,61 @@ function detectInboundPriceMismatch(movements) {
     };
 }
 
+function getInventoryQuantity(product) {
+    const inventory = product.inventory_stock?.[0] || product.inventory_stock || product.inventory?.[0] || {};
+    return Number(inventory.quantity || 0);
+}
+
+function getProductStockStatus(product) {
+    const quantity = getInventoryQuantity(product);
+    const reorderLevel = Number(product.reorder_level ?? 10);
+    const maximumStock = Number(product.maximum_stock || 0);
+
+    if (quantity <= 0) return 'out_of_stock';
+    if (maximumStock > 0 && quantity > maximumStock) return 'overstocked';
+    if (quantity <= reorderLevel) return 'low_stock';
+    return 'in_stock';
+}
+
+function updateInventoryUnitOptions(products) {
+    const select = document.getElementById('unit-filter');
+    if (!select) return;
+    const selected = select.value;
+    const units = [...new Set((products || []).map(product => String(product.unit_of_measure || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    select.replaceChildren(new Option('All Units', ''), ...units.map(unit => new Option(unit, unit)));
+    if (units.includes(selected)) select.value = selected;
+}
+
+function filterAndSortInventory(products, filters) {
+    const hasNumber = value => value !== '' && value !== null && value !== undefined;
+    const result = (products || []).filter(product => {
+        const quantity = getInventoryQuantity(product);
+        const price = Number(product.selling_price || 0);
+        const isActive = product.is_active !== false;
+        if (filters.status && getProductStockStatus(product) !== filters.status) return false;
+        if (filters.unit && product.unit_of_measure !== filters.unit) return false;
+        if (filters.active === 'active' && !isActive) return false;
+        if (filters.active === 'inactive' && isActive) return false;
+        if (hasNumber(filters.minQuantity) && quantity < Number(filters.minQuantity)) return false;
+        if (hasNumber(filters.maxQuantity) && quantity > Number(filters.maxQuantity)) return false;
+        if (hasNumber(filters.minPrice) && price < Number(filters.minPrice)) return false;
+        if (hasNumber(filters.maxPrice) && price > Number(filters.maxPrice)) return false;
+        return true;
+    });
+
+    const sorters = {
+        name_asc: (a, b) => String(a.product_name || '').localeCompare(String(b.product_name || '')),
+        name_desc: (a, b) => String(b.product_name || '').localeCompare(String(a.product_name || '')),
+        quantity_asc: (a, b) => getInventoryQuantity(a) - getInventoryQuantity(b),
+        quantity_desc: (a, b) => getInventoryQuantity(b) - getInventoryQuantity(a),
+        price_asc: (a, b) => Number(a.selling_price || 0) - Number(b.selling_price || 0),
+        price_desc: (a, b) => Number(b.selling_price || 0) - Number(a.selling_price || 0),
+        value_desc: (a, b) => (getInventoryQuantity(b) * Number(b.unit_price || 0)) - (getInventoryQuantity(a) * Number(a.unit_price || 0))
+    };
+    return result.sort(sorters[filters.sort] || sorters.name_asc);
+}
+
 async function loadInventory(filters = {}) {
     try {
         console.log('Starting inventory load...');
@@ -138,17 +193,8 @@ async function loadInventory(filters = {}) {
             product.inbound_movements = inboundMovementsByProductId[product.product_id] || [];
         });
 
-        let filteredProducts = products || [];
-        if (filters.status) {
-            filteredProducts = filteredProducts.filter(p => {
-                const inventory = p.inventory_stock?.[0] || p.inventory_stock;
-                const qty = inventory?.quantity || 0;
-                if (filters.status === 'in_stock') return qty >= 10;
-                if (filters.status === 'low_stock') return qty > 0 && qty < 10;
-                if (filters.status === 'out_of_stock') return qty === 0;
-                return true;
-            });
-        }
+        updateInventoryUnitOptions(products);
+        const filteredProducts = filterAndSortInventory(products, filters);
 
         await backfillMissingProductCodes(filteredProducts);
         
@@ -376,18 +422,19 @@ function displayInventory(products) {
             quantity: quantity
         });
         
-        let status = 'out_of_stock';
+        let status = getProductStockStatus(product);
         let statusClass = 'status-out';
         let statusText = 'Out of Stock';
-        
-        if (quantity >= 10) {
-            status = 'in_stock';
+
+        if (status === 'in_stock') {
             statusClass = 'status-in';
             statusText = 'In Stock';
-        } else if (quantity > 0) {
-            status = 'low_stock';
+        } else if (status === 'low_stock') {
             statusClass = 'status-low';
             statusText = 'Low Stock';
+        } else if (status === 'overstocked') {
+            statusClass = 'status-over';
+            statusText = 'Overstocked';
         }
         
         // Generate action buttons based on role
@@ -499,16 +546,22 @@ function getStockAdjustmentElements() {
 }
 
 function setupEventListeners() {
-    document.getElementById('inventory-search').addEventListener('input', (e) => {
-        const filters = getFilters();
-        filters.search = e.target.value;
-        loadInventory(filters);
+    const reloadInventory = debounce(() => loadInventory(getFilters()), 250);
+    document.getElementById('inventory-search').addEventListener('input', reloadInventory);
+    ['status-filter', 'unit-filter', 'active-filter', 'inventory-sort'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', reloadInventory);
     });
-    
-    document.getElementById('status-filter').addEventListener('change', (e) => {
-        const filters = getFilters();
-        filters.status = e.target.value;
-        loadInventory(filters);
+    ['min-quantity-filter', 'max-quantity-filter', 'min-price-filter', 'max-price-filter'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', reloadInventory);
+    });
+    document.getElementById('reset-inventory-filters')?.addEventListener('click', () => {
+        ['inventory-search', 'status-filter', 'unit-filter', 'active-filter', 'min-quantity-filter',
+            'max-quantity-filter', 'min-price-filter', 'max-price-filter'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.value = '';
+        });
+        document.getElementById('inventory-sort').value = 'name_asc';
+        loadInventory(getFilters());
     });
 
     document.getElementById('product-form').addEventListener('submit', saveProduct);
@@ -566,7 +619,14 @@ function setupEventListeners() {
 function getFilters() {
     return {
         search: document.getElementById('inventory-search').value,
-        status: document.getElementById('status-filter').value
+        status: document.getElementById('status-filter').value,
+        unit: document.getElementById('unit-filter').value,
+        active: document.getElementById('active-filter').value,
+        minQuantity: document.getElementById('min-quantity-filter').value,
+        maxQuantity: document.getElementById('max-quantity-filter').value,
+        minPrice: document.getElementById('min-price-filter').value,
+        maxPrice: document.getElementById('max-price-filter').value,
+        sort: document.getElementById('inventory-sort').value
     };
 }
 
@@ -927,13 +987,13 @@ async function exportToCSV() {
             const quantity = inventory.quantity || 0;
             const totalValue = quantity * (product.unit_price || 0);
             
-            // Determine status
-            let status = 'Out of Stock';
-            if (quantity >= 10) {
-                status = 'In Stock';
-            } else if (quantity > 0) {
-                status = 'Low Stock';
-            }
+            const statusLabels = {
+                out_of_stock: 'Out of Stock',
+                low_stock: 'Low Stock',
+                in_stock: 'In Stock',
+                overstocked: 'Overstocked'
+            };
+            const status = statusLabels[getProductStockStatus(product)];
 
             return [
                 product.product_name || '',

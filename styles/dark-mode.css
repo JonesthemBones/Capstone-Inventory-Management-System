@@ -687,6 +687,10 @@
 
 .dark-mode .search-input,
 .dark-mode .pos-filter-select,
+.dark-mode .pos-filter-input,
+.dark-mode .pos-reset-filter,
+.dark-mode .inventory-filter-control,
+.dark-mode .inventory-filter-panel,
 .dark-mode .discount-section input,
 .dark-mode .payment-section select,
 .dark-mode .tender-section input {

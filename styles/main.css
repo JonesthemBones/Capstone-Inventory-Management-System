@@ -636,6 +636,32 @@ body {
   gap: 12px;
 }
 
+.inventory-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-white);
+}
+
+.inventory-filter-control {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-white);
+  color: var(--text-primary);
+}
+
+.status-over {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
 .search-box {
   display: flex;
   align-items: center;
