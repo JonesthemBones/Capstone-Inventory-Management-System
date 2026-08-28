@@ -71,12 +71,17 @@
 
 .pos-toolbar {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
   margin-top: 10px;
 }
 
-.pos-filter-select {
-  width: min(220px, 100%);
+.pos-filter-select,
+.pos-filter-input,
+.pos-reset-filter {
+  min-width: 130px;
+  flex: 1 1 140px;
   padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 10px;
@@ -358,6 +363,13 @@
   gap: 12px;
   color: #4b5563;
   font-size: 0.9rem;
+}
+
+.pos-reset-filter {
+  flex: 0 1 auto;
+  min-width: auto;
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .item-detail.subtotal {

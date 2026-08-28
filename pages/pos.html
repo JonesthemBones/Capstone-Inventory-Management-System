@@ -46,11 +46,21 @@
                             </div>
                             <div class="pos-toolbar">
                                 <select id="pos-stock-filter" class="pos-filter-select">
+                                    <option value="available">Available items</option>
                                     <option value="all">All items</option>
                                     <option value="in_stock">In stock</option>
                                     <option value="low_stock">Low stock</option>
                                     <option value="out_of_stock">Out of stock</option>
                                 </select>
+                                <select id="pos-unit-filter" class="pos-filter-select" aria-label="Filter by unit"><option value="">All units</option></select>
+                                <input id="pos-min-price" class="pos-filter-input" type="number" min="0" step="0.01" placeholder="Min price" aria-label="Minimum selling price">
+                                <input id="pos-max-price" class="pos-filter-input" type="number" min="0" step="0.01" placeholder="Max price" aria-label="Maximum selling price">
+                                <select id="pos-sort" class="pos-filter-select" aria-label="Sort products">
+                                    <option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option>
+                                    <option value="price_asc">Price: Low to High</option><option value="price_desc">Price: High to Low</option>
+                                    <option value="stock_desc">Stock: High to Low</option>
+                                </select>
+                                <button type="button" id="pos-reset-filters" class="pos-reset-filter">Reset</button>
                             </div>
                             <div id="product-suggestions" class="product-suggestions" style="display:none;"></div>
                             <div id="product-grid" class="product-grid"></div>

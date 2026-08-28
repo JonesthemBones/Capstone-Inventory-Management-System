@@ -43,11 +43,12 @@
                                 <i class="fas fa-search"></i>
                                 <input type="text" id="inventory-search" placeholder="Search items...">
                             </div>
-                            <select id="status-filter" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">
+                            <select id="status-filter" class="inventory-filter-control">
                                 <option value="">All Status</option>
                                 <option value="in_stock">In Stock</option>
                                 <option value="low_stock">Low Stock</option>
                                 <option value="out_of_stock">Out of Stock</option>
+                                <option value="overstocked">Overstocked</option>
                             </select>
                             <button class="btn btn-primary role-requires-staff-or-admin" id="add-item-btn">
                                 <i class="fas fa-plus"></i>
@@ -70,6 +71,24 @@
                                 Restore Backup
                             </button>
                         </div>
+                    </div>
+
+                    <div class="inventory-filter-panel" aria-label="Inventory filters">
+                        <select id="unit-filter" class="inventory-filter-control" aria-label="Filter by unit"><option value="">All Units</option></select>
+                        <select id="active-filter" class="inventory-filter-control" aria-label="Filter by product status">
+                            <option value="">All Products</option><option value="active">Active</option><option value="inactive">Inactive</option>
+                        </select>
+                        <input type="number" id="min-quantity-filter" class="inventory-filter-control" min="0" placeholder="Min quantity" aria-label="Minimum quantity">
+                        <input type="number" id="max-quantity-filter" class="inventory-filter-control" min="0" placeholder="Max quantity" aria-label="Maximum quantity">
+                        <input type="number" id="min-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Min selling price" aria-label="Minimum selling price">
+                        <input type="number" id="max-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Max selling price" aria-label="Maximum selling price">
+                        <select id="inventory-sort" class="inventory-filter-control" aria-label="Sort inventory">
+                            <option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option>
+                            <option value="quantity_asc">Quantity: Low to High</option><option value="quantity_desc">Quantity: High to Low</option>
+                            <option value="price_asc">Selling Price: Low to High</option><option value="price_desc">Selling Price: High to Low</option>
+                            <option value="value_desc">Stock Value: High to Low</option>
+                        </select>
+                        <button type="button" class="btn" id="reset-inventory-filters"><i class="fas fa-rotate-left"></i> Reset</button>
                     </div>
 
                     <div class="table-scroll">
