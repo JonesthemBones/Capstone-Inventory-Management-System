@@ -59,6 +59,10 @@
                             </div>
 
                             <div class="vlm-button-row">
+                                <button type="button" class="btn btn-primary vlm-mobile-camera-button" id="open-camera-btn">
+                                    <i class="fas fa-camera"></i>
+                                    Take Photo
+                                </button>
                                 <button type="button" class="btn btn-primary" id="process-receipt-btn">
                                     <i class="fas fa-camera"></i>
                                     Extract Receipt
@@ -177,6 +181,26 @@
                 <i class="fas fa-times"></i>
             </button>
             <img id="receipt-image-modal-img" src="" alt="Full receipt preview">
+        </div>
+    </div>
+
+    <div id="vlm-camera-modal" class="vlm-camera-modal" aria-hidden="true">
+        <div class="vlm-camera-panel" role="dialog" aria-modal="true" aria-labelledby="vlm-camera-title">
+            <div class="vlm-camera-header">
+                <h2 id="vlm-camera-title">Take Receipt Photo</h2>
+                <button type="button" class="vlm-camera-close" id="close-camera-btn" aria-label="Close camera">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <video id="receipt-camera-video" autoplay playsinline muted></video>
+            <canvas id="receipt-camera-canvas" hidden></canvas>
+            <p class="vlm-camera-help">Place the full receipt inside the frame and keep the phone steady.</p>
+            <div class="vlm-camera-actions">
+                <button type="button" class="btn" id="cancel-camera-btn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="capture-camera-btn">
+                    <i class="fas fa-camera"></i> Capture Photo
+                </button>
+            </div>
         </div>
     </div>
 

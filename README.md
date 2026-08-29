@@ -116,7 +116,6 @@ All routes are mounted under `/api`.
 | `GET` | `/paymongo/checkout/:checkoutId` | Verify a PayMongo checkout session |
 | `POST` | `/pos/transactions/:transactionId/finalize` | Deduct sold quantities and record stock movements |
 
-The former `/ocr-scan` and `/ocr-config` routes remain available as deprecated aliases for existing clients. New integrations should use the `/vlm-*` routes.
 
 Most product, transaction, report, and audit operations use the Supabase client directly rather than custom REST endpoints.
 

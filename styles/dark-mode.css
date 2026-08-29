@@ -691,7 +691,7 @@
 .dark-mode .pos-reset-filter,
 .dark-mode .inventory-filter-control,
 .dark-mode .inventory-filter-panel,
-.dark-mode .discount-section input,
+.dark-mode .discount-section select,
 .dark-mode .payment-section select,
 .dark-mode .tender-section input {
     background: var(--input-bg);
@@ -700,7 +700,7 @@
 }
 
 .dark-mode .search-input:focus,
-.dark-mode .discount-section input:focus,
+.dark-mode .discount-section select:focus,
 .dark-mode .payment-section select:focus,
 .dark-mode .tender-section input:focus {
     background: var(--bg-tertiary);

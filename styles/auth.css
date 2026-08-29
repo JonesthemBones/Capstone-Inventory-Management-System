@@ -61,6 +61,14 @@ body {
     font-size: 28px;
 }
 
+.auth-brand-logo {
+    display: block;
+    width: 96px;
+    height: 96px;
+    object-fit: contain;
+    margin: 0 auto 16px;
+}
+
 .auth-title {
     font-size: 24px;
     font-weight: 600;

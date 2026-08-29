@@ -1,4 +1,6 @@
-const SIDEBAR_CACHE_VERSION = 'v3';
+// Increment whenever shared sidebar markup changes so stale cached branding
+// and navigation are not restored after the loading skeleton disappears.
+const SIDEBAR_CACHE_VERSION = 'v4';
 
 const sidebarConfig = [
     {
@@ -98,7 +100,7 @@ function buildLoadingSkeletonHTML() {
         <header class="mobile-header">
             <div class="mobile-header-content">
                 <div class="mobile-logo">
-                    <i class="fas fa-chart-bar"></i>
+                    <img class="mobile-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
                     <span>Amacar Hardware Inventory System</span>
                 </div>
                 <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
@@ -109,7 +111,7 @@ function buildLoadingSkeletonHTML() {
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <i class="fas fa-chart-bar logo-icon"></i>
+                    <img class="sidebar-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
                     <div class="logo-text">
                         <h2>Amacar Hardware Inventory System</h2>
                     </div>
@@ -139,7 +141,7 @@ function buildFallbackSidebarHTML() {
         <header class="mobile-header">
             <div class="mobile-header-content">
                 <div class="mobile-logo">
-                    <i class="fas fa-chart-bar"></i>
+                    <img class="mobile-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
                     <span>Amacar Hardware Inventory System</span>
                 </div>
                 <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
@@ -169,7 +171,7 @@ function buildFallbackSidebarHTML() {
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <i class="fas fa-chart-bar logo-icon"></i>
+                    <img class="sidebar-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
                     <div class="logo-text">
                         <h2>Amacar Hardware Inventory System</h2>
                     </div>

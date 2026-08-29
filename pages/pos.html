@@ -115,16 +115,14 @@
                                 <span id="summary-total">₱0.00</span>
                             </div>
 
-                            <!-- Discount Input -->
+                            <!-- Discount Type -->
                             <div class="discount-section">
-                                <label for="discount-input">Discount Amount (₱)</label>
-                                <input 
-                                    type="number" 
-                                    id="discount-input" 
-                                    min="0" 
-                                    step="0.01"
-                                    placeholder="0.00"
-                                >
+                                <label for="discount-input">Discount Type</label>
+                                <select id="discount-input">
+                                    <option value="">No Discount</option>
+                                    <option value="pwd">PWD (20%)</option>
+                                    <option value="senior_citizen">Senior Citizen (20%)</option>
+                                </select>
                             </div>
 
                             <!-- Payment Method -->

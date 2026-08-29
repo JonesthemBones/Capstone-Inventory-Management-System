@@ -1,7 +1,8 @@
-const VLM_API_ENDPOINTS = ['/api/vlm-scan', '/api/ocr-scan'];
-const VLM_CONFIG_ENDPOINTS = ['/api/vlm-config', '/api/ocr-config'];
+const VLM_API_ENDPOINT = '/api/vlm-scan';
+const VLM_CONFIG_ENDPOINT = '/api/vlm-config';
 let currentReceiptImage = null;
 let currentItems = [];
+let receiptCameraStream = null;
 let thumbnailModalContext = {
     itemIndex: null,
     inventoryId: null,
@@ -9,17 +10,6 @@ let thumbnailModalContext = {
     pendingThumbnailUrl: null,
     pendingThumbnailFile: null
 };
-
-async function fetchWithLegacyFallback(endpoints, options) {
-    let response;
-
-    for (const endpoint of endpoints) {
-        response = await fetch(endpoint, options);
-        if (response.status !== 404) return response;
-    }
-
-    return response;
-}
 
 function setStatus(message, variant = 'neutral') {
     const statusElement = document.getElementById('vlm-status');
@@ -61,6 +51,60 @@ function closeReceiptImagePreview(event) {
         return;
     }
     modal.classList.remove('active');
+}
+
+async function openReceiptCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+        alert('Direct camera access is not supported by this browser. Use Choose or capture a receipt instead.');
+        return;
+    }
+
+    const modal = document.getElementById('vlm-camera-modal');
+    const video = document.getElementById('receipt-camera-video');
+    try {
+        receiptCameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false
+        });
+        video.srcObject = receiptCameraStream;
+        modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
+        await video.play();
+    } catch (error) {
+        console.error('Unable to open receipt camera:', error);
+        alert('Camera access was unavailable. Allow camera permission and make sure the site is opened over HTTPS or localhost.');
+        closeReceiptCamera();
+    }
+}
+
+function closeReceiptCamera() {
+    receiptCameraStream?.getTracks().forEach(track => track.stop());
+    receiptCameraStream = null;
+    const video = document.getElementById('receipt-camera-video');
+    const modal = document.getElementById('vlm-camera-modal');
+    if (video) video.srcObject = null;
+    if (modal) {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+}
+
+function captureReceiptPhoto() {
+    const video = document.getElementById('receipt-camera-video');
+    const canvas = document.getElementById('receipt-camera-canvas');
+    if (!video?.videoWidth || !video?.videoHeight) {
+        alert('The camera is still starting. Please try again in a moment.');
+        return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    currentReceiptImage = { file: null, dataUrl, source: 'camera' };
+    setPreviewImage(dataUrl);
+    setStatus('Receipt photo ready. Tap Extract Receipt to process.', 'neutral');
+    closeReceiptCamera();
 }
 
 function clearReceiptSelection() {
@@ -526,7 +570,7 @@ async function fetchAdminVLMConfig() {
         throw new Error('User is not authenticated.');
     }
 
-    const response = await fetchWithLegacyFallback(VLM_CONFIG_ENDPOINTS, {
+    const response = await fetch(VLM_CONFIG_ENDPOINT, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
@@ -566,7 +610,7 @@ async function saveAdminVLMConfig() {
     saveButton.textContent = 'Saving...';
 
     try {
-        const response = await fetchWithLegacyFallback(VLM_CONFIG_ENDPOINTS, {
+        const response = await fetch(VLM_CONFIG_ENDPOINT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -735,7 +779,7 @@ async function processReceiptImage() {
     try {
         const { data: { session } } = await window.supabaseClient.auth.getSession();
         if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
-        const response = await fetchWithLegacyFallback(VLM_API_ENDPOINTS, {
+        const response = await fetch(VLM_API_ENDPOINT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -938,6 +982,10 @@ async function initReceiptScanner() {
     const imageInput = document.getElementById('receipt-image-input');
     const processButton = document.getElementById('process-receipt-btn');
     const clearButton = document.getElementById('clear-receipt-btn');
+    const openCameraButton = document.getElementById('open-camera-btn');
+    const captureCameraButton = document.getElementById('capture-camera-btn');
+    const closeCameraButton = document.getElementById('close-camera-btn');
+    const cancelCameraButton = document.getElementById('cancel-camera-btn');
     const acceptAllBtn = document.getElementById('accept-all-btn');
     const removeAllBtn = document.getElementById('remove-all-btn');
     const downloadBtn = document.getElementById('download-json-btn');
@@ -987,6 +1035,12 @@ async function initReceiptScanner() {
             clearReceiptSelection();
         });
     }
+
+    openCameraButton?.addEventListener('click', openReceiptCamera);
+    captureCameraButton?.addEventListener('click', captureReceiptPhoto);
+    closeCameraButton?.addEventListener('click', closeReceiptCamera);
+    cancelCameraButton?.addEventListener('click', closeReceiptCamera);
+    window.addEventListener('pagehide', closeReceiptCamera);
 
     if (acceptAllBtn) {
         acceptAllBtn.addEventListener('click', (event) => {

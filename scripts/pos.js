@@ -117,7 +117,7 @@ function setupEventListeners() {
     document.getElementById('payment-method').addEventListener('change', handlePaymentMethodChange);
     
     // Discount and tender inputs
-    document.getElementById('discount-input').addEventListener('input', updateCartSummary);
+    document.getElementById('discount-input').addEventListener('change', updateCartSummary);
     document.getElementById('tender-amount').addEventListener('input', updateChangeDisplay);
     
     // Escape key to clear search
@@ -469,8 +469,15 @@ function updateCartDisplay() {
     }).join('');
 }
 
+function getDiscountAmount() {
+    const discountType = document.getElementById('discount-input').value;
+    return ['pwd', 'senior_citizen'].includes(discountType)
+        ? POSCalculations.calculateSubtotal(currentCart) * 0.20
+        : 0;
+}
+
 function updateCartSummary() {
-    const discountAmount = parseFloat(document.getElementById('discount-input').value) || 0;
+    const discountAmount = getDiscountAmount();
     const { subtotal, tax, total } = POSCalculations.calculateTotals(currentCart, discountAmount);
 
     document.getElementById('summary-subtotal').textContent = POSCalculations.formatCurrency(subtotal);
@@ -521,7 +528,7 @@ function handlePaymentMethodChange(e) {
 }
 
 function updateChangeDisplay() {
-    const discountAmount = parseFloat(document.getElementById('discount-input').value) || 0;
+    const discountAmount = getDiscountAmount();
     const calculatedTotal = POSCalculations.calculateTotals(currentCart, discountAmount).total;
     const tender = parseFloat(document.getElementById('tender-amount').value) || 0;
     const change = POSCalculations.calculateChange(calculatedTotal, tender);
@@ -560,7 +567,8 @@ async function startPayMongoCheckout(discountAmount) {
             checkoutId: result.checkoutId,
             referenceNumber,
             cart: currentCart,
-            discountAmount
+            discountAmount,
+            discountType: document.getElementById('discount-input').value
         }));
         window.location.assign(result.checkoutUrl);
     } catch (error) {
@@ -584,7 +592,7 @@ async function handlePayMongoReturn() {
     }
 
     currentCart = pending.cart || [];
-    document.getElementById('discount-input').value = pending.discountAmount || '';
+    document.getElementById('discount-input').value = pending.discountType || '';
     document.getElementById('payment-method').value = 'bank_transfer';
     handlePaymentMethodChange({ target: document.getElementById('payment-method') });
     updateCartDisplay();
@@ -630,25 +638,7 @@ async function handleCheckout() {
         return;
     }
 
-    const discountAmount = parseFloat(document.getElementById('discount-input').value) || 0;
-
-    const subtotal = POSCalculations.calculateSubtotal(currentCart);
-    if (discountAmount < 0 || discountAmount > subtotal) {
-        alert('Discount must be between zero and the order subtotal.');
-        document.getElementById('discount-input').focus();
-        return;
-    }
-
-    if (POSCalculations.requiresDiscountApproval(discountAmount)) {
-        const approved = confirm(
-            `This discount of ${POSCalculations.formatCurrency(discountAmount)} exceeds the ` +
-            `${POSCalculations.formatCurrency(POSCalculations.MIN_DISCOUNT_APPROVAL_AMOUNT)} approval threshold ` +
-            `and requires manager sign-off.\n\nConfirm a manager has approved this discount?`
-        );
-        if (!approved) {
-            return;
-        }
-    }
+    const discountAmount = getDiscountAmount();
 
     const paymentMethod = document.getElementById('payment-method').value;
     
@@ -699,7 +689,7 @@ async function handleCheckout() {
 
 async function createPOSTransaction(options = {}) {
     try {
-        const discountAmount = parseFloat(document.getElementById('discount-input').value) || 0;
+        const discountAmount = getDiscountAmount();
         const { subtotal, tax, total } = POSCalculations.calculateTotals(currentCart, discountAmount);
         const paymentMethod = options.paymentMethod || document.getElementById('payment-method').value;
         const tenderAmount = parseFloat(document.getElementById('tender-amount')?.value || 0) || 0;

@@ -217,7 +217,7 @@ function imageExtension(mediaType) {
     }
 }
 
-router.post(['/vlm-scan', '/ocr-scan'], async (req, res) => {
+router.post('/vlm-scan', async (req, res) => {
     const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'VLM extraction access required.');
     if (!operator) return;
 
@@ -320,7 +320,7 @@ router.post(['/vlm-scan', '/ocr-scan'], async (req, res) => {
     }
 });
 
-router.get(['/vlm-config', '/ocr-config'], async (req, res) => {
+router.get('/vlm-config', async (req, res) => {
     const admin = await requireAdmin(req, res);
     if (!admin) return;
 
@@ -331,7 +331,7 @@ router.get(['/vlm-config', '/ocr-config'], async (req, res) => {
     });
 });
 
-router.post(['/vlm-config', '/ocr-config'], async (req, res) => {
+router.post('/vlm-config', async (req, res) => {
     const admin = await requireAdmin(req, res);
     if (!admin) return;
 
