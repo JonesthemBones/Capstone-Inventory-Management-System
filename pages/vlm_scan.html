@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management - Receipt Extraction</title>
+    <link rel="icon" type="image/png" href="../styles/img/AmacarLogo.png">
+    <link rel="stylesheet" href="../styles/main.css">
+    <link rel="stylesheet" href="../styles/modal.css">
+    <link rel="stylesheet" href="../styles/inventory-thumbnail.css">
+    <link rel="stylesheet" href="../styles/help.css">
+    <link rel="stylesheet" href="../styles/dark-mode.css">
+    <link rel="stylesheet" href="../styles/vlm_scan.css">
+    <link rel="stylesheet" href="../styles/mobile.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script src="../scripts/config.js"></script>
+    <script src="../scripts/inactivity-logout.js"></script>
+    <script src="../scripts/util.js"></script>
+    <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/help.js"></script>
+    <script src="../scripts/dark-mode.js"></script>
+
+    <div class="app-container">
+        <main class="main-content" data-protected-content aria-busy="true">
+            <div class="page active">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Receipt Extraction</h1>
+                        <p class="page-subtitle">Take or upload a receipt image, then review extracted items and adjust values before accepting.</p>
+                    </div>
+                </div>
+
+                <div class="vlm-page-grid">
+                    <section class="vlm-card vlm-upload-card">
+                        <div class="vlm-card-header">
+                            <div>
+                                <h2>Capture / Upload Receipt</h2>
+                                <p class="vlm-card-subtitle">Use your device camera or choose a receipt image from your files.</p>
+                            </div>
+                        </div>
+
+                        <div class="vlm-upload-section">
+                            <label class="vlm-file-drop" for="receipt-image-input">
+                                <input type="file" id="receipt-image-input" accept="image/*" capture="environment">
+                                <span class="vlm-file-icon"><i class="fas fa-cloud-arrow-up"></i></span>
+                                <span class="vlm-file-copy"><strong>Choose or capture a receipt</strong><small>JPG, PNG or WEBP · tap to open your camera or files</small></span>
+                                <span class="btn btn-secondary vlm-browse-button">Browse</span>
+                            </label>
+
+                            <div class="vlm-image-preview-wrapper">
+                                <div class="vlm-preview-label">Preview</div>
+                                <div id="receipt-image-preview" class="vlm-image-preview"><span><i class="far fa-image"></i>No image selected</span></div>
+                                <button type="button" class="btn btn-secondary" id="view-receipt-image-btn" style="display:none;" onclick="openReceiptImagePreview()">
+                                    <i class="fas fa-expand"></i>
+                                    View Full Receipt
+                                </button>
+                            </div>
+
+                            <div class="vlm-button-row">
+                                <button type="button" class="btn btn-primary vlm-mobile-camera-button" id="open-camera-btn">
+                                    <i class="fas fa-camera"></i>
+                                    Take Photo
+                                </button>
+                                <button type="button" class="btn btn-primary" id="process-receipt-btn">
+                                    <i class="fas fa-camera"></i>
+                                    Extract Receipt
+                                </button>
+                                <button type="button" class="btn" id="clear-receipt-btn">
+                                    <i class="fas fa-trash-alt"></i>
+                                    Clear
+                                </button>
+                            </div>
+
+                            <p class="vlm-hint">The receipt image is processed by the backend and sent to OpenRouter. Your data is only used for this scan.</p>
+
+                            <div id="vlm-admin-settings" class="vlm-admin-settings hidden">
+                                <div class="vlm-admin-settings-header">
+                                    <h3>VLM Settings</h3>
+                                    <p>Change the OpenRouter API key and model name used for receipt extraction.</p>
+                                </div>
+                                <div class="vlm-admin-settings-row">
+                                    <div class="vlm-admin-settings-field">
+                                        <label for="vlm-api-key-input">Product Extraction API Key</label>
+                                        <input type="password" id="vlm-api-key-input" placeholder="Paste product extraction API key here">
+                                    </div>
+                                    <div class="vlm-admin-settings-field">
+                                        <label for="vlm-model-input">Vision Model Name</label>
+                                        <input type="text" id="vlm-model-input" placeholder="e.g. openrouter/free">
+                                    </div>
+                                </div>
+                                <div class="vlm-admin-settings-row">
+                                    <div class="vlm-admin-settings-field">
+                                        <label for="vlm-supplier-api-key-input">Supplier Details Extractor API Key</label>
+                                        <input type="password" id="vlm-supplier-api-key-input" placeholder="Paste supplier extractor API key here">
+                                    </div>
+                                    <div class="vlm-admin-settings-field" style="flex: 1 1 100%; max-width: 100%;">
+                                        <label for="vlm-endpoint-input">OpenRouter API Endpoint</label>
+                                        <input type="text" id="vlm-endpoint-input" placeholder="https://openrouter.ai/api/v1/chat/completions">
+                                    </div>
+                                </div>
+                                <div class="vlm-admin-settings-actions">
+                                    <button type="button" class="btn btn-primary" id="save-vlm-config-btn">
+                                        <i class="fas fa-save"></i>
+                                        Save VLM Settings
+                                    </button>
+                                    <span id="vlm-config-status" class="vlm-config-status"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="vlm-card vlm-results-card">
+                        <div class="vlm-card-header vlm-results-header">
+                            <div>
+                                <h2>Extracted Items</h2>
+                                <p class="vlm-card-subtitle">Review items extracted by the VLM, then accept or remove them individually or in bulk.</p>
+                            </div>
+                            <div class="vlm-action-buttons">
+                                <button type="button" class="btn btn-secondary" id="download-json-btn">
+                                    <i class="fas fa-download"></i>
+                                    Download JSON
+                                </button>
+                                <button type="button" class="btn btn-primary" id="accept-all-btn">
+                                    <i class="fas fa-check"></i>
+                                    Accept All
+                                </button>
+                                <button type="button" class="btn btn-danger" id="remove-all-btn">
+                                    <i class="fas fa-ban"></i>
+                                    Reject All
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="vlm-status" class="vlm-status vlm-status-neutral">No receipt scanned yet.</div>
+                        <div id="supplier-details-panel" class="supplier-details-panel hidden" data-expanded="true">
+                            <button type="button" id="supplier-details-toggle" class="supplier-details-toggle" aria-expanded="true">
+                                <span>Supplier Details</span>
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                            <div id="supplier-details-content" class="supplier-details-content"></div>
+                        </div>
+                        <div class="vlm-save-section">
+                            <button type="button" class="btn btn-success btn-large" id="save-to-inventory-btn" disabled>
+                                <i class="fas fa-save"></i>
+                                No items to save
+                            </button>
+                            <button type="button" class="btn btn-outline btn-large" id="start-new-scan-btn" style="display:none; margin-top:12px;">
+                                <i class="fas fa-refresh"></i>
+                                Start New Scan
+                            </button>
+                        </div>
+                        <div class="vlm-items-column-header" aria-hidden="true">
+                            <span>Thumbnail</span>
+                            <span>Extracted item</span>
+                        </div>
+                        <div id="vlm-items-grid" class="vlm-items-grid"></div>
+                        <pre id="vlm-raw-output" class="vlm-raw-output" hidden></pre>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="thumbnail-modal" class="modal" aria-hidden="true">
+        <div class="modal-content thumbnail-modal-content" role="dialog" aria-modal="true" aria-labelledby="thumbnail-modal-title">
+            <div class="modal-header">
+                <h2 id="thumbnail-modal-title">Edit Thumbnail</h2>
+                <button type="button" class="modal-close" id="thumbnail-modal-close" aria-label="Close thumbnail editor">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="thumbnail-modal-body">
+                <div id="thumbnail-modal-preview" class="thumbnail-modal-preview">
+                    <img id="thumbnail-modal-image" class="thumbnail-modal-image" src="" alt="Thumbnail preview" hidden>
+                    <div id="thumbnail-modal-empty" class="product-form-thumbnail-placeholder">
+                        <i class="fas fa-image"></i>
+                        <span>No thumbnail yet</span>
+                    </div>
+                </div>
+                <input type="file" id="thumbnail-file-input" accept="image/*" hidden>
+                <button type="button" class="btn btn-secondary" id="change-thumbnail-btn">
+                    <i class="fas fa-image"></i>
+                    Change Thumbnail
+                </button>
+                <div class="modal-actions">
+                    <button type="button" class="btn" id="cancel-thumbnail-btn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-thumbnail-btn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="receipt-image-modal" class="vlm-image-modal" onclick="closeReceiptImagePreview(event)">
+        <div class="vlm-image-modal-content">
+            <button type="button" class="vlm-image-modal-close" onclick="closeReceiptImagePreview()" aria-label="Close receipt preview">
+                <i class="fas fa-times"></i>
+            </button>
+            <img id="receipt-image-modal-img" src="" alt="Full receipt preview">
+        </div>
+    </div>
+
+    <div id="vlm-camera-modal" class="vlm-camera-modal" aria-hidden="true">
+        <div class="vlm-camera-panel" role="dialog" aria-modal="true" aria-labelledby="vlm-camera-title">
+            <div class="vlm-camera-header">
+                <h2 id="vlm-camera-title">Take Receipt Photo</h2>
+                <button type="button" class="vlm-camera-close" id="close-camera-btn" aria-label="Close camera">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <video id="receipt-camera-video" autoplay playsinline muted></video>
+            <canvas id="receipt-camera-canvas" hidden></canvas>
+            <p class="vlm-camera-help">Place the full receipt inside the frame and keep the phone steady.</p>
+            <div class="vlm-camera-actions">
+                <button type="button" class="btn" id="cancel-camera-btn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="capture-camera-btn">
+                    <i class="fas fa-camera"></i> Capture Photo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../scripts/vlm_scan.js"></script>
+</body>
+</html>

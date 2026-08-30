@@ -1,0 +1,128 @@
+<!-- Mobile Header (visible only on mobile) -->
+<header class="mobile-header">
+    
+    <div class="mobile-header-content">
+        <!-- Logo -->
+        <div class="mobile-logo">
+            <img class="mobile-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
+            <span>Amacar Hardware Inventory System</span>
+        </div>
+
+        <!-- Mobile Menu Toggle Button -->
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
+            <i class="fas fa-bars"></i>
+        </button>
+    </div>
+
+    <!-- Mobile Dropdown Menu -->
+    <nav class="mobile-nav-dropdown" id="mobile-nav-dropdown">
+        <div class="mobile-nav-section">
+            <div class="mobile-section-title">Navigation</div>
+            <a href="../pages/dashboard.html" class="mobile-nav-item" data-permission="admin,manager,cashier,staff">
+                <i class="fas fa-th-large"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="../pages/inventory.html" class="mobile-nav-item" data-permission="admin,manager,cashier,staff">
+                <i class="fas fa-box"></i>
+                <span>Inventory</span>
+            </a>
+            <a href="../pages/pos.html" class="mobile-nav-item" data-permission="admin,manager,cashier">
+                <i class="fas fa-cash-register"></i>
+                <span>Point of Sale</span>
+            </a>
+            <a href="../pages/vlm_scan.html" class="mobile-nav-item" data-permission="admin,manager,staff">
+                <i class="fas fa-receipt"></i>
+                <span>VLM Extractions</span>
+            </a>
+            <a href="../pages/reports.html" class="mobile-nav-item" data-permission="admin,manager,cashier,staff">
+                <i class="fas fa-file-alt"></i>
+                <span>Reports</span>
+            </a>
+        </div>
+
+        <div class="mobile-nav-section">
+            <div class="mobile-section-title">System</div>
+            <a href="../pages/users.html" class="mobile-nav-item" data-permission="admin">
+                <i class="fas fa-users"></i>
+                <span>User Management</span>
+            </a>
+            <a href="../pages/audit_logs.html" class="mobile-nav-item" data-permission="admin">
+                <i class="fas fa-clipboard-list"></i>
+                <span>Audit Logs</span>
+            </a>
+        </div>
+
+        <div class="mobile-nav-footer">
+            <div class="mobile-user-info">
+                <p class="mobile-user-label">User</p>
+                <p class="mobile-user-name">Loading...</p>
+                <p class="mobile-user-role"></p>
+            </div>
+            <a href="#" class="mobile-sign-out-btn">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Sign Out</span>
+            </a>
+        </div>
+    </nav>
+</header>
+
+<!-- Desktop Sidebar (visible only on desktop) -->
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <div class="logo">
+            <img class="sidebar-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
+                    <div class="logo-text">
+                <h2><span>Amacar Hardware</span><span>Inventory System</span></h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="sidebar-section">
+        <div class="section-title">Navigation</div>
+        <a href="../pages/dashboard.html" class="nav-item" data-permission="admin,manager,cashier,staff">
+            <i class="fas fa-th-large"></i>
+            <span>Dashboard</span>
+            <span class="indicator-dot"></span>
+        </a>
+        <a href="../pages/inventory.html" class="nav-item" data-permission="admin,manager,cashier,staff">
+            <i class="fas fa-box"></i>
+            <span>Inventory</span>
+        </a>
+        <a href="../pages/pos.html" class="nav-item" data-permission="admin,manager,cashier">
+            <i class="fas fa-cash-register"></i>
+            <span>Point of Sale</span>
+        </a>
+        <a href="../pages/vlm_scan.html" class="nav-item" data-permission="admin,manager,staff">
+            <i class="fas fa-receipt"></i>
+            <span>VLM Extractions</span>
+        </a>
+        <a href="../pages/reports.html" class="nav-item" data-permission="admin,manager,cashier,staff">
+            <i class="fas fa-file-alt"></i>
+            <span>Reports</span>
+        </a>
+    </div>
+
+    <div class="sidebar-section">
+        <div class="section-title">System</div>
+        <a href="../pages/users.html" class="nav-item" data-permission="admin">
+            <i class="fas fa-users"></i>
+            <span>User Management</span>
+        </a>
+        <a href="../pages/audit_logs.html" class="nav-item" data-permission="admin">
+            <i class="fas fa-clipboard-list"></i>
+            <span>Audit Logs</span>
+        </a>
+    </div>
+
+    <div class="sidebar-footer">
+        <div class="user-info-section">
+            <p class="user-label">User</p>
+            <p class="user-name">Loading...</p>
+            <p class="user-role"></p>
+        </div>
+        <a href="#" class="sign-out-btn">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Sign Out</span>
+        </a>
+    </div>
+</aside>

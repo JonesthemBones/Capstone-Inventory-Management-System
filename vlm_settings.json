@@ -1,0 +1,6 @@
+{
+  "apiKey": "REPLACE_WITH_OPENROUTER_PRODUCT_KEY",
+  "supplierApiKey": "REPLACE_WITH_OPENROUTER_SUPPLIER_KEY",
+  "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+  "endpoint": "https://openrouter.ai/api/v1/chat/completions"
+}

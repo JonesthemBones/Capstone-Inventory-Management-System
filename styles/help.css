@@ -1,0 +1,136 @@
+.help-button {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 48px;
+    height: 48px;
+    background-color: var(--text-primary);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transition: all 0.15s ease;
+    z-index: 1000;
+}
+
+.help-button:hover {
+    background-color: var(--text-secondary);
+}
+
+/* Help Modal/Page Overlay */
+.help-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+}
+
+.help-modal.active {
+    display: flex;
+}
+
+/* Help Content Container */
+.help-content {
+    background-color: white;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Changed from overflow-y: auto */
+}
+
+/* Help Header */
+.help-header {
+    background-color: var(--text-primary);
+    color: white;
+    padding: 20px 24px;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0; /* Prevents header from shrinking */
+}
+
+.help-header h2 {
+    margin: 0;
+    font-size: 24px;
+}
+
+.close-help {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 28px;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.close-help:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Help Body */
+.help-body {
+    padding: 24px;
+    color: #333;
+    overflow-y: auto; /* Moved scroll here */
+    flex: 1; /* Takes remaining space */
+    text-align: justify;
+}
+.help-body p {
+    margin-bottom: 5px;
+    line-height: 1.6;
+    font-weight: bold;
+    font-style: italic;
+    border-bottom: 1px solid #333;
+    padding-bottom: 12px;
+   
+}
+.help-section {
+    margin-bottom: 24px;
+}
+
+.help-section:last-child {
+    margin-bottom: 0;
+}
+
+.help-section h3 {
+    color: var(--text-primary);
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-size: 18px;
+}
+
+.help-section ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.help-section li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
