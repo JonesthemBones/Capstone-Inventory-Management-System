@@ -2,10 +2,16 @@
 
 A web-based inventory and point-of-sale system for Amacar Hardware. The current application manages products and stock directly; the legacy product-category module has been removed.
 
+## Project status
+
+The system is in active capstone development and currently supports its main end-to-end workflows: authenticated role-based access, inventory maintenance, inbound receipt extraction, outbound stock processing, POS sales, reporting, audit history, and backup/restore. Desktop and mobile layouts are implemented, including cashier-focused mobile POS controls and dark mode.
+
+The current development focus is interface refinement, data consistency, production configuration, and validation of external integrations. See [Known limitation](#known-limitation) for the remaining user-creation API issue.
+
 ## Current features
 
 - Dashboard metrics for inventory, sales, recent transactions, stock movements, and top products by value
-- Product inventory management with images, pricing, stock thresholds, adjustments, and active/inactive status
+- Product inventory management with images, pricing, stock thresholds, adjustments, inbound batch history, and active/inactive status
 - Inbound inventory through VLM-assisted receipt extraction and product matching
 - Manual outbound transactions for sales, returns, damage/disposal, transfers, and other stock-outs
 - Point of Sale (POS) with cart management, discounts, cash payments, PayMongo test checkout, receipts, transaction history, and voiding
@@ -14,8 +20,41 @@ A web-based inventory and point-of-sale system for Amacar Hardware. The current 
 - Inventory, valuation, low-stock, stock-movement, and cashier sales reports
 - Audit logs and stock-movement history with export options
 - User viewing, editing, activation, backup/restore, and role assignment for `admin`, `manager`, `cashier`, and `staff`
-- Supabase authentication, OTP password reset, inactivity logout, role-based navigation, responsive layouts, and dark mode
+- Supabase authentication, OTP password reset, inactivity logout, role-based navigation, responsive desktop/mobile layouts, and dark mode
 - Inventory and user backup/restore tools
+
+## Recent progress and interface changes
+
+- Standardized the application typography on Open Sans with a consistent 14px base scale and inherited form-control typography.
+- Added the current Amacar logo as the browser-tab icon on every application page.
+- Refined the desktop sidebar branding into a compact two-line `Amacar Hardware` / `Inventory System` title.
+- Standardized product names to uppercase when manually created or edited, restored from inventory backups, or imported through VLM receipt extraction.
+- Added uppercase presentation for older product records so existing mixed-case data remains visually consistent.
+- Made unit-filter options case-insensitive and uppercase. Values such as `pcs`, `Pcs`, and `PCS` now appear once as `PCS`, while matching all equivalent stored records.
+- Improved mobile inventory cards by showing all product details without a disclosure dropdown.
+- Reordered mobile inventory actions to `Delete | Edit | Adjust`, added a visible Delete label, and retained confirmation before deletion.
+- Redesigned the mobile POS product catalog as compact single-column cashier rows with thumbnails, unit/code information, prices, stock indicators, and larger circular add controls.
+- Preserved the mobile POS bottom cart bar and slide-up checkout panel for quick cart access.
+- Reduced the expanded inbound batch-history inset and simplified its dark-mode borders so it blends with the inventory table.
+- Kept receipt/product-code fields and other machine-readable identifiers in monospace while applying Open Sans to the general interface.
+
+These responsive changes apply at mobile breakpoints and do not replace the desktop inventory table or desktop POS catalog.
+
+## Mobile experience
+
+The application includes responsive views designed for phones and small tablets. Mobile navigation uses a compact branded header and hamburger menu, while page content is reorganized for touch interaction rather than simply shrinking the desktop layout.
+
+| Mobile screen | Current behavior |
+| --- | --- |
+| Inventory | Products appear as full-width cards with a thumbnail, status, uppercase product name, code, available quantity, selling price, unit cost, stock value, reorder level, and maximum stock. Details remain visible without an extra dropdown. |
+| Inventory actions | Authorized users receive evenly sized `Delete`, `Edit`, and `Adjust` controls. Delete is positioned on the left, visually marked as destructive, and still requires confirmation. |
+| Inventory filters | Search, status, availability, unit, quantity, price, and sorting controls reflow into touch-friendly columns. Unit values are deduplicated without regard to capitalization. |
+| Point of Sale | Products appear in a cashier-focused single-column list with thumbnail, stock status, uppercase name, unit, code, selling price, and a prominent circular add control. |
+| POS cart | A persistent bottom bar shows cart count and total. Selecting it opens a slide-up cart and checkout panel without leaving the product catalog. |
+| VLM extraction | Receipt capture, extracted-item review, thumbnail editing, acceptance/rejection, and inventory-saving actions adapt to narrow screens. |
+| Navigation and appearance | The mobile header provides role-aware navigation. Light mode, dark mode, inactivity handling, and help controls remain available. |
+
+Mobile layouts are primarily applied at widths of `768px` and below, with additional adjustments for narrow devices around `380px` to `420px`.
 
 ## Technology
 

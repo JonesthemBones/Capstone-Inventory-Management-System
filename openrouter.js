@@ -429,7 +429,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
         });
 
         const dedupedItems = acceptedItems.map(item => {
-            const productName = (item.name || '').trim();
+            const productName = (item.name || '').trim().toUpperCase();
             const quantity = parseInt(item.real_quantity) || parseInt(item.receipt_quantity) || 1;
             const price = parseFloat(item.price) || 0;
             const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
@@ -479,7 +479,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
 
         for (const item of dedupedItems) {
             try {
-                const productName = (item.originalName || item.name || '').trim();
+                const productName = (item.originalName || item.name || '').trim().toUpperCase();
                 const price = parseFloat(item.price) || 0;
                 const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
                 const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
@@ -560,6 +560,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     const { error: updateProductError } = await supabaseClient
                         .from('products')
                         .update({
+                            product_name: productName,
                             unit_price: unitPrice,
                             selling_price: sellingPrice,
                             unit_of_measure: item.unit_of_measure || 'unit'

@@ -222,8 +222,9 @@ function getPOSStockStatus(product) {
 function updatePOSUnitOptions(products) {
     const select = document.getElementById('pos-unit-filter');
     if (!select) return;
-    const selected = select.value;
-    const units = [...new Set((products || []).map(product => String(product.unit_of_measure || '').trim()).filter(Boolean))]
+    const normalizeUnit = unit => String(unit || '').trim().toUpperCase();
+    const selected = normalizeUnit(select.value);
+    const units = [...new Set((products || []).map(product => normalizeUnit(product.unit_of_measure)).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b));
     select.replaceChildren(new Option('All units', ''), ...units.map(unit => new Option(unit, unit)));
     if (units.includes(selected)) select.value = selected;
@@ -244,6 +245,7 @@ function renderProductGrid(products) {
         const imageUrl = product.image_url || getProductImageUrl(product.image_path);
         const safeName = escapeHTML(product.product_name);
         const safeCode = escapeHTML(product.product_code || 'N/A');
+        const safeUnit = escapeHTML(product.unit_of_measure || 'unit');
         const safeImageUrl = escapeHTML(imageUrl || '');
         const imageMarkup = imageUrl
             ? `<img src="${safeImageUrl}" alt="${safeName}" onerror="this.onerror=null; this.src='https://via.placeholder.com/220?text=No+Image';">`
@@ -262,7 +264,7 @@ function renderProductGrid(products) {
                 </div>
                 <div class="product-card-info">
                     <div class="product-card-name">${safeName}</div>
-                    <div class="product-card-code">${safeCode}</div>
+                    <div class="product-card-code">${safeUnit} &bull; ${safeCode}</div>
                     <div class="product-card-footer">
                         <div class="product-card-price">₱${Number(product.selling_price || 0).toFixed(2)}</div>
                         <span class="product-card-add" aria-hidden="true"><i class="fas fa-plus"></i></span>
@@ -321,7 +323,7 @@ async function handleProductSearch(e) {
             const status = getPOSStockStatus(product);
             if (filterValue === 'available' && quantity <= 0) return false;
             if (['in_stock', 'low_stock', 'out_of_stock'].includes(filterValue) && status !== filterValue) return false;
-            if (unitFilter && product.unit_of_measure !== unitFilter) return false;
+            if (unitFilter && String(product.unit_of_measure || '').trim().toUpperCase() !== String(unitFilter).trim().toUpperCase()) return false;
             if (minPrice !== '' && price < Number(minPrice)) return false;
             if (maxPrice !== '' && price > Number(maxPrice)) return false;
             return true;

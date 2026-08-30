@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap');
+
 /* Index page specific styles */
 :root {
     --loading-primary: #2563eb;
@@ -10,7 +12,7 @@ body {
     margin: 0;
     padding: 0;
     min-height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Open Sans', sans-serif;
     background: var(--loading-background);
     display: flex;
     justify-content: center;
