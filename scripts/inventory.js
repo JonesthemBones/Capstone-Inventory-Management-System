@@ -115,8 +115,9 @@ function getProductStockStatus(product) {
 function updateInventoryUnitOptions(products) {
     const select = document.getElementById('unit-filter');
     if (!select) return;
-    const selected = select.value;
-    const units = [...new Set((products || []).map(product => String(product.unit_of_measure || '').trim()).filter(Boolean))]
+    const normalizeUnit = unit => String(unit || '').trim().toUpperCase();
+    const selected = normalizeUnit(select.value);
+    const units = [...new Set((products || []).map(product => normalizeUnit(product.unit_of_measure)).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b));
     select.replaceChildren(new Option('All Units', ''), ...units.map(unit => new Option(unit, unit)));
     if (units.includes(selected)) select.value = selected;
@@ -129,7 +130,7 @@ function filterAndSortInventory(products, filters) {
         const price = Number(product.selling_price || 0);
         const isActive = product.is_active !== false;
         if (filters.status && getProductStockStatus(product) !== filters.status) return false;
-        if (filters.unit && product.unit_of_measure !== filters.unit) return false;
+        if (filters.unit && String(product.unit_of_measure || '').trim().toUpperCase() !== String(filters.unit).trim().toUpperCase()) return false;
         if (filters.active === 'active' && !isActive) return false;
         if (filters.active === 'inactive' && isActive) return false;
         if (hasNumber(filters.minQuantity) && quantity < Number(filters.minQuantity)) return false;
@@ -507,7 +508,7 @@ function displayInventory(products) {
                     </button>
                 </td>
                 ${thumbnailCell}
-                <td><strong>${product.product_name}</strong></td>
+                <td><strong class="product-name">${product.product_name}</strong></td>
                 <td>${product.product_code || 'N/A'}</td>
                 <td>${product.unit_of_measure || 'N/A'}</td>
                 <td><strong>${quantity}</strong></td>
@@ -594,9 +595,9 @@ function renderMobileInventoryCards(products) {
             : `<div class="inventory-card-image-placeholder"><i class="fas fa-image"></i></div>`;
         const actions = canManage
             ? `<div class="inventory-card-actions" aria-label="Actions for ${safeName}">
-                    <button type="button" class="btn inventory-card-action adjust-btn" data-id="${safeId}"><i class="fas fa-boxes"></i> Adjust</button>
+                    <button type="button" class="btn inventory-card-action inventory-card-delete delete-btn" data-id="${safeId}" aria-label="Delete ${safeName}"><i class="fas fa-trash"></i> Delete</button>
                     <button type="button" class="btn inventory-card-action edit-btn" data-id="${safeId}"><i class="fas fa-edit"></i> Edit</button>
-                    <button type="button" class="btn inventory-card-action inventory-card-delete delete-btn" data-id="${safeId}" aria-label="Delete ${safeName}"><i class="fas fa-trash"></i></button>
+                    <button type="button" class="btn inventory-card-action adjust-btn" data-id="${safeId}"><i class="fas fa-boxes"></i> Adjust</button>
                </div>`
             : '<span class="inventory-card-readonly"><i class="fas fa-eye"></i> View only</span>';
 
@@ -606,7 +607,7 @@ function renderMobileInventoryCards(products) {
                     ${image}
                     <div class="inventory-card-identity">
                         <span class="status-badge ${status.className}">${status.label}</span>
-                        <h3>${safeName}</h3>
+                        <h3 class="product-name">${safeName}</h3>
                         <span class="inventory-card-code">${safeCode}</span>
                     </div>
                 </div>
@@ -614,10 +615,7 @@ function renderMobileInventoryCards(products) {
                     <div><span>Available</span><strong>${quantity} ${safeUnit}</strong></div>
                     <div><span>Selling price</span><strong>${formatCurrency(sellingPrice)}</strong></div>
                 </div>
-                <button type="button" class="inventory-card-details-toggle" aria-expanded="false">
-                    <span>More details</span><i class="fas fa-chevron-down" aria-hidden="true"></i>
-                </button>
-                <div class="inventory-card-details" hidden>
+                <div class="inventory-card-details">
                     <dl>
                         <div><dt>Unit cost</dt><dd>${formatCurrency(unitPrice)}</dd></div>
                         <div><dt>Stock value</dt><dd>${formatCurrency(totalValue)}</dd></div>
@@ -628,16 +626,6 @@ function renderMobileInventoryCards(products) {
                 <div class="inventory-card-footer">${actions}</div>
             </article>`;
     }).join('');
-
-    grid.querySelectorAll('.inventory-card-details-toggle').forEach(button => {
-        button.addEventListener('click', () => {
-            const details = button.nextElementSibling;
-            const isOpen = button.getAttribute('aria-expanded') === 'true';
-            button.setAttribute('aria-expanded', String(!isOpen));
-            button.querySelector('span').textContent = isOpen ? 'More details' : 'Less details';
-            details.hidden = isOpen;
-        });
-    });
 
     grid.querySelectorAll('.inventory-card-image-button').forEach(button => {
         button.addEventListener('click', () => openImagePreviewModal(button.dataset.imageUrl, button.dataset.imageName));
@@ -900,7 +888,7 @@ async function saveProduct(e) {
     e.preventDefault();
     
     const productData = {
-        product_name: document.getElementById('product-name').value,
+        product_name: document.getElementById('product-name').value.trim().toUpperCase(),
         product_code: document.getElementById('product-code').value.trim(),
         unit_of_measure: document.getElementById('product-unit').value,
         unit_price: parseFloat(document.getElementById('product-price').value),
@@ -1423,7 +1411,7 @@ async function restoreBackup() {
                     const { data: newProduct, error: productError } = await supabaseClient
                         .from('products')
                         .insert({
-                            product_name,
+                            product_name: String(product_name || '').trim().toUpperCase(),
                             product_code,
                             unit_of_measure,
                             unit_price,
@@ -1475,7 +1463,7 @@ async function restoreBackup() {
                         const { error: updateError } = await supabaseClient
                             .from('products')
                             .update({
-                                product_name,
+                                product_name: String(product_name || '').trim().toUpperCase(),
                                 unit_of_measure,
                                 unit_price,
                                 selling_price,
@@ -1500,7 +1488,7 @@ async function restoreBackup() {
                         const { data: newProduct, error: productError } = await supabaseClient
                             .from('products')
                             .insert({
-                                product_name,
+                                product_name: String(product_name || '').trim().toUpperCase(),
                                 product_code,
                                 unit_of_measure,
                                 unit_price,
@@ -1555,7 +1543,7 @@ async function restoreBackup() {
                     const { data: newProduct, error: productError } = await supabaseClient
                         .from('products')
                         .insert({
-                            product_name,
+                            product_name: String(product_name || '').trim().toUpperCase(),
                             product_code,
                             unit_of_measure,
                             unit_price,

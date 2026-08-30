@@ -113,7 +113,7 @@ function buildLoadingSkeletonHTML() {
                 <div class="logo">
                     <img class="sidebar-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
                     <div class="logo-text">
-                        <h2>Amacar Hardware Inventory System</h2>
+                        <h2><span>Amacar Hardware</span><span>Inventory System</span></h2>
                     </div>
                 </div>
             </div>
@@ -173,7 +173,7 @@ function buildFallbackSidebarHTML() {
                 <div class="logo">
                     <img class="sidebar-brand-logo" src="../styles/img/AmacarLogo.png" alt="Amacar Enterprise logo">
                     <div class="logo-text">
-                        <h2>Amacar Hardware Inventory System</h2>
+                        <h2><span>Amacar Hardware</span><span>Inventory System</span></h2>
                     </div>
                 </div>
             </div>

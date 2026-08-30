@@ -58,7 +58,7 @@
 }
 
 .batch-history-cell {
-    padding: 16px !important;
+    padding: 8px !important;
     background-color: var(--bg-secondary);
     overflow-x: auto;
 }
@@ -110,6 +110,28 @@
 .batch-history-empty {
     color: var(--text-secondary);
     font-style: italic;
+}
+
+/* Keep expanded batch history visually integrated with the inventory table. */
+.dark-mode .batch-history-cell {
+    padding: 6px !important;
+    background-color: var(--bg-secondary) !important;
+    border: 0 !important;
+}
+
+.dark-mode .batch-history-table {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+}
+
+.dark-mode .batch-history-table th,
+.dark-mode .batch-history-table td {
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dark-mode .batch-history-table tbody tr:last-child td {
+    border-bottom: 0;
 }
 
 .price-mismatch-badge {
