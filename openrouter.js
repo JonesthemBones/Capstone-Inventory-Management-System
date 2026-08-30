@@ -24,7 +24,7 @@ const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 function loadVLMConfig() {
     const defaults = {
         apiKey: process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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',
-        model: process.env.VLM_MODEL || process.env.VISION_MODEL || 'openrouter/free'
+        model: process.env.VLM_MODEL || process.env.VISION_MODEL || 'nvidia/nemotron-nano-12b-v2-vl:free'
     };
 
     try {
