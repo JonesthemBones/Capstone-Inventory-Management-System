@@ -398,10 +398,14 @@ function renderSupplierDetailsPanel(details) {
 
     content.innerHTML = fieldDefs.map(field => {
         const value = normalized[field.key] ?? '';
+        const isLongField = field.key === 'address' || field.key === 'notes';
+        const control = isLongField
+            ? `<textarea id="supplier-field-${field.key}" data-supplier-field="${field.key}" rows="2">${escapeHtml(value)}</textarea>`
+            : `<input id="supplier-field-${field.key}" type="text" value="${escapeHtml(value)}" data-supplier-field="${field.key}">`;
         return `
-            <div class="supplier-details-field">
+            <div class="supplier-details-field${isLongField ? ' supplier-details-field-wide' : ''}">
                 <label for="supplier-field-${field.key}">${field.label}</label>
-                <input id="supplier-field-${field.key}" type="text" value="${escapeHtml(value)}" data-supplier-field="${field.key}">
+                ${control}
             </div>
         `;
     }).join('');
