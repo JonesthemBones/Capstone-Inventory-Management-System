@@ -177,7 +177,14 @@ def parse_receipt_response(text):
 
 
 def get_env_model():
-    return os.getenv('VLM_MODEL') or os.getenv('VISION_MODEL', 'nvidia/nemotron-nano-12b-v2-vl:free')
+    model = os.getenv('VLM_MODEL') or os.getenv('VISION_MODEL')
+    if not model:
+        return 'openrouter/auto'
+    return model.strip()
+
+
+def get_api_endpoint():
+    return os.getenv('OPENROUTER_API_ENDPOINT') or os.getenv('OPENROUTER_ENDPOINT') or 'https://openrouter.ai/api/v1/chat/completions'
 
 
 def get_api_key():
@@ -252,7 +259,7 @@ Example:
         'max_tokens': 64000
     }
 
-    url = 'https://openrouter.ai/api/v1/chat/completions'
+    url = get_api_endpoint()
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'

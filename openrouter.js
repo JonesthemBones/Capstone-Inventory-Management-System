@@ -15,16 +15,27 @@ router.use((req, res, next) => {
 const VLM_CONFIG_FILE = path.resolve(__dirname, './vlm_settings.json');
 const PYTHON_BINARY = process.env.PYTHON_BINARY || 'python';
 const PYTHON_SCRIPT = path.resolve(__dirname, './python_vlm.py');
+const SUPPLIER_PYTHON_SCRIPT = path.resolve(__dirname, './supplier_vlm.py');
+const DEFAULT_VLM_MODEL = 'openrouter/auto';
+const DEFAULT_VLM_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Supabase client initialization
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wxhkhxsxftundtrahpst.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aGtoeHN4ZnR1bmR0cmFocHN0Iiwicm9zZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDU3ODc3NywiZXhwIjoyMDc2MTU0Nzc3fQ.R_J7gu9Z7T0CEp0t0Ky8XC0kHvHxDtpqX2t5Vz_K6lE';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+function normalizeVLMModel(model) {
+    const candidate = String(model || '').trim();
+    if (!candidate) return DEFAULT_VLM_MODEL;
+    return candidate;
+}
+
 function loadVLMConfig() {
     const defaults = {
         apiKey: process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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',
-        model: process.env.VLM_MODEL || process.env.VISION_MODEL || 'nvidia/nemotron-nano-12b-v2-vl:free'
+        supplierApiKey: process.env.SUPPLIER_OPENROUTER_API_KEY || process.env.SUPPLIER_VLM_API_KEY || process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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',
+        model: normalizeVLMModel(process.env.VLM_MODEL || process.env.VISION_MODEL || DEFAULT_VLM_MODEL),
+        endpoint: process.env.OPENROUTER_API_ENDPOINT || process.env.OPENROUTER_ENDPOINT || DEFAULT_VLM_ENDPOINT
     };
 
     try {
@@ -34,8 +45,16 @@ function loadVLMConfig() {
             if (parsed?.apiKey) {
                 defaults.apiKey = parsed.apiKey;
             }
+            if (parsed?.supplierApiKey) {
+                defaults.supplierApiKey = parsed.supplierApiKey;
+            } else if (parsed?.apiKey) {
+                defaults.supplierApiKey = parsed.apiKey;
+            }
             if (parsed?.model) {
-                defaults.model = parsed.model;
+                defaults.model = normalizeVLMModel(parsed.model);
+            }
+            if (parsed?.endpoint) {
+                defaults.endpoint = parsed.endpoint;
             }
         }
     } catch (error) {
@@ -45,10 +64,12 @@ function loadVLMConfig() {
     return defaults;
 }
 
-function persistVLMConfig({ apiKey, model }) {
+function persistVLMConfig({ apiKey, model, endpoint, supplierApiKey }) {
     const payload = {
         apiKey: String(apiKey || '').trim(),
-        model: String(model || '').trim()
+        supplierApiKey: String(supplierApiKey || apiKey || '').trim(),
+        model: normalizeVLMModel(model),
+        endpoint: String(endpoint || DEFAULT_VLM_ENDPOINT).trim() || DEFAULT_VLM_ENDPOINT
     };
 
     if (!payload.apiKey || !payload.model) {
@@ -250,6 +271,8 @@ router.post('/vlm-scan', async (req, res) => {
         const pythonEnv = {
             ...process.env,
             OPENROUTER_API_KEY: vlmConfig.apiKey,
+            OPENROUTER_API_ENDPOINT: vlmConfig.endpoint,
+            OPENROUTER_ENDPOINT: vlmConfig.endpoint,
             VLM_MODEL: vlmConfig.model,
             VISION_MODEL: vlmConfig.model
         };
@@ -335,13 +358,13 @@ router.post('/vlm-config', async (req, res) => {
     const admin = await requireAdmin(req, res);
     if (!admin) return;
 
-    const { apiKey, model } = req.body;
-    if (!apiKey || !model) {
-        return res.status(400).json({ error: 'Both apiKey and model are required.' });
+    const { apiKey, model, endpoint, supplierApiKey } = req.body;
+    if (!apiKey || !model || !endpoint) {
+        return res.status(400).json({ error: 'apiKey, model, and endpoint are required.' });
     }
 
     try {
-        const saved = persistVLMConfig({ apiKey, model });
+        const saved = persistVLMConfig({ apiKey, model, endpoint, supplierApiKey });
         return res.json({
             success: true,
             config: saved
@@ -349,6 +372,111 @@ router.post('/vlm-config', async (req, res) => {
     } catch (err) {
         console.error('Unable to save VLM config:', err);
         return res.status(500).json({ error: 'Unable to save VLM settings.' });
+    }
+});
+
+router.post('/vlm-scan-supplier', async (req, res) => {
+    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Supplier VLM extraction access required.');
+    if (!operator) return;
+
+    let tempDir;
+    let tempFile;
+
+    try {
+        const imageDataUrl = req.body?.imageDataUrl;
+        if (!imageDataUrl) {
+            return res.status(400).json({ error: 'Missing imageDataUrl in request body.' });
+        }
+        if (!imageDataUrl.startsWith('data:image/')) {
+            return res.status(400).json({ error: 'Invalid imageDataUrl. Must be a data URL for an image.' });
+        }
+
+        const parsedImage = parseDataUrl(imageDataUrl);
+        if (!parsedImage) {
+            return res.status(400).json({ error: 'Unable to parse the supplier image data URL.' });
+        }
+
+        const vlmConfig = loadVLMConfig();
+        const supplierApiKey = vlmConfig.supplierApiKey || vlmConfig.apiKey;
+        if (!supplierApiKey) {
+            return res.status(500).json({ error: 'Supplier Details Extractor API key is not configured on the server.' });
+        }
+
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'supplier-vlm-'));
+        tempFile = path.join(tempDir, `supplier.${imageExtension(parsedImage.mediaType)}`);
+        fs.writeFileSync(tempFile, Buffer.from(parsedImage.base64Data, 'base64'));
+
+        const pythonEnv = {
+            ...process.env,
+            OPENROUTER_API_KEY: vlmConfig.apiKey,
+            OPENROUTER_API_ENDPOINT: vlmConfig.endpoint,
+            OPENROUTER_ENDPOINT: vlmConfig.endpoint,
+            VLM_MODEL: vlmConfig.model,
+            VISION_MODEL: vlmConfig.model
+        };
+
+        const child = spawn(PYTHON_BINARY, [SUPPLIER_PYTHON_SCRIPT, tempFile], {
+            env: pythonEnv,
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+
+        const exitCode = await new Promise((resolve) => child.on('close', resolve));
+
+        if (tempDir) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+
+        console.log(`[supplier-vlm] exited with code ${exitCode}`);
+        if (stderr) console.error('[supplier-vlm] python stderr:', stderr);
+        if (stdout) console.log('[supplier-vlm] python stdout:', stdout);
+
+        if (exitCode !== 0) {
+            return res.status(502).json({
+                error: 'Supplier VLM subprocess failed.',
+                details: stderr.trim() || 'No stderr output from the supplier Python VLM subprocess.',
+                rawOutput: stdout.trim()
+            });
+        }
+
+        const parsed = extractJsonObject(stdout.trim());
+        if (!parsed) {
+            return res.status(502).json({
+                error: 'Unable to parse JSON from supplier VLM output.',
+                rawContent: stdout.trim(),
+                stderr: stderr.trim()
+            });
+        }
+
+        console.log('[supplier-vlm] extracted supplier details:', JSON.stringify(parsed, null, 2));
+
+        return res.json({
+            success: true,
+            supplierDetails: parsed,
+            rawResponse: {
+                stdout: parsed,
+                stderr: stderr.trim()
+            }
+        });
+    } catch (error) {
+        console.error('Supplier VLM scan error:', error);
+        if (tempDir) {
+            try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (cleanupError) { /* ignore */ }
+        }
+        return res.status(500).json({
+            error: 'Supplier VLM scan failed on the server.',
+            message: error?.message || 'Unknown error.'
+        });
     }
 });
 

@@ -1,6 +1,6 @@
 # Amacar Hardware Inventory Management System
 
-A web-based inventory and point-of-sale system for Amacar Hardware. The current application manages products and stock directly; the legacy product-category module has been removed.
+A Web-based inventory and point-of-sale system for Amacar Hardware. The current application manages products and stock directly; the legacy product-category module has been removed.
 
 ## Project status
 

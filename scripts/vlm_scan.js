@@ -1,7 +1,9 @@
 const VLM_API_ENDPOINT = '/api/vlm-scan';
+const SUPPLIER_VLM_API_ENDPOINT = '/api/vlm-scan-supplier';
 const VLM_CONFIG_ENDPOINT = '/api/vlm-config';
 let currentReceiptImage = null;
 let currentItems = [];
+let currentSupplierDetails = {};
 let receiptCameraStream = null;
 let thumbnailModalContext = {
     itemIndex: null,
@@ -113,10 +115,13 @@ function clearReceiptSelection() {
         input.value = '';
     }
     currentReceiptImage = null;
+    currentSupplierDetails = {};
     setPreviewImage(null);
     setStatus('No receipt selected. Choose or capture a receipt to begin.');
     document.getElementById('vlm-items-grid').innerHTML = '';
     document.getElementById('vlm-raw-output').hidden = true;
+    renderSupplierDetailsPanel({});
+    updateSupplierSaveButton();
     currentItems = [];
     updateSaveButton();
 }
@@ -312,6 +317,175 @@ function formatConfidence(value) {
     }
 
     return `${Math.round(numeric * 100)}%`;
+}
+
+function normalizeSupplierDetails(rawDetails) {
+    const source = rawDetails && typeof rawDetails === 'object' ? rawDetails : {};
+    const supplierBlock = source.supplier && typeof source.supplier === 'object' ? source.supplier : {};
+    const details = source.supplierDetails && typeof source.supplierDetails === 'object' ? source.supplierDetails : source;
+    const merged = { ...supplierBlock, ...details };
+
+    const fields = [
+        ['supplier_name', ['supplier_name', 'supplierName', 'supplier', 'company_name', 'companyName']],
+        ['contact_name', ['contact_name', 'contactName', 'contact_person', 'contactPerson']],
+        ['phone', ['phone', 'phone_number', 'contact_number', 'contactNumber']],
+        ['email', ['email', 'email_address', 'e_mail']],
+        ['address', ['address', 'street_address', 'billing_address']],
+        ['tin', ['tin', 'tax_id', 'taxId', 'vat_number', 'vatNumber']],
+        ['vat', ['vat', 'vat_number', 'vatNumber']],
+        ['website', ['website', 'website_url', 'url']],
+        ['notes', ['notes', 'remarks', 'comment']]
+    ];
+
+    const normalized = {};
+    for (const [key, aliases] of fields) {
+        const value = aliases
+            .map(alias => merged[alias])
+            .find(item => item !== undefined && item !== null && String(item).trim() !== '');
+        if (value !== undefined) {
+            normalized[key] = String(value).trim();
+        }
+    }
+
+    return normalized;
+}
+
+function updateSupplierSaveButton() {
+    const saveBtn = document.getElementById('save-supplier-details-btn');
+    if (!saveBtn) return;
+
+    const supplierData = normalizeSupplierDetails(currentSupplierDetails);
+    const hasSupplierDetails = Object.keys(supplierData).length > 0;
+    saveBtn.disabled = !hasSupplierDetails;
+    saveBtn.innerHTML = hasSupplierDetails
+        ? '<i class="fas fa-user-plus"></i> Save Supplier Details'
+        : '<i class="fas fa-user-plus"></i> No supplier details to save';
+}
+
+function renderSupplierDetailsPanel(details) {
+    const panel = document.getElementById('supplier-details-panel');
+    const content = document.getElementById('supplier-details-content');
+    const toggle = document.getElementById('supplier-details-toggle');
+    if (!panel || !content || !toggle) return;
+
+    const normalized = normalizeSupplierDetails(details);
+    const fieldDefs = [
+        { key: 'supplier_name', label: 'Supplier Name' },
+        { key: 'contact_name', label: 'Contact Name' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'email', label: 'Email' },
+        { key: 'address', label: 'Address' },
+        { key: 'tin', label: 'TIN' },
+        { key: 'vat', label: 'VAT' },
+        { key: 'website', label: 'Website' },
+        { key: 'notes', label: 'Notes' }
+    ];
+
+    if (!Object.keys(normalized).length) {
+        panel.classList.add('hidden');
+        updateSupplierSaveButton();
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    if (!panel.dataset.expanded) {
+        panel.dataset.expanded = 'true';
+    }
+    const isExpanded = panel.dataset.expanded !== 'false';
+    toggle.innerHTML = `<span>Supplier Details</span><i class="fas ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
+    toggle.setAttribute('aria-expanded', String(isExpanded));
+    content.hidden = !isExpanded;
+
+    content.innerHTML = fieldDefs.map(field => {
+        const value = normalized[field.key] ?? '';
+        return `
+            <div class="supplier-details-field">
+                <label for="supplier-field-${field.key}">${field.label}</label>
+                <input id="supplier-field-${field.key}" type="text" value="${escapeHtml(value)}" data-supplier-field="${field.key}">
+            </div>
+        `;
+    }).join('');
+    updateSupplierSaveButton();
+}
+
+function handleSupplierFieldInput(event) {
+    const target = event.target;
+    if (!target || !target.dataset.supplierField) return;
+    const field = target.dataset.supplierField;
+    currentSupplierDetails[field] = target.value;
+    updateSupplierSaveButton();
+}
+
+async function saveSupplierDetailsToSupabase() {
+    const saveBtn = document.getElementById('save-supplier-details-btn');
+    if (!saveBtn) return;
+
+    const supplierData = normalizeSupplierDetails(currentSupplierDetails);
+    if (!Object.keys(supplierData).length) {
+        setStatus('No supplier details available to save.', 'warning');
+        return;
+    }
+
+    const supplierName = String(supplierData.supplier_name || '').trim();
+    if (!supplierName) {
+        setStatus('Supplier name is required before saving supplier details.', 'warning');
+        return;
+    }
+
+    const imageId = currentReceiptImage?.image_id || currentReceiptImage?.imageId || null;
+
+    const startedAt = Date.now();
+    const payload = {
+        image_id: imageId,
+        supplier_name: supplierName,
+        supplier_address: String(supplierData.address || '').trim() || null,
+        supplier_phone: String(supplierData.phone || '').trim() || null,
+        supplier_tax_id: String(supplierData.tin || '').trim() || null,
+        overall_confidence: null,
+        extraction_status: 'success',
+        raw_response: JSON.stringify({
+            supplier_name: supplierName,
+            contact_name: String(supplierData.contact_name || '').trim() || null,
+            email: String(supplierData.email || '').trim() || null,
+            vat: String(supplierData.vat || '').trim() || null,
+            website: String(supplierData.website || '').trim() || null,
+            notes: String(supplierData.notes || '').trim() || null,
+            phone: String(supplierData.phone || '').trim() || null,
+            address: String(supplierData.address || '').trim() || null,
+            tin: String(supplierData.tin || '').trim() || null
+        }),
+        processing_time_ms: Date.now() - startedAt,
+        created_at: new Date().toISOString()
+    };
+
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving supplier...';
+
+    try {
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
+        if (!session?.access_token) {
+            throw new Error('Your session has expired. Please sign in again.');
+        }
+
+        const { error: insertError } = await window.supabaseClient
+            .from('vlm_extractions')
+            .insert([payload]);
+
+        if (insertError) {
+            throw insertError;
+        }
+
+        setStatus('Supplier details saved to vlm_extractions.', 'success');
+        saveBtn.innerHTML = '<i class="fas fa-check"></i> Supplier saved';
+    } catch (error) {
+        console.error('Supplier save error:', error);
+        setStatus('Failed to save supplier details to the VLM extraction table.', 'danger');
+        alert(`Supplier save failed: ${error.message || error}`);
+        saveBtn.innerHTML = '<i class="fas fa-user-plus"></i> Save Supplier Details';
+    } finally {
+        saveBtn.disabled = false;
+        updateSupplierSaveButton();
+    }
 }
 
 function renderItems(items) {
@@ -594,15 +768,19 @@ async function saveAdminVLMConfig() {
     }
 
     const apiKeyInput = document.getElementById('vlm-api-key-input');
+    const supplierApiKeyInput = document.getElementById('vlm-supplier-api-key-input');
     const modelInput = document.getElementById('vlm-model-input');
+    const endpointInput = document.getElementById('vlm-endpoint-input');
     const saveButton = document.getElementById('save-vlm-config-btn');
 
-    if (!apiKeyInput || !modelInput || !saveButton) return;
+    if (!apiKeyInput || !modelInput || !endpointInput || !saveButton) return;
 
     const apiKey = apiKeyInput.value.trim();
+    const supplierApiKey = supplierApiKeyInput ? supplierApiKeyInput.value.trim() : '';
     const model = modelInput.value.trim();
-    if (!apiKey || !model) {
-        setVlmConfigStatus('API key and model name are both required.', 'error');
+    const endpoint = endpointInput.value.trim();
+    if (!apiKey || !model || !endpoint) {
+        setVlmConfigStatus('Product API key, model name, and endpoint are all required.', 'error');
         return;
     }
 
@@ -616,7 +794,7 @@ async function saveAdminVLMConfig() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ apiKey, model })
+            body: JSON.stringify({ apiKey, model, endpoint, supplierApiKey: supplierApiKey || apiKey })
         });
 
         const result = await response.json();
@@ -626,7 +804,11 @@ async function saveAdminVLMConfig() {
 
         setVlmConfigStatus('VLM settings saved successfully.', 'success');
         apiKeyInput.value = result.config?.apiKey || apiKey;
+        if (supplierApiKeyInput) {
+            supplierApiKeyInput.value = result.config?.supplierApiKey || supplierApiKey || apiKey;
+        }
         modelInput.value = result.config?.model || model;
+        endpointInput.value = result.config?.endpoint || endpoint;
     } catch (error) {
         console.error('VLM config save failed:', error);
         setVlmConfigStatus(error.message || 'Failed to save VLM settings.', 'error');
@@ -660,9 +842,13 @@ async function initAdminVLMSettings() {
     try {
         const config = await fetchAdminVLMConfig();
         const apiKeyInput = document.getElementById('vlm-api-key-input');
+        const supplierApiKeyInput = document.getElementById('vlm-supplier-api-key-input');
         const modelInput = document.getElementById('vlm-model-input');
+        const endpointInput = document.getElementById('vlm-endpoint-input');
         if (apiKeyInput) apiKeyInput.value = config?.apiKey || '';
+        if (supplierApiKeyInput) supplierApiKeyInput.value = config?.supplierApiKey || config?.apiKey || '';
         if (modelInput) modelInput.value = config?.model || '';
+        if (endpointInput) endpointInput.value = config?.endpoint || 'https://openrouter.ai/api/v1/chat/completions';
         setVlmConfigStatus('Admin VLM settings loaded.', 'success');
     } catch (error) {
         console.error('Unable to load admin VLM settings:', error);
@@ -760,6 +946,32 @@ function downloadJsonFile() {
     URL.revokeObjectURL(url);
 }
 
+async function fetchSupplierDetails(imageDataUrl) {
+    try {
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
+        if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
+
+        const response = await fetch(SUPPLIER_VLM_API_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({ imageDataUrl })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result?.details || result?.error || result?.message || 'Unable to scan supplier details.');
+        }
+
+        return result.supplierDetails || result.supplier || result;
+    } catch (error) {
+        console.warn('Supplier scan warning:', error);
+        return null;
+    }
+}
+
 async function processReceiptImage() {
     if (!currentReceiptImage || !currentReceiptImage.dataUrl) {
         alert('Please select or capture a receipt image before scanning.');
@@ -779,26 +991,41 @@ async function processReceiptImage() {
     try {
         const { data: { session } } = await window.supabaseClient.auth.getSession();
         if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
-        const response = await fetch(VLM_API_ENDPOINT, {
+
+        const authHeaders = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+        };
+
+        const productRequest = fetch(VLM_API_ENDPOINT, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`
-            },
+            headers: authHeaders,
             body: JSON.stringify({ imageDataUrl })
         });
 
-        const result = await response.json();
-        if (!response.ok) {
-            const message = result?.details || result?.error || result?.message || 'Unable to scan receipt.';
+        const supplierRequest = fetch(SUPPLIER_VLM_API_ENDPOINT, {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ imageDataUrl })
+        });
+
+        const [productResponse, supplierResponse] = await Promise.all([productRequest, supplierRequest]);
+
+        const [productResult, supplierResult] = await Promise.all([
+            productResponse.json(),
+            supplierResponse.json().catch(() => ({ error: 'Supplier scan response was not valid JSON.' }))
+        ]);
+
+        if (!productResponse.ok) {
+            const message = productResult?.details || productResult?.error || productResult?.message || 'Unable to scan receipt.';
             setStatus(`Scan failed: ${message}`, 'danger');
             return;
         }
 
-        const parsed = parseVLMResponse(result.receipt ?? result);
+        const parsed = parseVLMResponse(productResult.receipt ?? productResult);
         if (!parsed) {
             setStatus('Unable to parse VLM output. Please try again with a clearer receipt image.', 'danger');
-            document.getElementById('vlm-raw-output').textContent = JSON.stringify(result.rawResponse || result, null, 2);
+            document.getElementById('vlm-raw-output').textContent = JSON.stringify(productResult.rawResponse || productResult, null, 2);
             document.getElementById('vlm-raw-output').hidden = false;
             return;
         }
@@ -813,9 +1040,24 @@ async function processReceiptImage() {
         currentItems = await mergeWithExistingProductDefaults(currentItems);
         currentItems = await lookupThumbnails(currentItems);
         renderItems(currentItems);
+
+        if (supplierResponse.ok) {
+            const supplierDetails = supplierResult?.supplierDetails || supplierResult?.supplier || supplierResult;
+            currentSupplierDetails = normalizeSupplierDetails(supplierDetails || {});
+            renderSupplierDetailsPanel(currentSupplierDetails);
+        } else {
+            const supplierMessage = supplierResult?.details || supplierResult?.error || supplierResult?.message || 'Unable to scan supplier details.';
+            console.warn('Supplier scan warning:', supplierMessage);
+            currentSupplierDetails = {};
+            renderSupplierDetailsPanel(currentSupplierDetails);
+        }
+
         setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.`, 'success');
         const rawOutput = document.getElementById('vlm-raw-output');
-        rawOutput.textContent = JSON.stringify(parsed, null, 2);
+        rawOutput.textContent = JSON.stringify({
+            receipt: parsed,
+            supplierDetails: currentSupplierDetails
+        }, null, 2);
         rawOutput.hidden = false;
     } catch (error) {
         console.error('Receipt scan error:', error);
@@ -918,6 +1160,48 @@ async function saveAcceptedItemsToInventory() {
         }
         if (failedCount > 0) {
             statusMessage += ` (${failedCount} failed)`;
+        }
+
+        const supplierPayload = normalizeSupplierDetails(currentSupplierDetails);
+        const hasSupplierData = Object.keys(supplierPayload).length > 0;
+
+        if (hasSupplierData) {
+            const supplierName = String(supplierPayload.supplier_name || '').trim();
+            if (supplierName) {
+                const supplierInsertPayload = {
+                    image_id: currentReceiptImage?.image_id || currentReceiptImage?.imageId || null,
+                    supplier_name: supplierName,
+                    supplier_address: String(supplierPayload.address || '').trim() || null,
+                    supplier_phone: String(supplierPayload.phone || '').trim() || null,
+                    supplier_tax_id: String(supplierPayload.tin || '').trim() || null,
+                    overall_confidence: null,
+                    extraction_status: 'success',
+                    raw_response: JSON.stringify({
+                        supplier_name: supplierName,
+                        contact_name: String(supplierPayload.contact_name || '').trim() || null,
+                        email: String(supplierPayload.email || '').trim() || null,
+                        vat: String(supplierPayload.vat || '').trim() || null,
+                        website: String(supplierPayload.website || '').trim() || null,
+                        notes: String(supplierPayload.notes || '').trim() || null,
+                        phone: String(supplierPayload.phone || '').trim() || null,
+                        address: String(supplierPayload.address || '').trim() || null,
+                        tin: String(supplierPayload.tin || '').trim() || null
+                    }),
+                    processing_time_ms: 0,
+                    created_at: new Date().toISOString()
+                };
+
+                const { error: supplierError } = await window.supabaseClient
+                    .from('vlm_extractions')
+                    .insert([supplierInsertPayload]);
+
+                if (supplierError) {
+                    console.warn('Supplier save via main inventory save failed:', supplierError);
+                    statusMessage += ' | Supplier save pending due to DB policy/constraint issues';
+                } else {
+                    statusMessage += ' | Supplier details saved';
+                }
+            }
         }
 
         setStatus(statusMessage, 'success');
@@ -1105,6 +1389,21 @@ async function initReceiptScanner() {
     if (itemsGrid) {
         itemsGrid.addEventListener('input', handleVlmItemGridInput);
         itemsGrid.addEventListener('click', handleVlmItemGridClick);
+    }
+
+    const supplierToggle = document.getElementById('supplier-details-toggle');
+    if (supplierToggle) {
+        supplierToggle.addEventListener('click', () => {
+            const panel = document.getElementById('supplier-details-panel');
+            if (!panel) return;
+            panel.dataset.expanded = panel.dataset.expanded === 'true' ? 'false' : 'true';
+            renderSupplierDetailsPanel(currentSupplierDetails);
+        });
+    }
+
+    const supplierContent = document.getElementById('supplier-details-content');
+    if (supplierContent) {
+        supplierContent.addEventListener('input', handleSupplierFieldInput);
     }
 
     await initAdminVLMSettings();
