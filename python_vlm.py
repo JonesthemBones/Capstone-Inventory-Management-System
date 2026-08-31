@@ -177,7 +177,7 @@ def parse_receipt_response(text):
 
 
 def get_env_model():
-    return os.getenv('VLM_MODEL') or os.getenv('VISION_MODEL', 'openrouter/free')
+    return os.getenv('VLM_MODEL') or os.getenv('VISION_MODEL', 'nvidia/nemotron-nano-12b-v2-vl:free')
 
 
 def get_api_key():
