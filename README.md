@@ -17,6 +17,7 @@ The current development focus is interface refinement, data consistency, product
 - Point of Sale (POS) with cart management, discounts, cash payments, PayMongo test checkout, receipts, transaction history, and voiding
 - Automatic POS inventory deductions and stock-movement records through an authenticated server endpoint
 - Low-stock monitoring and stock alerts
+- Manager/admin reorder-list generation for low, critical, and out-of-stock products, with editable suggested quantities and a printable purchase document
 - Inventory, valuation, low-stock, stock-movement, and cashier sales reports
 - Audit logs and stock-movement history with export options
 - User viewing, editing, activation, backup/restore, and role assignment for `admin`, `manager`, `cashier`, and `staff`

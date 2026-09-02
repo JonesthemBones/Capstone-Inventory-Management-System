@@ -134,6 +134,36 @@
     border-bottom: 0;
 }
 
+/* Preserve readable price-difference highlighting inside the dark batch table. */
+.dark-mode .batch-history-table td.batch-price-mismatch {
+    background-color: rgba(245, 158, 11, 0.16);
+    color: #fde68a;
+}
+
+.dark-mode .batch-history-table thead th {
+    background-color: rgba(15, 23, 42, 0.45);
+    color: #cbd5e1;
+}
+
+.dark-mode .batch-history-table tbody tr:hover td:not(.batch-price-mismatch) {
+    background-color: rgba(51, 65, 85, 0.42);
+}
+
+.dark-mode .batch-history-table tbody tr:hover td.batch-price-mismatch {
+    background-color: rgba(245, 158, 11, 0.23);
+}
+
+.dark-mode .batch-price-input {
+    background-color: #0f172a;
+    border-color: #475569;
+    color: #f8fafc;
+}
+
+.dark-mode .batch-price-input:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
 .price-mismatch-badge {
     display: inline-flex;
     align-items: center;
