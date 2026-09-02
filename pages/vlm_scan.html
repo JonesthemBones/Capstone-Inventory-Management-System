@@ -74,12 +74,12 @@
                                 </button>
                             </div>
 
-                            <p class="vlm-hint">The receipt image is processed by the backend and sent to OpenRouter. Your data is only used for this scan.</p>
+                            <p class="vlm-hint">The receipt image is processed by the backend and sent to DeepSeek. Your data is only used for this scan.</p>
 
                             <div id="vlm-admin-settings" class="vlm-admin-settings hidden">
                                 <div class="vlm-admin-settings-header">
                                     <h3>VLM Settings</h3>
-                                    <p>Change the OpenRouter API key and model name used for receipt extraction.</p>
+                                    <p>Change the DeepSeek API key and vision model used for receipt extraction.</p>
                                 </div>
                                 <div class="vlm-admin-settings-row">
                                     <div class="vlm-admin-settings-field">
@@ -88,7 +88,7 @@
                                     </div>
                                     <div class="vlm-admin-settings-field">
                                         <label for="vlm-model-input">Vision Model Name</label>
-                                        <input type="text" id="vlm-model-input" placeholder="e.g. openrouter/free">
+                                        <input type="text" id="vlm-model-input" placeholder="deepseek-v4-flash-vision-exp">
                                     </div>
                                 </div>
                                 <div class="vlm-admin-settings-row">
@@ -97,8 +97,8 @@
                                         <input type="password" id="vlm-supplier-api-key-input" placeholder="Paste supplier extractor API key here">
                                     </div>
                                     <div class="vlm-admin-settings-field" style="flex: 1 1 100%; max-width: 100%;">
-                                        <label for="vlm-endpoint-input">OpenRouter API Endpoint</label>
-                                        <input type="text" id="vlm-endpoint-input" placeholder="https://openrouter.ai/api/v1/chat/completions">
+                                        <label for="vlm-endpoint-input">DeepSeek API Endpoint</label>
+                                        <input type="text" id="vlm-endpoint-input" placeholder="https://api.deepseek.com/chat/completions">
                                     </div>
                                 </div>
                                 <div class="vlm-admin-settings-actions">

@@ -4,6 +4,7 @@ const VLM_CONFIG_ENDPOINT = '/api/vlm-config';
 let currentReceiptImage = null;
 let currentItems = [];
 let currentSupplierDetails = {};
+let currentCategories = [];
 let receiptCameraStream = null;
 let thumbnailModalContext = {
     itemIndex: null,
@@ -36,6 +37,23 @@ function setPreviewImage(dataUrl) {
     preview.style.backgroundImage = `url('${dataUrl}')`;
     if (viewButton) viewButton.style.display = 'inline-flex';
     if (modalImage) modalImage.src = dataUrl;
+}
+
+async function prepareReceiptImage(file) {
+    const bitmap = await createImageBitmap(file);
+    const maxDimension = 1800;
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    return canvas.toDataURL('image/jpeg', 0.9);
 }
 
 function openReceiptImagePreview() {
@@ -99,10 +117,12 @@ function captureReceiptPhoto() {
         return;
     }
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const maxDimension = 1800;
+    const scale = Math.min(1, maxDimension / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
     currentReceiptImage = { file: null, dataUrl, source: 'camera' };
     setPreviewImage(dataUrl);
     setStatus('Receipt photo ready. Tap Extract Receipt to process.', 'neutral');
@@ -173,7 +193,7 @@ async function mergeWithExistingProductDefaults(items) {
     try {
         const { data: products, error } = await window.supabaseClient
             .from('products')
-            .select('product_name, unit_price, selling_price, unit_of_measure');
+            .select('product_name, unit_price, selling_price, unit_of_measure, category_id');
 
         if (error || !products) {
             return items;
@@ -198,7 +218,15 @@ async function mergeWithExistingProductDefaults(items) {
                 ...item,
                 unit_price: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : Number(product.unit_price) || item.unit_price,
                 selling_price: Number.isFinite(Number(product.selling_price)) ? Number(product.selling_price) : item.selling_price,
-                unit_of_measure: String(product.unit_of_measure || item.unit_of_measure || 'unit').trim() || 'unit'
+                unit_of_measure: String(product.unit_of_measure || item.unit_of_measure || 'unit').trim() || 'unit',
+                category_id: product.category_id || item.category_id || null,
+                category_name: product.category_id
+                    ? currentCategories.find(category => category.category_id === product.category_id)?.category_name || item.category_name
+                    : item.category_name,
+                category_slug: product.category_id
+                    ? currentCategories.find(category => category.category_id === product.category_id)?.category_slug || item.category_slug
+                    : item.category_slug,
+                category_source: product.category_id ? 'existing_product' : 'vlm'
             };
         });
     } catch (error) {
@@ -288,10 +316,16 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const confidenceValue = item.confidence ?? item.confidence_score ?? item.score ?? item.confidenceScore;
         const confidence = Number.isFinite(Number(confidenceValue)) ? Number(confidenceValue) : null;
         const comment = item.comment ?? item.notes ?? '';
+        const categoryConfidenceValue = item.category_confidence;
+        const categoryConfidence = Number.isFinite(Number(categoryConfidenceValue))
+            ? Math.max(0, Math.min(1, Number(categoryConfidenceValue)))
+            : 0;
         const accepted = item.accepted === true;
         return {
             id: `vlm-item-${idx}`,
             name,
+            original_name: item.original_name ?? name,
+            name_was_edited: false,
             price,
             unit_price: unitPrice,
             selling_price: sellingPrice,
@@ -299,6 +333,11 @@ function normalizeItemsFromReceipt(rawReceipt) {
             receipt_quantity: receiptQuantity,
             real_quantity: realQuantity,
             confidence,
+            category_id: item.category_id ?? item.suggested_category_id ?? null,
+            category_name: item.category_name ?? 'Uncategorized',
+            category_slug: item.category_slug ?? item.suggested_category_slug ?? 'uncategorized',
+            category_confidence: categoryConfidence,
+            category_source: item.category_source ?? 'vlm',
             comment,
             accepted,
             removed: item.removed === true,
@@ -514,6 +553,16 @@ function renderItems(items) {
         const thumbnailHtml = item.thumbnailUrl
             ? `<img src="${escapeHtml(item.thumbnailUrl)}" alt="${escapeHtml(item.name)} thumbnail" class="product-thumbnail" loading="lazy">`
             : '<div class="product-thumbnail-placeholder" aria-label="No thumbnail"><i class="fas fa-image"></i></div>';
+        const categoryOptions = currentCategories.map(category => `
+            <option value="${escapeHtml(category.category_id)}" ${category.category_id === item.category_id ? 'selected' : ''}>
+                ${escapeHtml(category.category_name)}
+            </option>
+        `).join('');
+        const categorySource = item.category_source === 'existing_product'
+            ? 'Existing product category'
+            : item.category_source === 'system_rule'
+                ? `System matched from product name (${formatConfidence(item.category_confidence)})`
+                : `AI confidence: ${formatConfidence(item.category_confidence)}`;
 
         return `
             <article class="vlm-card-item ${removedClass} ${acceptedClass}" data-index="${index}">
@@ -522,7 +571,11 @@ function renderItems(items) {
                         ${thumbnailHtml}
                     </button>
                     <div>
-                        <h3>${escapeHtml(item.name)}</h3>
+                        <div class="vlm-item-name-field">
+                            <label for="vlm-item-name-${index}">Product Name</label>
+                            <input id="vlm-item-name-${index}" type="text" maxlength="100" value="${escapeHtml(item.name)}" data-field="name" data-index="${index}">
+                            ${item.name_was_edited ? '<small class="vlm-name-edited"><i class="fas fa-pen"></i> Edited from extracted name</small>' : ''}
+                        </div>
                         <p class="vlm-card-item-meta">Unit Price: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
                         <span class="vlm-item-status ${statusClass}">${statusLabel}</span>
                     </div>
@@ -537,7 +590,15 @@ function renderItems(items) {
                         </button>
                     </div>
                 </div>
-                <div class="vlm-card-item-row">
+                <div class="vlm-card-item-fields">
+                    <div class="vlm-card-item-field">
+                        <label>Category</label>
+                        <select data-field="category_id" data-index="${index}" ${currentCategories.length ? '' : 'disabled'}>
+                            <option value="">Uncategorized</option>
+                            ${categoryOptions}
+                        </select>
+                        <small class="vlm-category-hint">${escapeHtml(categorySource)}</small>
+                    </div>
                     <div class="vlm-card-item-field">
                         <label>Unit</label>
                         <input type="text" value="${escapeHtml(item.unit_of_measure || 'unit')}" data-field="unit_of_measure" data-index="${index}">
@@ -546,13 +607,11 @@ function renderItems(items) {
                         <label>Selling Price</label>
                         <input type="number" step="0.01" min="0" value="${Number.isFinite(item.selling_price) ? item.selling_price.toFixed(2) : '0.00'}" data-field="selling_price" data-index="${index}">
                     </div>
-                </div>
-                <div class="vlm-card-item-row">
                     <div class="vlm-card-item-field">
                         <label>Real Quantity</label>
                         <input type="number" step="1" min="0" value="${item.real_quantity}" data-field="real_quantity" data-index="${index}">
                     </div>
-                    <div class="vlm-card-item-field">
+                    <div class="vlm-card-item-field vlm-card-item-field-wide">
                         <label>Comment</label>
                         <textarea rows="2" data-field="comment" data-index="${index}">${escapeHtml(item.comment)}</textarea>
                     </div>
@@ -852,7 +911,7 @@ async function initAdminVLMSettings() {
         if (apiKeyInput) apiKeyInput.value = config?.apiKey || '';
         if (supplierApiKeyInput) supplierApiKeyInput.value = config?.supplierApiKey || config?.apiKey || '';
         if (modelInput) modelInput.value = config?.model || '';
-        if (endpointInput) endpointInput.value = config?.endpoint || 'https://openrouter.ai/api/v1/chat/completions';
+        if (endpointInput) endpointInput.value = config?.endpoint || 'https://api.deepseek.com/chat/completions';
         setVlmConfigStatus('Admin VLM settings loaded.', 'success');
     } catch (error) {
         console.error('Unable to load admin VLM settings:', error);
@@ -878,6 +937,15 @@ function handleVlmItemGridInput(event) {
         }
     } else if (field === 'unit_of_measure') {
         value = target.value.trim();
+    } else if (field === 'category_id') {
+        value = target.value || null;
+        const category = currentCategories.find(entry => entry.category_id === value);
+        currentItems[index].category_name = category?.category_name || 'Uncategorized';
+        currentItems[index].category_slug = category?.category_slug || 'uncategorized';
+        currentItems[index].category_source = 'reviewed';
+    } else if (field === 'name') {
+        value = target.value;
+        currentItems[index].name_was_edited = normalizeProductName(value) !== normalizeProductName(currentItems[index].original_name);
     } else {
         value = target.value;
     }
@@ -925,6 +993,8 @@ function downloadJsonFile() {
     const payload = {
         items: currentItems.map(item => ({
             name: item.name,
+            original_name: item.original_name,
+            name_was_edited: item.name_was_edited,
             unit_price: item.unit_price,
             selling_price: item.selling_price,
             unit_of_measure: item.unit_of_measure,
@@ -932,6 +1002,10 @@ function downloadJsonFile() {
             receipt_quantity: item.receipt_quantity,
             real_quantity: item.real_quantity,
             confidence: item.confidence,
+            category_id: item.category_id,
+            category_name: item.category_name,
+            category_slug: item.category_slug,
+            category_confidence: item.category_confidence,
             comment: item.comment,
             accepted: item.accepted,
             removed: item.removed,
@@ -1001,24 +1075,12 @@ async function processReceiptImage() {
             'Authorization': `Bearer ${session.access_token}`
         };
 
-        const productRequest = fetch(VLM_API_ENDPOINT, {
+        const productResponse = await fetch(VLM_API_ENDPOINT, {
             method: 'POST',
             headers: authHeaders,
             body: JSON.stringify({ imageDataUrl })
         });
-
-        const supplierRequest = fetch(SUPPLIER_VLM_API_ENDPOINT, {
-            method: 'POST',
-            headers: authHeaders,
-            body: JSON.stringify({ imageDataUrl })
-        });
-
-        const [productResponse, supplierResponse] = await Promise.all([productRequest, supplierRequest]);
-
-        const [productResult, supplierResult] = await Promise.all([
-            productResponse.json(),
-            supplierResponse.json().catch(() => ({ error: 'Supplier scan response was not valid JSON.' }))
-        ]);
+        const productResult = await productResponse.json();
 
         if (!productResponse.ok) {
             const message = productResult?.details || productResult?.error || productResult?.message || 'Unable to scan receipt.';
@@ -1034,6 +1096,7 @@ async function processReceiptImage() {
             return;
         }
 
+        currentCategories = Array.isArray(productResult.categories) ? productResult.categories : [];
         currentItems = normalizeItemsFromReceipt(parsed).map(item => ({
             ...item,
             accepted: false,
@@ -1045,18 +1108,13 @@ async function processReceiptImage() {
         currentItems = await lookupThumbnails(currentItems);
         renderItems(currentItems);
 
-        if (supplierResponse.ok) {
-            const supplierDetails = supplierResult?.supplierDetails || supplierResult?.supplier || supplierResult;
-            currentSupplierDetails = normalizeSupplierDetails(supplierDetails || {});
-            renderSupplierDetailsPanel(currentSupplierDetails);
-        } else {
-            const supplierMessage = supplierResult?.details || supplierResult?.error || supplierResult?.message || 'Unable to scan supplier details.';
-            console.warn('Supplier scan warning:', supplierMessage);
-            currentSupplierDetails = {};
-            renderSupplierDetailsPanel(currentSupplierDetails);
-        }
+        const supplierDetails = productResult?.supplierDetails || parsed?.supplier || {};
+        currentSupplierDetails = normalizeSupplierDetails(supplierDetails);
+        renderSupplierDetailsPanel(currentSupplierDetails);
 
-        setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.`, 'success');
+        const totalTokens = Number(productResult?.usage?.total_tokens);
+        const usageText = Number.isFinite(totalTokens) ? ` Used ${totalTokens.toLocaleString()} API tokens.` : '';
+        setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.${usageText}`, 'success');
         const rawOutput = document.getElementById('vlm-raw-output');
         rawOutput.textContent = JSON.stringify({
             receipt: parsed,
@@ -1299,14 +1357,17 @@ async function initReceiptScanner() {
                 return;
             }
 
-            const reader = new FileReader();
-            reader.onload = () => {
-                const dataUrl = reader.result;
+            try {
+                setStatus('Optimizing receipt image...', 'warning');
+                const dataUrl = await prepareReceiptImage(file);
                 currentReceiptImage = { file, dataUrl };
                 setPreviewImage(dataUrl);
                 setStatus('Receipt image ready. Tap Scan Receipt to process.', 'neutral');
-            };
-            reader.readAsDataURL(file);
+            } catch (error) {
+                console.error('Unable to prepare receipt image:', error);
+                alert('The receipt image could not be prepared. Please try another JPG, PNG, or WEBP image.');
+                clearReceiptSelection();
+            }
         });
     }
 

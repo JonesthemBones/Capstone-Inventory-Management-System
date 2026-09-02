@@ -1,6 +1,6 @@
 # Amacar Hardware Inventory Management System
 
-A Web-based inventory and point-of-sale system for Amacar Hardware. The current application manages products and stock directly; the legacy product-category module has been removed.
+A Web-based inventory and point-of-sale system for Amacar Hardware. The application manages products, categories, stock, receipt extraction, and sales workflows.
 
 ## Project status
 
@@ -62,7 +62,7 @@ Mobile layouts are primarily applied at widths of `768px` and below, with additi
 - Frontend: HTML, CSS, vanilla JavaScript, Chart.js, and Supabase JS
 - Backend: Node.js and Express
 - Database/authentication/storage: Supabase (PostgreSQL, Auth, Realtime, and Storage)
-- Receipt extraction: OpenRouter vision models with a Python VLM helper
+- Receipt extraction: DeepSeek vision model with a Python VLM helper
 - Payments: PayMongo test checkout for QR/e-wallet payments
 - Email: Nodemailer/SMTP for OTP password reset
 
@@ -90,7 +90,7 @@ Capstone-Inventory-Management-System/
 - npm
 - A configured Supabase project
 - Python available as `python`, or configured through `PYTHON_BINARY`, for receipt-image processing
-- OpenRouter, SMTP, and PayMongo test credentials for their respective optional workflows
+- DeepSeek, SMTP, and PayMongo test credentials for their respective optional workflows
 
 ## Installation and startup
 
@@ -113,8 +113,9 @@ PORT=3001
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-service-role-key
 
-OPENROUTER_API_KEY=your-openrouter-key
-VLM_MODEL=your-vision-language-model
+DEEPSEEK_API_KEY=your-deepseek-key
+VLM_MODEL=deepseek-v4-flash-vision-exp
+DEEPSEEK_API_ENDPOINT=https://api.deepseek.com/chat/completions
 PYTHON_BINARY=python
 
 EMAIL_USER=your-email@example.com
@@ -149,6 +150,7 @@ All routes are mounted under `/api`.
 | `POST` | `/verify-otp` | Verify a password-reset OTP |
 | `POST` | `/reset-password` | Reset a user password |
 | `POST` | `/vlm-scan` | Process a receipt image |
+| `GET` | `/categories` | Read active categories available to receipt extraction |
 | `GET` | `/vlm-config` | Read the active VLM configuration |
 | `POST` | `/vlm-config` | Update VLM configuration |
 | `POST` | `/save-items-to-inventory` | Save extracted receipt items into inventory |
@@ -189,7 +191,7 @@ receipt_images ── vlm_processing_logs
 receipt_images ── vlm_extractions ── extracted_line_items
 ```
 
-There is no `categories` table or `products.category_id` field in the current application.
+Product categories are normalized in `categories`; `products.category_id` stores the approved category and VLM line items can carry a validated category suggestion and confidence score.
 
 ## Storage
 
@@ -202,7 +204,7 @@ There is no `categories` table or `products.category_id` field in the current ap
 - PayMongo integration requires a test secret beginning with `sk_test_`.
 - POS inventory finalization must go through Express so the server can perform the protected stock update after validating the signed-in user.
 - Stock changes should create corresponding `stock_movements` rows for traceability.
-- Keep the Supabase service-role key, SMTP password, OpenRouter key, and PayMongo secret out of browser code and version control.
+- Keep the Supabase service-role key, SMTP password, DeepSeek key, and PayMongo secret out of browser code and version control.
 
 ## Known limitation
 
@@ -228,7 +230,7 @@ Check the SMTP variables and use an app password when required by the email prov
 
 ### Receipt extraction fails
 
-Check `OPENROUTER_API_KEY`, `VLM_MODEL`, `PYTHON_BINARY`, and the server console. The VLM configuration can also be inspected through `/api/vlm-config`.
+Check `DEEPSEEK_API_KEY`, `VLM_MODEL`, `PYTHON_BINARY`, and the server console. The VLM configuration can also be inspected through `/api/vlm-config`.
 
 ## License
 
