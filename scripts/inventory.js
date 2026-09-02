@@ -1,6 +1,8 @@
 let currentEditingProductId = null;
 let currentAdjustingProductId = null;
 let currentUserRole = null;
+let inventoryProducts = [];
+let generatedReorderItems = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();
@@ -198,6 +200,8 @@ async function loadInventory(filters = {}) {
         (products || []).forEach(product => {
             product.inbound_movements = inboundMovementsByProductId[product.product_id] || [];
         });
+
+        inventoryProducts = products || [];
 
         updateInventoryUnitOptions(products);
         const filteredProducts = filterAndSortInventory(products, filters);
@@ -662,6 +666,12 @@ function setupEventListeners() {
         loadInventory(getFilters());
     });
 
+    document.getElementById('generate-reorder-btn')?.addEventListener('click', openReorderModal);
+    document.getElementById('close-reorder-modal')?.addEventListener('click', closeReorderModal);
+    document.getElementById('cancel-reorder-btn')?.addEventListener('click', closeReorderModal);
+    document.getElementById('print-reorder-btn')?.addEventListener('click', printReorderList);
+    document.getElementById('reorder-table-body')?.addEventListener('change', updateReorderQuantity);
+
     document.getElementById('product-form').addEventListener('submit', saveProduct);
 
     document.getElementById('add-item-btn').addEventListener('click', () => {
@@ -726,6 +736,96 @@ function getFilters() {
         maxPrice: document.getElementById('max-price-filter').value,
         sort: document.getElementById('inventory-sort').value
     };
+}
+
+function buildReorderItems() {
+    return inventoryProducts
+        .filter(product => product.is_active !== false && ['low_stock', 'critical', 'out_of_stock'].includes(getProductStockStatus(product)))
+        .map(product => {
+            const onHand = getInventoryQuantity(product);
+            const reorderLevel = Math.max(0, Number(product.reorder_level || 0));
+            const maximumStock = Math.max(0, Number(product.maximum_stock || 0));
+            const target = maximumStock > onHand ? maximumStock : Math.max(reorderLevel * 2, reorderLevel, onHand);
+            return {
+                productId: product.product_id,
+                name: product.product_name || 'Unnamed product',
+                code: product.product_code || 'N/A',
+                unit: product.unit_of_measure || 'unit',
+                status: getProductStockStatus(product),
+                onHand,
+                target,
+                quantity: Math.max(0, target - onHand),
+                unitCost: Math.max(0, Number(product.unit_price || 0))
+            };
+        })
+        .filter(item => item.quantity > 0)
+        .sort((a, b) => ({ out_of_stock: 0, critical: 1, low_stock: 2 }[a.status] - { out_of_stock: 0, critical: 1, low_stock: 2 }[b.status]) || a.name.localeCompare(b.name));
+}
+
+function reorderStatusLabel(status) {
+    return { low_stock: 'Low Stock', critical: 'Critical', out_of_stock: 'Out of Stock' }[status] || status;
+}
+
+function formatPeso(value) {
+    return `\u20B1${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function renderReorderList() {
+    const body = document.getElementById('reorder-table-body');
+    const empty = document.getElementById('reorder-empty');
+    const printButton = document.getElementById('print-reorder-btn');
+    const total = generatedReorderItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+    const totalUnits = generatedReorderItems.reduce((sum, item) => sum + item.quantity, 0);
+
+    body.innerHTML = generatedReorderItems.map((item, index) => `
+        <tr>
+            <td data-label="Product"><strong>${escapeInventoryHTML(item.name)}</strong><small class="reorder-unit">${escapeInventoryHTML(item.unit)}</small></td>
+            <td data-label="Code" class="reorder-code">${escapeInventoryHTML(item.code)}</td>
+            <td data-label="Status"><span class="status-badge status-${item.status === 'low_stock' ? 'low' : item.status === 'critical' ? 'critical' : 'out'}">${reorderStatusLabel(item.status)}</span></td>
+            <td data-label="On hand">${item.onHand}</td><td data-label="Target">${item.target}</td>
+            <td data-label="Order qty"><input class="reorder-quantity" type="number" min="0" step="1" value="${item.quantity}" data-index="${index}" aria-label="Order quantity for ${escapeInventoryHTML(item.name)}"></td>
+            <td data-label="Est. cost"><strong>${formatPeso(item.quantity * item.unitCost)}</strong></td>
+        </tr>`).join('');
+    empty.hidden = generatedReorderItems.length > 0;
+    document.querySelector('.reorder-table-wrap').hidden = generatedReorderItems.length === 0;
+    printButton.disabled = generatedReorderItems.length === 0;
+    document.getElementById('reorder-summary').innerHTML = `<span><strong>${generatedReorderItems.length}</strong> products</span><span><strong>${totalUnits}</strong> units to order</span><span>Estimated total <strong>${formatPeso(total)}</strong></span>`;
+}
+
+function openReorderModal() {
+    if (!['admin', 'manager'].includes(String(currentUserRole).toLowerCase())) {
+        alert('Only an admin or manager can generate a reorder list.');
+        return;
+    }
+    generatedReorderItems = buildReorderItems();
+    renderReorderList();
+    document.getElementById('reorder-modal').classList.add('active');
+    document.body.classList.add('modal-open');
+}
+
+function closeReorderModal() {
+    document.getElementById('reorder-modal')?.classList.remove('active');
+    document.body.classList.remove('modal-open');
+}
+
+function updateReorderQuantity(event) {
+    const input = event.target.closest('.reorder-quantity');
+    if (!input) return;
+    const index = Number(input.dataset.index);
+    generatedReorderItems[index].quantity = Math.max(0, Math.floor(Number(input.value) || 0));
+    renderReorderList();
+}
+
+function printReorderList() {
+    const items = generatedReorderItems.filter(item => item.quantity > 0);
+    if (!items.length) return;
+    const estimatedTotal = items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+    const documentNumber = `RO-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`;
+    const rows = items.map(item => `<tr><td>${escapeInventoryHTML(item.name)}</td><td>${escapeInventoryHTML(item.code)}</td><td>${reorderStatusLabel(item.status)}</td><td>${item.onHand} ${escapeInventoryHTML(item.unit)}</td><td>${item.quantity} ${escapeInventoryHTML(item.unit)}</td><td>${formatPeso(item.unitCost)}</td><td>${formatPeso(item.quantity * item.unitCost)}</td></tr>`).join('');
+    const printWindow = window.open('', '_blank', 'width=1000,height=750');
+    if (!printWindow) return alert('Allow pop-ups to print the reorder list.');
+    printWindow.document.write(`<!doctype html><html><head><title>${documentNumber}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{margin:0}header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px}.meta{text-align:right;font-size:13px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#eee}.total{text-align:right;font-size:16px;font-weight:bold;margin-top:18px}.signatures{display:flex;justify-content:space-between;margin-top:70px}.signature{width:220px;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>AMACAR HARDWARE</h1><p>Inventory Reorder List</p></div><div class="meta"><strong>${documentNumber}</strong><br>${new Date().toLocaleString('en-PH')}<br>Prepared by: ${escapeInventoryHTML(String(currentUserRole).toUpperCase())}</div></header><table><thead><tr><th>Product</th><th>Code</th><th>Priority</th><th>On Hand</th><th>Order Qty</th><th>Unit Cost</th><th>Estimated Cost</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Estimated Total: ${formatPeso(estimatedTotal)}</p><div class="signatures"><div class="signature">Prepared by</div><div class="signature">Approved by</div><div class="signature">Supplier acknowledgment</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+    printWindow.document.close();
 }
 
 function toggleProductThumbnailSection(show) {

@@ -48,6 +48,7 @@
                             <div class="inventory-primary-actions">
                                 <button class="btn btn-primary role-requires-staff-or-admin" id="add-item-btn"><i class="fas fa-plus"></i>Add Item</button>
                                 <button class="btn btn-success role-requires-staff-or-admin" id="create-outbound-btn"><i class="fas fa-shipping-fast"></i>Create Outbound</button>
+                                <button class="btn btn-warning role-requires-staff-or-admin" id="generate-reorder-btn"><i class="fas fa-cart-plus"></i>Generate Reorder List</button>
                             </div>
                             <div class="inventory-utility-actions" aria-label="Export and backup actions">
                                 <button class="btn btn-soft" id="export-csv-btn"><i class="fas fa-file-csv"></i>Export CSV</button>
@@ -102,6 +103,31 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Automatically generated low-stock reorder list -->
+    <div id="reorder-modal" class="modal">
+        <div class="modal-content reorder-modal-content">
+            <div class="modal-header">
+                <div>
+                    <h2>Reorder List</h2>
+                    <p class="reorder-subtitle">Suggested quantities for low, critical, and out-of-stock products.</p>
+                </div>
+                <button class="modal-close" id="close-reorder-modal" aria-label="Close reorder list"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="reorder-summary" id="reorder-summary"></div>
+            <div class="reorder-table-wrap">
+                <table class="data-table reorder-table">
+                    <thead><tr><th>Product</th><th>Code</th><th>Status</th><th>On Hand</th><th>Target</th><th>Order Qty</th><th>Est. Cost</th></tr></thead>
+                    <tbody id="reorder-table-body"></tbody>
+                </table>
+            </div>
+            <p class="reorder-empty" id="reorder-empty" hidden><i class="fas fa-circle-check"></i> No products currently require reordering.</p>
+            <div class="modal-actions">
+                <button type="button" class="btn" id="cancel-reorder-btn">Close</button>
+                <button type="button" class="btn btn-primary" id="print-reorder-btn"><i class="fas fa-print"></i>Print Reorder List</button>
+            </div>
+        </div>
     </div>
 
     <!-- Product Modal -->
