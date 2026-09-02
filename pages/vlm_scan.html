@@ -83,12 +83,22 @@
                                 </div>
                                 <div class="vlm-admin-settings-row">
                                     <div class="vlm-admin-settings-field">
-                                        <label for="vlm-api-key-input">OpenRouter API Key</label>
-                                        <input type="password" id="vlm-api-key-input" placeholder="Paste admin API key here">
+                                        <label for="vlm-api-key-input">Product Extraction API Key</label>
+                                        <input type="password" id="vlm-api-key-input" placeholder="Paste product extraction API key here">
                                     </div>
                                     <div class="vlm-admin-settings-field">
                                         <label for="vlm-model-input">Vision Model Name</label>
                                         <input type="text" id="vlm-model-input" placeholder="e.g. openrouter/free">
+                                    </div>
+                                </div>
+                                <div class="vlm-admin-settings-row">
+                                    <div class="vlm-admin-settings-field">
+                                        <label for="vlm-supplier-api-key-input">Supplier Details Extractor API Key</label>
+                                        <input type="password" id="vlm-supplier-api-key-input" placeholder="Paste supplier extractor API key here">
+                                    </div>
+                                    <div class="vlm-admin-settings-field" style="flex: 1 1 100%; max-width: 100%;">
+                                        <label for="vlm-endpoint-input">OpenRouter API Endpoint</label>
+                                        <input type="text" id="vlm-endpoint-input" placeholder="https://openrouter.ai/api/v1/chat/completions">
                                     </div>
                                 </div>
                                 <div class="vlm-admin-settings-actions">
@@ -125,6 +135,13 @@
                         </div>
 
                         <div id="vlm-status" class="vlm-status vlm-status-neutral">No receipt scanned yet.</div>
+                        <div id="supplier-details-panel" class="supplier-details-panel hidden" data-expanded="true">
+                            <button type="button" id="supplier-details-toggle" class="supplier-details-toggle" aria-expanded="true">
+                                <span>Supplier Details</span>
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                            <div id="supplier-details-content" class="supplier-details-content"></div>
+                        </div>
                         <div class="vlm-save-section">
                             <button type="button" class="btn btn-success btn-large" id="save-to-inventory-btn" disabled>
                                 <i class="fas fa-save"></i>
