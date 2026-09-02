@@ -1,0 +1,6 @@
+{
+  "apiKey": "AIzaSyDUDfB4XmnycKrC0btEMwAQiFMDqoZxa8o",
+  "supplierApiKey": "AIzaSyDUDfB4XmnycKrC0btEMwAQiFMDqoZxa8o",
+  "model": "gemini-3.5-flash",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/chat/completions"
+}

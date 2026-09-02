@@ -15,7 +15,6 @@ router.use((req, res, next) => {
 const VLM_CONFIG_FILE = path.resolve(__dirname, './vlm_settings.json');
 const PYTHON_BINARY = process.env.PYTHON_BINARY || 'python';
 const PYTHON_SCRIPT = path.resolve(__dirname, './python_vlm.py');
-const SUPPLIER_PYTHON_SCRIPT = path.resolve(__dirname, './supplier_vlm.py');
 const DEFAULT_VLM_MODEL = 'openrouter/auto';
 const DEFAULT_VLM_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -238,46 +237,39 @@ function imageExtension(mediaType) {
     }
 }
 
-router.post('/vlm-scan', async (req, res) => {
-    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'VLM extraction access required.');
-    if (!operator) return;
+async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
+    if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
+        throw new Error(`Invalid ${taskLabel} image data URL.`);
+    }
 
-    let tempDir;
-    let tempFile;
+    const parsedImage = parseDataUrl(imageDataUrl);
+    if (!parsedImage) {
+        throw new Error(`Unable to parse the ${taskLabel} image data URL.`);
+    }
+
+    const vlmConfig = loadVLMConfig();
+    const apiKey = task === 'supplier' ? (vlmConfig.supplierApiKey || vlmConfig.apiKey) : vlmConfig.apiKey;
+    if (!apiKey) {
+        throw new Error(task === 'supplier'
+            ? 'Supplier Details Extractor API key is not configured on the server.'
+            : 'OpenRouter API key is not configured on the server.');
+    }
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `${task}-vlm-`));
+    const tempFile = path.join(tempDir, `${task}.${imageExtension(parsedImage.mediaType)}`);
+    fs.writeFileSync(tempFile, Buffer.from(parsedImage.base64Data, 'base64'));
 
     try {
-        const imageDataUrl = req.body?.imageDataUrl;
-        if (!imageDataUrl) {
-            return res.status(400).json({ error: 'Missing imageDataUrl in request body.' });
-        }
-        if (!imageDataUrl.startsWith('data:image/')) {
-            return res.status(400).json({ error: 'Invalid imageDataUrl. Must be a data URL for an image.' });
-        }
-
-        const parsedImage = parseDataUrl(imageDataUrl);
-        if (!parsedImage) {
-            return res.status(400).json({ error: 'Unable to parse the receipt image data URL.' });
-        }
-
-        const vlmConfig = loadVLMConfig();
-        if (!vlmConfig.apiKey) {
-            return res.status(500).json({ error: 'OpenRouter API key is not configured on the server.' });
-        }
-
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vlm-'));
-        tempFile = path.join(tempDir, `receipt.${imageExtension(parsedImage.mediaType)}`);
-        fs.writeFileSync(tempFile, Buffer.from(parsedImage.base64Data, 'base64'));
-
         const pythonEnv = {
             ...process.env,
-            OPENROUTER_API_KEY: vlmConfig.apiKey,
+            OPENROUTER_API_KEY: apiKey,
             OPENROUTER_API_ENDPOINT: vlmConfig.endpoint,
             OPENROUTER_ENDPOINT: vlmConfig.endpoint,
             VLM_MODEL: vlmConfig.model,
             VISION_MODEL: vlmConfig.model
         };
 
-        const child = spawn(PYTHON_BINARY, [PYTHON_SCRIPT, tempFile], {
+        const child = spawn(PYTHON_BINARY, [PYTHON_SCRIPT, tempFile, task], {
             env: pythonEnv,
             stdio: ['ignore', 'pipe', 'pipe']
         });
@@ -295,33 +287,36 @@ router.post('/vlm-scan', async (req, res) => {
 
         const exitCode = await new Promise((resolve) => child.on('close', resolve));
 
-        if (tempDir) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        }
-
-        console.log(`VLM subprocess exited with code ${exitCode}`);
-        if (stderr) console.error('Python stderr:', stderr);
-        if (stdout) console.log('Python stdout:', stdout);
-
         if (exitCode !== 0) {
-            console.error('VLM subprocess stderr:', stderr);
-            console.error('VLM subprocess stdout:', stdout);
-            return res.status(502).json({
-                error: 'VLM subprocess failed.',
-                details: stderr.trim() || 'No stderr output from Python VLM subprocess.',
-                rawOutput: stdout.trim()
-            });
+            throw new Error(stderr.trim() || `${taskLabel} extraction subprocess failed without error details.`);
         }
 
         const parsed = extractJsonObject(stdout.trim());
         if (!parsed) {
-            console.warn('Unable to parse JSON from Python VLM output');
-            return res.status(502).json({
-                error: 'Unable to parse JSON from VLM output.',
-                rawContent: stdout.trim(),
-                stderr: stderr.trim()
-            });
+            throw new Error(`Unable to parse JSON from the ${taskLabel} extraction output.`);
         }
+
+        return { parsed, stdout, stderr };
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+}
+
+router.post('/vlm-scan', async (req, res) => {
+    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'VLM extraction access required.');
+    if (!operator) return;
+
+    try {
+        const imageDataUrl = req.body?.imageDataUrl;
+        if (!imageDataUrl) {
+            return res.status(400).json({ error: 'Missing imageDataUrl in request body.' });
+        }
+
+        const { parsed, stdout, stderr } = await runUnifiedVLMExtraction({
+            imageDataUrl,
+            task: 'product',
+            taskLabel: 'product'
+        });
 
         return res.json({
             success: true,
@@ -333,9 +328,6 @@ router.post('/vlm-scan', async (req, res) => {
         });
     } catch (error) {
         console.error('VLM scan error:', error);
-        if (tempDir) {
-            try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (cleanupError) { /* ignore */ }
-        }
         return res.status(500).json({
             error: 'VLM scan failed on the server.',
             message: error?.message || 'Unknown error.'
@@ -379,84 +371,17 @@ router.post('/vlm-scan-supplier', async (req, res) => {
     const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Supplier VLM extraction access required.');
     if (!operator) return;
 
-    let tempDir;
-    let tempFile;
-
     try {
         const imageDataUrl = req.body?.imageDataUrl;
         if (!imageDataUrl) {
             return res.status(400).json({ error: 'Missing imageDataUrl in request body.' });
         }
-        if (!imageDataUrl.startsWith('data:image/')) {
-            return res.status(400).json({ error: 'Invalid imageDataUrl. Must be a data URL for an image.' });
-        }
 
-        const parsedImage = parseDataUrl(imageDataUrl);
-        if (!parsedImage) {
-            return res.status(400).json({ error: 'Unable to parse the supplier image data URL.' });
-        }
-
-        const vlmConfig = loadVLMConfig();
-        const supplierApiKey = vlmConfig.supplierApiKey || vlmConfig.apiKey;
-        if (!supplierApiKey) {
-            return res.status(500).json({ error: 'Supplier Details Extractor API key is not configured on the server.' });
-        }
-
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'supplier-vlm-'));
-        tempFile = path.join(tempDir, `supplier.${imageExtension(parsedImage.mediaType)}`);
-        fs.writeFileSync(tempFile, Buffer.from(parsedImage.base64Data, 'base64'));
-
-        const pythonEnv = {
-            ...process.env,
-            OPENROUTER_API_KEY: vlmConfig.apiKey,
-            OPENROUTER_API_ENDPOINT: vlmConfig.endpoint,
-            OPENROUTER_ENDPOINT: vlmConfig.endpoint,
-            VLM_MODEL: vlmConfig.model,
-            VISION_MODEL: vlmConfig.model
-        };
-
-        const child = spawn(PYTHON_BINARY, [SUPPLIER_PYTHON_SCRIPT, tempFile], {
-            env: pythonEnv,
-            stdio: ['ignore', 'pipe', 'pipe']
+        const { parsed, stdout, stderr } = await runUnifiedVLMExtraction({
+            imageDataUrl,
+            task: 'supplier',
+            taskLabel: 'supplier'
         });
-
-        let stdout = '';
-        let stderr = '';
-
-        child.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
-
-        child.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-
-        const exitCode = await new Promise((resolve) => child.on('close', resolve));
-
-        if (tempDir) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        }
-
-        console.log(`[supplier-vlm] exited with code ${exitCode}`);
-        if (stderr) console.error('[supplier-vlm] python stderr:', stderr);
-        if (stdout) console.log('[supplier-vlm] python stdout:', stdout);
-
-        if (exitCode !== 0) {
-            return res.status(502).json({
-                error: 'Supplier VLM subprocess failed.',
-                details: stderr.trim() || 'No stderr output from the supplier Python VLM subprocess.',
-                rawOutput: stdout.trim()
-            });
-        }
-
-        const parsed = extractJsonObject(stdout.trim());
-        if (!parsed) {
-            return res.status(502).json({
-                error: 'Unable to parse JSON from supplier VLM output.',
-                rawContent: stdout.trim(),
-                stderr: stderr.trim()
-            });
-        }
 
         console.log('[supplier-vlm] extracted supplier details:', JSON.stringify(parsed, null, 2));
 
@@ -470,9 +395,6 @@ router.post('/vlm-scan-supplier', async (req, res) => {
         });
     } catch (error) {
         console.error('Supplier VLM scan error:', error);
-        if (tempDir) {
-            try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (cleanupError) { /* ignore */ }
-        }
         return res.status(500).json({
             error: 'Supplier VLM scan failed on the server.',
             message: error?.message || 'Unknown error.'
