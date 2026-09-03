@@ -70,18 +70,18 @@
 }
 
 .pos-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 8px;
-  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .pos-filter-select,
 .pos-filter-input,
 .pos-reset-filter {
-  min-width: 130px;
-  flex: 1 1 140px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
   padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 10px;
@@ -208,6 +208,36 @@
   font-size: 1rem;
   font-weight: 800;
   color: #1d4ed8;
+}
+
+#pos-category-filter { grid-column: 1; grid-row: 1; }
+#pos-stock-filter { grid-column: 2; grid-row: 1; }
+#pos-unit-filter { grid-column: 3; grid-row: 1; }
+#pos-sort { grid-column: 4; grid-row: 1; }
+.pos-filter-secondary {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(150px, 0.8fr) auto minmax(150px, 0.8fr) minmax(24px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  margin-top: 2px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.pos-price-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #4b5563;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pos-price-separator {
+  color: #6b7280;
+  font-size: 0.82rem;
 }
 
 .product-card-footer {
@@ -390,10 +420,15 @@
 }
 
 .pos-reset-filter {
-  flex: 0 1 auto;
-  min-width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: auto;
+  padding-inline: 16px;
   cursor: pointer;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .item-detail.subtotal {

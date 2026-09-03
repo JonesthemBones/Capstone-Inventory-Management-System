@@ -720,6 +720,15 @@
     color: var(--text-primary);
 }
 
+.dark-mode .pos-filter-secondary {
+    border-top-color: var(--border-color);
+}
+
+.dark-mode .pos-price-label,
+.dark-mode .pos-price-separator {
+    color: var(--text-secondary);
+}
+
 .dark-mode .search-input:focus,
 .dark-mode .discount-section select:focus,
 .dark-mode .payment-section select:focus,
