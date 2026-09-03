@@ -362,7 +362,12 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
             stderr += chunk.toString();
         });
 
-        const exitCode = await new Promise((resolve) => child.on('close', resolve));
+        const exitCode = await new Promise((resolve, reject) => {
+            child.once('error', (error) => {
+                reject(new Error(`Unable to start ${taskLabel} extraction subprocess: ${error.message}`));
+            });
+            child.once('close', resolve);
+        });
 
         if (exitCode !== 0) {
             throw new Error(stderr.trim() || `${taskLabel} extraction subprocess failed without error details.`);
