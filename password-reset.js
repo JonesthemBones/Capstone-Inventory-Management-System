@@ -35,6 +35,9 @@ const SMTP_PORT = process.env.SMTP_PORT?.trim();
 const SMTP_SECURE = process.env.SMTP_SECURE?.trim();
 const EMAIL_USER = process.env.EMAIL_USER?.trim();
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD?.trim();
+const SMTP_PASSWORD = SMTP_HOST === 'smtp.gmail.com'
+  ? EMAIL_PASSWORD?.replace(/\s+/g, '')
+  : EMAIL_PASSWORD;
 
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 console.log('Password reset supabase client created?', !!supabase);
@@ -55,7 +58,7 @@ if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
     secure: SMTP_SECURE === 'true',
     auth: {
       user: EMAIL_USER,
-      pass: EMAIL_PASSWORD
+      pass: SMTP_PASSWORD
     },
     tls: {
       rejectUnauthorized: false
@@ -64,7 +67,12 @@ if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
 
   transporter.verify((error, success) => {
     if (error) {
-      console.error('❌ Email transporter error:', error);
+      console.error('❌ Email transporter error:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        responseCode: error.responseCode
+      });
     } else {
       console.log('✅ Email server is ready to send messages');
     }
@@ -120,8 +128,6 @@ router.post('/send-otp', async (req, res) => {
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-    console.log(`Generated OTP for ${email}: ${otp}`);
-
     // Store OTP in database
     const { error: updateError } = await supabase
       .from('users')
@@ -136,6 +142,8 @@ router.post('/send-otp', async (req, res) => {
       console.error('Database update error:', updateError);
       throw updateError;
     }
+
+    console.log(`OTP stored for ${email}; sending password-reset email.`);
 
     // Send email with OTP
     const mailOptions = {
@@ -182,7 +190,13 @@ router.post('/send-otp', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Send OTP error:', error);
+    console.error('Send OTP error:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      responseCode: error.responseCode,
+      response: error.response
+    });
     res.status(500).json({ 
       error: 'Failed to send OTP. Please try again.' 
     });
