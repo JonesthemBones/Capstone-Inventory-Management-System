@@ -1187,13 +1187,17 @@ function setAllAccepted() {
     setStatus('All items marked as accepted.', 'success');
 }
 
-function removeAllItems() {
+async function removeAllItems() {
     if (!currentItems.length) {
         alert('No items available to reject. Scan a receipt first.');
         return;
     }
 
-    const confirmReject = confirm('Reject all items? This will mark every item as rejected and keep them in the review list. Continue?');
+    const confirmReject = await window.utils.confirmDialog('Every item will be marked as rejected and kept in the review list for reference.', {
+        title: 'Reject all items?',
+        confirmText: 'Reject all',
+        variant: 'danger'
+    });
     if (!confirmReject) return;
 
     currentItems = currentItems.map(item => ({ ...item, removed: true, accepted: false }));
@@ -1498,9 +1502,13 @@ async function initReceiptScanner() {
     }
     const startNewScanBtn = document.getElementById('start-new-scan-btn');
     if (startNewScanBtn) {
-        startNewScanBtn.addEventListener('click', (event) => {
+        startNewScanBtn.addEventListener('click', async (event) => {
             event.preventDefault();
-            const confirmReset = confirm('Clear rejected items and start a new scan?');
+            const confirmReset = await window.utils.confirmDialog('Rejected items and the current receipt selection will be cleared.', {
+                title: 'Start a new scan?',
+                confirmText: 'Start new scan',
+                variant: 'danger'
+            });
             if (!confirmReset) return;
             clearReceiptSelection();
             setStatus('Ready for a new scan.', 'neutral');

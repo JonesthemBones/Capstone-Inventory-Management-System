@@ -530,10 +530,14 @@ function updateCartSummary() {
     }
 }
 
-function clearCart(force = false) {
+async function clearCart(force = false) {
     if (currentCart.length === 0) return;
     
-    if (force || confirm('Clear all items from cart?')) {
+    if (force || await window.utils.confirmDialog('All products currently in the cart will be removed.', {
+        title: 'Clear cart?',
+        confirmText: 'Clear cart',
+        variant: 'danger'
+    })) {
         currentCart = [];
         document.getElementById('discount-input').value = '';
         document.getElementById('tender-amount').value = '';

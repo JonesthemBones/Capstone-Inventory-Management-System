@@ -32,6 +32,7 @@ The current development focus is interface refinement, data consistency, product
 - Redesigned the Receipt Scanner workflow with clear processing states, duplicate-submit prevention, and structured extracted-item review cards.
 - Moved receipt-item Accept and Reject actions below the review fields and aligned semantic colors across light and dark modes: green for Accept, red for Reject, and amber for Pending.
 - Improved shared modals for mobile widths and backdrop dismissal, and updated contextual page guides for newer screens and terminology.
+- Replaced native browser alerts with branded, non-blocking notifications and migrated Yes/No prompts to accessible confirmation dialogs. Both support semantic colors, dismissal, responsive positioning, and light/dark mode.
 - Standardized the application typography on Open Sans with a consistent 14px base scale and inherited form-control typography.
 - Added the current Amacar logo as the browser-tab icon on every application page.
 - Refined the desktop sidebar branding into a compact two-line `Amacar Hardware` / `Inventory System` title.

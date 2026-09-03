@@ -1210,7 +1210,11 @@ async function editProduct(productId) {
 
 async function deleteProduct(productId) {
     try {
-        if (!confirm('Are you sure you want to delete this product? This will also remove its stock change history.')) {
+        if (!await window.utils.confirmDialog('This will permanently delete the product and its stock change history.', {
+            title: 'Delete product?',
+            confirmText: 'Delete product',
+            variant: 'danger'
+        })) {
             return;
         }
 
@@ -1586,7 +1590,10 @@ async function restoreBackup() {
             return;
         }
     } else {
-        if (!confirm(confirmMessage)) {
+        if (!await window.utils.confirmDialog(confirmMessage, {
+            title: 'Restore inventory backup?',
+            confirmText: 'Restore backup'
+        })) {
             return;
         }
     }

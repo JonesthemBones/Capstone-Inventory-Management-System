@@ -138,6 +138,14 @@
 }
 
 @media (max-width: 640px) {
+    .help-button {
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        width: 48px;
+        height: 48px;
+        padding: 0;
+    }
+
     .help-modal {
         align-items: flex-end;
         padding: max(8px, env(safe-area-inset-top)) 0 0;
@@ -164,4 +172,13 @@
     }
 
     .help-section { margin-bottom: 18px; }
+}
+
+@media (max-width: 380px) {
+    .help-button {
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+        width: 44px;
+        height: 44px;
+    }
 }

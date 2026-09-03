@@ -575,7 +575,10 @@ function setupSignOutButtons() {
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
             
-            if (!confirm('Are you sure you want to sign out?')) {
+            if (!await window.utils.confirmDialog('You will need to enter your credentials to access the system again.', {
+                title: 'Sign out?',
+                confirmText: 'Sign out'
+            })) {
                 return;
             }
             

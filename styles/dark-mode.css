@@ -28,6 +28,27 @@
     transform: scale(0.95);
 }
 
+/* Keep the theme and FAQ controls on one mobile baseline. */
+@media (max-width: 768px) {
+    .dark-mode-toggle {
+        right: calc(max(16px, env(safe-area-inset-right)) + 60px);
+        bottom: max(16px, env(safe-area-inset-bottom));
+        width: 48px;
+        height: 48px;
+        padding: 0;
+    }
+}
+
+@media (max-width: 380px) {
+    .dark-mode-toggle {
+        right: calc(max(12px, env(safe-area-inset-right)) + 56px);
+        bottom: max(12px, env(safe-area-inset-bottom));
+        width: 44px;
+        height: 44px;
+        font-size: 18px;
+    }
+}
+
 /* Root Variables for Light Mode (Default) */
 :root {
     --bg-primary: #ffffff;

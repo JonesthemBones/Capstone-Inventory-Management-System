@@ -317,6 +317,9 @@ textarea {
   .help-button {
     right: max(16px, env(safe-area-inset-right));
     bottom: max(16px, env(safe-area-inset-bottom));
+    width: 48px;
+    height: 48px;
+    padding: 0;
   }
 
   .help-content {
