@@ -56,6 +56,9 @@ if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
     host: SMTP_HOST,
     port: Number(SMTP_PORT),
     secure: SMTP_SECURE === 'true',
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
     auth: {
       user: EMAIL_USER,
       pass: SMTP_PASSWORD
@@ -180,7 +183,9 @@ router.post('/send-otp', async (req, res) => {
       `
     };
 
-    await transporter.sendMail(mailOptions);
+    console.log(`Attempting SMTP delivery for ${email}.`);
+    const delivery = await transporter.sendMail(mailOptions);
+    console.log(`SMTP accepted password-reset email for ${email}: ${delivery.messageId}`);
     console.log(`✅ OTP email sent successfully to ${email}`);
 
     res.json({ 
@@ -190,6 +195,7 @@ router.post('/send-otp', async (req, res) => {
     });
 
   } catch (error) {
+    console.error(`Send OTP failed: ${error?.message || String(error)}`);
     console.error('Send OTP error:', {
       message: error.message,
       code: error.code,
@@ -197,6 +203,7 @@ router.post('/send-otp', async (req, res) => {
       responseCode: error.responseCode,
       response: error.response
     });
+    if (error?.stack) console.error(error.stack);
     res.status(500).json({ 
       error: 'Failed to send OTP. Please try again.' 
     });
