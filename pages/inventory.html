@@ -228,12 +228,13 @@
                 <div class="form-group" id="product-thumbnail-section" style="display: none; grid-column: 1 / -1;">
                     <label>Thumbnail</label>
                     <div id="product-thumbnail-preview" class="product-form-thumbnail-preview"></div>
+                    <input type="file" id="new-product-thumbnail-input" accept="image/jpeg,image/png,image/webp" hidden>
                     <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
                         <button type="button" class="btn" id="change-product-thumbnail-btn" onclick="openThumbnailUploadForCurrentProduct()">
                             <i class="fas fa-image"></i>
-                            Change Thumbnail
+                            <span id="product-thumbnail-button-label">Add Thumbnail</span>
                         </button>
-                        <small style="color: var(--text-secondary);">Update the item image whenever you edit this product.</small>
+                        <small id="product-thumbnail-help" style="color: var(--text-secondary);">JPG, PNG or WebP (Max 5MB).</small>
                     </div>
                 </div>
 

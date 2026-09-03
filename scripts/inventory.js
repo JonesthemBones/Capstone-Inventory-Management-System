@@ -725,12 +725,15 @@ function setupEventListeners() {
     document.getElementById('reorder-table-body')?.addEventListener('change', updateReorderQuantity);
 
     document.getElementById('product-form').addEventListener('submit', saveProduct);
+    document.getElementById('new-product-thumbnail-input')?.addEventListener('change', handleNewProductThumbnailSelect);
 
     document.getElementById('add-item-btn').addEventListener('click', () => {
         currentEditingProductId = null;
         document.getElementById('modal-title').textContent = 'Add New Product';
         document.getElementById('product-form').reset();
-        toggleProductThumbnailSection(false);
+        pendingNewProductImageFile = null;
+        toggleProductThumbnailSection(true);
+        updateProductThumbnailPreview(null);
         const quantityInput = document.getElementById('product-quantity');
         const quantityGroup = quantityInput.closest('.form-group');
         quantityGroup.style.display = '';
@@ -947,6 +950,8 @@ function printReorderList() {
 function toggleProductThumbnailSection(show) {
     const section = document.getElementById('product-thumbnail-section');
     const button = document.getElementById('change-product-thumbnail-btn');
+    const buttonLabel = document.getElementById('product-thumbnail-button-label');
+    const help = document.getElementById('product-thumbnail-help');
 
     if (!section) return;
 
@@ -954,6 +959,10 @@ function toggleProductThumbnailSection(show) {
     if (button) {
         button.disabled = !show;
     }
+    if (buttonLabel) buttonLabel.textContent = currentEditingProductId ? 'Change Thumbnail' : 'Add Thumbnail';
+    if (help) help.textContent = currentEditingProductId
+        ? 'Update the item image whenever you edit this product.'
+        : 'Optional. JPG, PNG or WebP (Max 5MB).';
 }
 
 function updateProductThumbnailPreview(product) {
@@ -978,11 +987,33 @@ function updateProductThumbnailPreview(product) {
 
 function openThumbnailUploadForCurrentProduct() {
     if (!currentEditingProductId) {
-        showNotification('Select an existing product first to change its thumbnail.', 'warning');
+        document.getElementById('new-product-thumbnail-input')?.click();
         return;
     }
 
     openUploadImageModal(currentEditingProductId);
+}
+
+let pendingNewProductImageFile = null;
+
+function handleNewProductThumbnailSelect(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const validationError = validateProductImageFile(file);
+    if (validationError) {
+        showNotification(validationError, 'error');
+        event.target.value = '';
+        return;
+    }
+
+    pendingNewProductImageFile = file;
+    const reader = new FileReader();
+    reader.onload = () => updateProductThumbnailPreview({
+        image_url: reader.result,
+        product_name: document.getElementById('product-name')?.value || 'New product thumbnail'
+    });
+    reader.readAsDataURL(file);
 }
 
 async function openStockAdjustmentModal(productId) {
@@ -1102,6 +1133,7 @@ async function saveStockAdjustment(e) {
 
 async function saveProduct(e) {
     e.preventDefault();
+    let thumbnailUploadError = null;
     
     const productData = {
         product_name: document.getElementById('product-name').value.trim().toUpperCase(),
@@ -1160,11 +1192,25 @@ async function saveProduct(e) {
                     quantity_after: quantity,
                     notes: 'Initial stock'
                 }]);
+
+            if (pendingNewProductImageFile) {
+                try {
+                    await saveProductImageFile(pendingNewProductImageFile, productId);
+                } catch (error) {
+                    thumbnailUploadError = error;
+                    console.error('Product saved, but thumbnail upload failed:', error);
+                }
+                pendingNewProductImageFile = null;
+            }
         }
         
         document.getElementById('product-modal').classList.remove('active');
         await loadInventory(getFilters());
-        alert(currentEditingProductId ? 'Product updated successfully!' : 'Product added successfully!');
+        if (thumbnailUploadError) {
+            alert('Product added successfully, but its thumbnail could not be uploaded: ' + thumbnailUploadError.message);
+        } else {
+            alert(currentEditingProductId ? 'Product updated successfully!' : 'Product added successfully!');
+        }
     } catch (error) {
         console.error('Error saving product:', error);
         alert('Error saving product: ' + error.message);
@@ -1911,22 +1957,27 @@ function initImageUpload() {
 }
 
 function handleImageFileSelect(file) {
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-        showNotification('Invalid file type. Please upload JPG, PNG, or WebP.', 'error');
-        return;
-    }
-    
-    // Validate file size (5MB max)
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-        showNotification('File too large. Maximum size is 5MB.', 'error');
+    const validationError = validateProductImageFile(file);
+    if (validationError) {
+        showNotification(validationError, 'error');
         return;
     }
     
     selectedImageFile = file;
     displayImagePreview(file);
+}
+
+function validateProductImageFile(file) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        return 'Invalid file type. Please upload JPG, PNG, or WebP.';
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        return 'File too large. Maximum size is 5MB.';
+    }
+
+    return '';
 }
 
 function displayImagePreview(file) {
@@ -1968,6 +2019,39 @@ function resetImageUploadForm() {
 }
 
 // Upload image to Supabase Storage
+async function saveProductImageFile(file, productId) {
+    const timestamp = Date.now();
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    const fileName = `product-${productId}-${timestamp}.${fileExtension}`;
+    const filePath = `product-images/${fileName}`;
+
+    const { error: uploadError } = await supabaseClient.storage
+        .from('product-images')
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicUrlData } = supabaseClient.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+    const imageUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabaseClient
+        .from('products')
+        .update({
+            image_url: imageUrl,
+            image_path: filePath,
+            image_uploaded_at: new Date().toISOString()
+        })
+        .eq('product_id', productId);
+
+    if (updateError) throw updateError;
+    return imageUrl;
+}
+
 async function uploadProductImage() {
     if (!selectedImageFile) {
         showNotification('Please select an image', 'warning');
@@ -1989,40 +2073,7 @@ async function uploadProductImage() {
         uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
         uploadBtn.disabled = true;
         
-        // Generate unique filename
-        const timestamp = Date.now();
-        const fileExtension = selectedImageFile.name.split('.').pop();
-        const fileName = `product-${productId}-${timestamp}.${fileExtension}`;
-        const filePath = `product-images/${fileName}`;
-        
-        // Upload to Supabase Storage
-        const { data, error: uploadError } = await supabaseClient.storage
-            .from('product-images')
-            .upload(filePath, selectedImageFile, {
-                cacheControl: '3600',
-                upsert: false
-            });
-        
-        if (uploadError) throw uploadError;
-        
-        // Get public URL
-        const { data: publicUrlData } = supabaseClient.storage
-            .from('product-images')
-            .getPublicUrl(filePath);
-        
-        const imageUrl = publicUrlData.publicUrl;
-        
-        // Update product in database
-        const { error: updateError } = await supabaseClient
-            .from('products')
-            .update({
-                image_url: imageUrl,
-                image_path: filePath,
-                image_uploaded_at: new Date().toISOString()
-            })
-            .eq('product_id', productId);
-        
-        if (updateError) throw updateError;
+        const imageUrl = await saveProductImageFile(selectedImageFile, productId);
         
         // Success
         if (currentEditingProductId) {
