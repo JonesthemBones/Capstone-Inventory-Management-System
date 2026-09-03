@@ -6,6 +6,7 @@ import sys
 import urllib.error
 import urllib.request
 import ssl
+import certifi
 
 
 def extract_json_payload(text):
@@ -279,7 +280,6 @@ def image_to_text(image_path, api_key, model, task='product'):
     if task == 'supplier':
         payload = {
             'model': model,
-            'thinking': {'type': 'disabled'},
             'messages': [
                 {
                     'role': 'system',
@@ -305,7 +305,6 @@ def image_to_text(image_path, api_key, model, task='product'):
     else:
         payload = {
             'model': model,
-            'thinking': {'type': 'disabled'},
             'messages': [
                 {
                     'role': 'system',
@@ -362,7 +361,7 @@ Example:
     }
     
 
-    ssl_context = ssl.create_default_context()
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
     
     request = urllib.request.Request(
         url,
