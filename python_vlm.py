@@ -300,7 +300,7 @@ def image_to_text(image_path, api_key, model, task='product'):
                 }
             ],
             'temperature': 0.0,
-            'max_tokens': 2048
+            'max_tokens': 24000
         }
     else:
         payload = {
@@ -351,7 +351,7 @@ Example:
                 }
             ],
             'temperature': 0.0,
-            'max_tokens': 4096
+            'max_tokens': 64000
         }
 
     url = get_api_endpoint()
