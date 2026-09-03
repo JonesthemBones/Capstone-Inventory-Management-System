@@ -93,7 +93,7 @@ function generateOTP() {
 // 1. Send OTP to email
 router.post('/send-otp', async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
 
     if (!checkPasswordResetEnabled(res)) {
       return;
@@ -192,7 +192,8 @@ router.post('/send-otp', async (req, res) => {
 // 2. Verify OTP
 router.post('/verify-otp', async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const { otp } = req.body;
 
     if (!email || !otp) {
       return res.status(400).json({ error: 'Email and OTP are required' });
@@ -265,7 +266,8 @@ router.post('/verify-otp', async (req, res) => {
 // 3. Reset password (after OTP verification)
 router.post('/reset-password', async (req, res) => {
   try {
-    const { email, newPassword } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const { newPassword } = req.body;
 
     if (!email || !newPassword) {
       return res.status(400).json({ 
