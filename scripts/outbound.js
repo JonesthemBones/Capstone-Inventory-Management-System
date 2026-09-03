@@ -312,7 +312,7 @@ async function submitOutboundOrder(e) {
         }
         
         if (!session) {
-            throw new Error('You must be logged in to process outbound transactions.');
+            throw new Error('Please sign in before removing stock.');
         }
         
         const performedBy = session.user.id;
@@ -393,7 +393,7 @@ async function submitOutboundOrder(e) {
         // Success
         console.log('Outbound transaction completed successfully');
         
-        alert(`✓ Outbound transaction completed successfully!\n\nProduct: ${selectedOutboundProduct.product_name}\nReference: ${outboundReference}\nType: ${outboundType}\nQuantity Dispatched: ${dispatchQty}`);
+        alert(`✓ Stock removed successfully!\n\nProduct: ${selectedOutboundProduct.product_name}\nDocument number: ${outboundReference}\nReason: ${outboundType}\nQuantity removed: ${dispatchQty}`);
         
         closeOutboundModal();
         
@@ -405,7 +405,7 @@ async function submitOutboundOrder(e) {
 
     } catch (error) {
         console.error('Error processing outbound transaction:', error);
-        alert('✖ Error processing outbound:\n\n' + error.message);
+        alert('✖ Stock could not be removed:\n\n' + error.message);
     }
 }
 

@@ -46,9 +46,9 @@
                                 <option value="complete">Complete Inventory Report</option>
                                 <option value="low-stock">Low Stock Alert Report</option>
                                 <option value="valuation">Inventory Valuation Report</option>
-                                <option value="movement">Stock Movement Report</option>
-                                <option value="outbound-activity">Outbound Activity Report</option>
-                                <optgroup label="Point of Sale">
+                                <option value="movement">Stock Change Report</option>
+                                <option value="outbound-activity">Stock Removal Report</option>
+                                <optgroup label="Sales Checkout">
                                     <option value="sales-summary">Sales Summary Report</option>
                                     <option value="product-sales">Product Sales Performance</option>
                                     <option value="cashier-performance">Sales by Cashier</option>
@@ -141,7 +141,7 @@
                         </div>
                         <div class="quick-report-card staff-report" data-type="outbound-activity" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s;">
                             <i class="fas fa-truck-ramp-box" style="font-size: 32px; color: var(--warning); margin-bottom: 12px;"></i>
-                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Outbound Activity</h4>
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Stock Removal Activity</h4>
                             <p style="font-size: 12px; color: var(--text-secondary);">Dispatches, reasons, products, and quantities</p>
                         </div>
                     </div>
@@ -157,7 +157,7 @@
     <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
         <div class="help-content">
             <div class="help-header">
-                <h2>Report Generation Guide</h2>
+                <h2>Reports Guide</h2>
                 <button class="close-help" onclick="closeHelp()">&times;</button>
             </div>
             <div class="help-body">
@@ -207,7 +207,7 @@
                         </li>
                     </ul>
                 </div>
-                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️Regularly generate inventory and outbound activity reports to maintain accurate records and support decision-making.⚠️</p>
+                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️ Regularly generate inventory and stock removal reports to keep records accurate and support decisions. ⚠️</p>
             </div>
         </div>
     </div>

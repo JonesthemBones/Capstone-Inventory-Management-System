@@ -60,19 +60,16 @@ def parse_supplier_response(text):
 def get_env_model():
     model = os.getenv('VLM_MODEL') or os.getenv('VISION_MODEL')
     if not model:
-        return 'openrouter/auto'
+        return 'deepseek-v4-flash-vision-exp'
     return model.strip()
 
 
 def get_api_endpoint():
-    return os.getenv('OPENROUTER_API_ENDPOINT') or os.getenv('OPENROUTER_ENDPOINT') or 'https://openrouter.ai/api/v1/chat/completions'
+    return os.getenv('DEEPSEEK_API_ENDPOINT') or 'https://api.deepseek.com/chat/completions'
 
 
 def get_api_key():
-    api_key = os.getenv('OPENROUTER_API_KEY')
-    if not api_key:
-        api_key = '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'
-    return api_key
+    return os.getenv('DEEPSEEK_API_KEY')
 
 
 def image_to_supplier_details(image_path, api_key, model):
@@ -172,6 +169,9 @@ if __name__ == '__main__':
         sys.exit(1)
 
     api_key = get_api_key()
+    if not api_key:
+        print('DeepSeek API key is not configured. Restart the Node server after setting DEEPSEEK_API_KEY.', file=sys.stderr)
+        sys.exit(1)
     model = get_env_model()
     try:
         image_to_supplier_details(sys.argv[1], api_key, model)

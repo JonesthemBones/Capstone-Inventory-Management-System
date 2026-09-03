@@ -3,6 +3,10 @@ let currentAdjustingProductId = null;
 let currentUserRole = null;
 let inventoryProducts = [];
 let generatedReorderItems = [];
+let inventoryCategories = [];
+let filteredInventoryProducts = [];
+let inventoryCurrentPage = 1;
+let inventoryPageSize = 25;
 
 document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();
@@ -15,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyRoleBasedAccess();
     window.authHelpers.revealProtectedContent();
     
+    await loadInventoryCategories();
     await loadInventory();
     initImageUpload();
     setupEventListeners();
@@ -125,12 +130,44 @@ function updateInventoryUnitOptions(products) {
     if (units.includes(selected)) select.value = selected;
 }
 
+async function loadInventoryCategories() {
+    const filterSelect = document.getElementById('category-filter');
+    const productSelect = document.getElementById('product-category');
+    if (!filterSelect && !productSelect) return;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('categories')
+            .select('category_id, category_name')
+            .eq('is_active', true)
+            .order('category_name');
+
+        if (error) throw error;
+        inventoryCategories = data || [];
+        if (filterSelect) {
+            filterSelect.replaceChildren(
+                new Option('All Categories', ''),
+                ...inventoryCategories.map(category => new Option(category.category_name, category.category_id))
+            );
+        }
+        if (productSelect) {
+            productSelect.replaceChildren(
+                new Option('Select Category', ''),
+                ...inventoryCategories.map(category => new Option(category.category_name, category.category_id))
+            );
+        }
+    } catch (error) {
+        console.error('Error loading inventory categories:', error);
+    }
+}
+
 function filterAndSortInventory(products, filters) {
     const hasNumber = value => value !== '' && value !== null && value !== undefined;
     const result = (products || []).filter(product => {
         const quantity = getInventoryQuantity(product);
         const price = Number(product.selling_price || 0);
         const isActive = product.is_active !== false;
+        if (filters.category && String(product.category_id || '') !== String(filters.category)) return false;
         if (filters.status && getProductStockStatus(product) !== filters.status) return false;
         if (filters.unit && String(product.unit_of_measure || '').trim().toUpperCase() !== String(filters.unit).trim().toUpperCase()) return false;
         if (filters.active === 'active' && !isActive) return false;
@@ -205,12 +242,10 @@ async function loadInventory(filters = {}) {
 
         updateInventoryUnitOptions(products);
         const filteredProducts = filterAndSortInventory(products, filters);
+        filteredInventoryProducts = filteredProducts;
 
         await backfillMissingProductCodes(filteredProducts);
-        
-        displayInventory(filteredProducts);
-        document.getElementById('inventory-count').textContent = 
-            `${filteredProducts.length} items in inventory`;
+        renderInventoryPage();
         
     } catch (error) {
         console.error('Error loading inventory:', error);
@@ -308,7 +343,7 @@ function renderInboundBatchHistory(product, batchRow) {
 
     if (!batchCell) return;
     if (movements.length === 0) {
-        batchCell.innerHTML = '<div class="batch-history-empty">No inbound stock movements found.</div>';
+        batchCell.innerHTML = '<div class="batch-history-empty">No stock receipts found.</div>';
         return;
     }
 
@@ -318,9 +353,9 @@ function renderInboundBatchHistory(product, batchRow) {
             <thead>
                 <tr>
                     <th>Date Added</th>
-                    <th>Reference Type</th>
+                    <th>Source</th>
                     <th>Quantity</th>
-                    <th>Unit Price</th>
+                    <th>Cost per Unit</th>
                     <th>Selling Price</th>
                     <th>Notes</th>
                     ${currentUserRole !== 'cashier' ? '<th>Actions</th>' : ''}
@@ -623,7 +658,7 @@ function renderMobileInventoryCards(products) {
                     <dl>
                         <div><dt>Unit cost</dt><dd>${formatCurrency(unitPrice)}</dd></div>
                         <div><dt>Stock value</dt><dd>${formatCurrency(totalValue)}</dd></div>
-                        <div><dt>Reorder level</dt><dd>${Number(product.reorder_level || 0)} ${safeUnit}</dd></div>
+                        <div><dt>Low-stock alert at</dt><dd>${Number(product.reorder_level || 0)} ${safeUnit}</dd></div>
                         <div><dt>Maximum stock</dt><dd>${Number(product.maximum_stock || 0)} ${safeUnit}</dd></div>
                     </dl>
                 </div>
@@ -649,22 +684,39 @@ function getStockAdjustmentElements() {
 
 function setupEventListeners() {
     const reloadInventory = debounce(() => loadInventory(getFilters()), 250);
-    document.getElementById('inventory-search').addEventListener('input', reloadInventory);
-    ['status-filter', 'unit-filter', 'active-filter', 'inventory-sort'].forEach(id => {
-        document.getElementById(id)?.addEventListener('change', reloadInventory);
+    const filtersChanged = () => {
+        inventoryCurrentPage = 1;
+        updateInventoryFilterControls();
+        reloadInventory();
+    };
+
+    document.getElementById('inventory-search').addEventListener('input', filtersChanged);
+    ['category-filter', 'status-filter', 'unit-filter', 'active-filter', 'inventory-sort'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', filtersChanged);
     });
     ['min-quantity-filter', 'max-quantity-filter', 'min-price-filter', 'max-price-filter'].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', reloadInventory);
+        document.getElementById(id)?.addEventListener('input', filtersChanged);
     });
+    document.getElementById('toggle-advanced-filters')?.addEventListener('click', toggleAdvancedInventoryFilters);
     document.getElementById('reset-inventory-filters')?.addEventListener('click', () => {
-        ['inventory-search', 'status-filter', 'unit-filter', 'active-filter', 'min-quantity-filter',
+        ['inventory-search', 'category-filter', 'status-filter', 'unit-filter', 'active-filter', 'min-quantity-filter',
             'max-quantity-filter', 'min-price-filter', 'max-price-filter'].forEach(id => {
             const element = document.getElementById(id);
             if (element) element.value = '';
         });
         document.getElementById('inventory-sort').value = 'name_asc';
+        inventoryCurrentPage = 1;
+        updateInventoryFilterControls();
         loadInventory(getFilters());
     });
+    document.getElementById('inventory-page-size')?.addEventListener('change', event => {
+        inventoryPageSize = Number(event.target.value) || 25;
+        inventoryCurrentPage = 1;
+        renderInventoryPage();
+    });
+    document.getElementById('inventory-prev-page')?.addEventListener('click', () => changeInventoryPage(-1));
+    document.getElementById('inventory-next-page')?.addEventListener('click', () => changeInventoryPage(1));
+    updateInventoryFilterControls();
 
     document.getElementById('generate-reorder-btn')?.addEventListener('click', openReorderModal);
     document.getElementById('close-reorder-modal')?.addEventListener('click', closeReorderModal);
@@ -673,12 +725,15 @@ function setupEventListeners() {
     document.getElementById('reorder-table-body')?.addEventListener('change', updateReorderQuantity);
 
     document.getElementById('product-form').addEventListener('submit', saveProduct);
+    document.getElementById('new-product-thumbnail-input')?.addEventListener('change', handleNewProductThumbnailSelect);
 
     document.getElementById('add-item-btn').addEventListener('click', () => {
         currentEditingProductId = null;
         document.getElementById('modal-title').textContent = 'Add New Product';
         document.getElementById('product-form').reset();
-        toggleProductThumbnailSection(false);
+        pendingNewProductImageFile = null;
+        toggleProductThumbnailSection(true);
+        updateProductThumbnailPreview(null);
         const quantityInput = document.getElementById('product-quantity');
         const quantityGroup = quantityInput.closest('.form-group');
         quantityGroup.style.display = '';
@@ -727,6 +782,7 @@ function setupEventListeners() {
 function getFilters() {
     return {
         search: document.getElementById('inventory-search').value,
+        category: document.getElementById('category-filter').value,
         status: document.getElementById('status-filter').value,
         unit: document.getElementById('unit-filter').value,
         active: document.getElementById('active-filter').value,
@@ -736,6 +792,69 @@ function getFilters() {
         maxPrice: document.getElementById('max-price-filter').value,
         sort: document.getElementById('inventory-sort').value
     };
+}
+
+function getAdvancedFilterCount() {
+    const hasValue = id => Boolean(document.getElementById(id)?.value);
+    return Number(hasValue('unit-filter'))
+        + Number(hasValue('active-filter'))
+        + Number(hasValue('min-quantity-filter') || hasValue('max-quantity-filter'))
+        + Number(hasValue('min-price-filter') || hasValue('max-price-filter'));
+}
+
+function updateInventoryFilterControls() {
+    const filters = getFilters();
+    const advancedCount = getAdvancedFilterCount();
+    const countBadge = document.getElementById('advanced-filter-count');
+    const clearButton = document.getElementById('reset-inventory-filters');
+    const hasAnyFilter = Boolean(filters.search.trim() || filters.category || filters.status || advancedCount || filters.sort !== 'name_asc');
+
+    if (countBadge) {
+        countBadge.textContent = advancedCount;
+        countBadge.hidden = advancedCount === 0;
+    }
+    if (clearButton) clearButton.hidden = !hasAnyFilter;
+}
+
+function toggleAdvancedInventoryFilters() {
+    const button = document.getElementById('toggle-advanced-filters');
+    const panel = document.getElementById('advanced-inventory-filters');
+    const label = document.getElementById('advanced-filter-toggle-label');
+    if (!button || !panel) return;
+
+    const willOpen = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(willOpen));
+    panel.hidden = !willOpen;
+    if (label) label.textContent = willOpen ? 'Hide Filters' : 'More Filters';
+}
+
+function renderInventoryPage() {
+    const totalItems = filteredInventoryProducts.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / inventoryPageSize));
+    inventoryCurrentPage = Math.min(Math.max(1, inventoryCurrentPage), totalPages);
+
+    const startIndex = (inventoryCurrentPage - 1) * inventoryPageSize;
+    const pageProducts = filteredInventoryProducts.slice(startIndex, startIndex + inventoryPageSize);
+    const shownFrom = totalItems ? startIndex + 1 : 0;
+    const shownTo = Math.min(startIndex + inventoryPageSize, totalItems);
+
+    displayInventory(pageProducts);
+    document.getElementById('inventory-count').textContent = `${totalItems} items in inventory`;
+    document.getElementById('inventory-page-info').textContent = totalItems
+        ? `Showing ${shownFrom}–${shownTo} of ${totalItems} items`
+        : 'Showing 0 items';
+    document.getElementById('inventory-page-number').textContent = `Page ${inventoryCurrentPage} of ${totalPages}`;
+    document.getElementById('inventory-prev-page').disabled = inventoryCurrentPage <= 1;
+    document.getElementById('inventory-next-page').disabled = inventoryCurrentPage >= totalPages;
+}
+
+function changeInventoryPage(direction) {
+    const totalPages = Math.max(1, Math.ceil(filteredInventoryProducts.length / inventoryPageSize));
+    const nextPage = Math.min(Math.max(1, inventoryCurrentPage + direction), totalPages);
+    if (nextPage === inventoryCurrentPage) return;
+    inventoryCurrentPage = nextPage;
+    renderInventoryPage();
+    document.querySelector('.inventory-filter-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function buildReorderItems() {
@@ -794,7 +913,7 @@ function renderReorderList() {
 
 function openReorderModal() {
     if (!['admin', 'manager'].includes(String(currentUserRole).toLowerCase())) {
-        alert('Only an admin or manager can generate a reorder list.');
+        alert('Only an admin or manager can create a restock list.');
         return;
     }
     generatedReorderItems = buildReorderItems();
@@ -823,14 +942,16 @@ function printReorderList() {
     const documentNumber = `RO-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`;
     const rows = items.map(item => `<tr><td>${escapeInventoryHTML(item.name)}</td><td>${escapeInventoryHTML(item.code)}</td><td>${reorderStatusLabel(item.status)}</td><td>${item.onHand} ${escapeInventoryHTML(item.unit)}</td><td>${item.quantity} ${escapeInventoryHTML(item.unit)}</td><td>${formatPeso(item.unitCost)}</td><td>${formatPeso(item.quantity * item.unitCost)}</td></tr>`).join('');
     const printWindow = window.open('', '_blank', 'width=1000,height=750');
-    if (!printWindow) return alert('Allow pop-ups to print the reorder list.');
-    printWindow.document.write(`<!doctype html><html><head><title>${documentNumber}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{margin:0}header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px}.meta{text-align:right;font-size:13px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#eee}.total{text-align:right;font-size:16px;font-weight:bold;margin-top:18px}.signatures{display:flex;justify-content:space-between;margin-top:70px}.signature{width:220px;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>AMACAR HARDWARE</h1><p>Inventory Reorder List</p></div><div class="meta"><strong>${documentNumber}</strong><br>${new Date().toLocaleString('en-PH')}<br>Prepared by: ${escapeInventoryHTML(String(currentUserRole).toUpperCase())}</div></header><table><thead><tr><th>Product</th><th>Code</th><th>Priority</th><th>On Hand</th><th>Order Qty</th><th>Unit Cost</th><th>Estimated Cost</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Estimated Total: ${formatPeso(estimatedTotal)}</p><div class="signatures"><div class="signature">Prepared by</div><div class="signature">Approved by</div><div class="signature">Supplier acknowledgment</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+    if (!printWindow) return alert('Allow pop-ups to print the restock list.');
+    printWindow.document.write(`<!doctype html><html><head><title>${documentNumber}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{margin:0}header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px}.meta{text-align:right;font-size:13px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#eee}.total{text-align:right;font-size:16px;font-weight:bold;margin-top:18px}.signatures{display:flex;justify-content:space-between;margin-top:70px}.signature{width:220px;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>AMACAR HARDWARE</h1><p>Inventory Restock List</p></div><div class="meta"><strong>${documentNumber}</strong><br>${new Date().toLocaleString('en-PH')}<br>Prepared by: ${escapeInventoryHTML(String(currentUserRole).toUpperCase())}</div></header><table><thead><tr><th>Product</th><th>Code</th><th>Priority</th><th>In Stock</th><th>Order Quantity</th><th>Cost per Unit</th><th>Estimated Cost</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Estimated Total: ${formatPeso(estimatedTotal)}</p><div class="signatures"><div class="signature">Prepared by</div><div class="signature">Approved by</div><div class="signature">Supplier acknowledgment</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
     printWindow.document.close();
 }
 
 function toggleProductThumbnailSection(show) {
     const section = document.getElementById('product-thumbnail-section');
     const button = document.getElementById('change-product-thumbnail-btn');
+    const buttonLabel = document.getElementById('product-thumbnail-button-label');
+    const help = document.getElementById('product-thumbnail-help');
 
     if (!section) return;
 
@@ -838,6 +959,10 @@ function toggleProductThumbnailSection(show) {
     if (button) {
         button.disabled = !show;
     }
+    if (buttonLabel) buttonLabel.textContent = currentEditingProductId ? 'Change Thumbnail' : 'Add Thumbnail';
+    if (help) help.textContent = currentEditingProductId
+        ? 'Update the item image whenever you edit this product.'
+        : 'Optional. JPG, PNG or WebP (Max 5MB).';
 }
 
 function updateProductThumbnailPreview(product) {
@@ -862,11 +987,33 @@ function updateProductThumbnailPreview(product) {
 
 function openThumbnailUploadForCurrentProduct() {
     if (!currentEditingProductId) {
-        showNotification('Select an existing product first to change its thumbnail.', 'warning');
+        document.getElementById('new-product-thumbnail-input')?.click();
         return;
     }
 
     openUploadImageModal(currentEditingProductId);
+}
+
+let pendingNewProductImageFile = null;
+
+function handleNewProductThumbnailSelect(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const validationError = validateProductImageFile(file);
+    if (validationError) {
+        showNotification(validationError, 'error');
+        event.target.value = '';
+        return;
+    }
+
+    pendingNewProductImageFile = file;
+    const reader = new FileReader();
+    reader.onload = () => updateProductThumbnailPreview({
+        image_url: reader.result,
+        product_name: document.getElementById('product-name')?.value || 'New product thumbnail'
+    });
+    reader.readAsDataURL(file);
 }
 
 async function openStockAdjustmentModal(productId) {
@@ -986,10 +1133,12 @@ async function saveStockAdjustment(e) {
 
 async function saveProduct(e) {
     e.preventDefault();
+    let thumbnailUploadError = null;
     
     const productData = {
         product_name: document.getElementById('product-name').value.trim().toUpperCase(),
         product_code: document.getElementById('product-code').value.trim(),
+        category_id: document.getElementById('product-category').value,
         unit_of_measure: document.getElementById('product-unit').value,
         unit_price: parseFloat(document.getElementById('product-price').value),
         selling_price: parseFloat(document.getElementById('selling-price').value),
@@ -1043,11 +1192,25 @@ async function saveProduct(e) {
                     quantity_after: quantity,
                     notes: 'Initial stock'
                 }]);
+
+            if (pendingNewProductImageFile) {
+                try {
+                    await saveProductImageFile(pendingNewProductImageFile, productId);
+                } catch (error) {
+                    thumbnailUploadError = error;
+                    console.error('Product saved, but thumbnail upload failed:', error);
+                }
+                pendingNewProductImageFile = null;
+            }
         }
         
         document.getElementById('product-modal').classList.remove('active');
         await loadInventory(getFilters());
-        alert(currentEditingProductId ? 'Product updated successfully!' : 'Product added successfully!');
+        if (thumbnailUploadError) {
+            alert('Product added successfully, but its thumbnail could not be uploaded: ' + thumbnailUploadError.message);
+        } else {
+            alert(currentEditingProductId ? 'Product updated successfully!' : 'Product added successfully!');
+        }
     } catch (error) {
         console.error('Error saving product:', error);
         alert('Error saving product: ' + error.message);
@@ -1068,6 +1231,7 @@ async function editProduct(productId) {
         document.getElementById('modal-title').textContent = 'Edit Product';
         document.getElementById('product-name').value = product.product_name;
         document.getElementById('product-code').value = product.product_code || '';
+        document.getElementById('product-category').value = product.category_id || '';
         document.getElementById('product-unit').value = product.unit_of_measure || '';
         document.getElementById('product-price').value = product.unit_price || 0;
         document.getElementById('selling-price').value = product.selling_price || 0;
@@ -1092,7 +1256,11 @@ async function editProduct(productId) {
 
 async function deleteProduct(productId) {
     try {
-        if (!confirm('Are you sure you want to delete this product? This will also remove its stock movement history.')) {
+        if (!await window.utils.confirmDialog('This will permanently delete the product and its stock change history.', {
+            title: 'Delete product?',
+            confirmText: 'Delete product',
+            variant: 'danger'
+        })) {
             return;
         }
 
@@ -1468,7 +1636,10 @@ async function restoreBackup() {
             return;
         }
     } else {
-        if (!confirm(confirmMessage)) {
+        if (!await window.utils.confirmDialog(confirmMessage, {
+            title: 'Restore inventory backup?',
+            confirmText: 'Restore backup'
+        })) {
             return;
         }
     }
@@ -1786,22 +1957,27 @@ function initImageUpload() {
 }
 
 function handleImageFileSelect(file) {
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-        showNotification('Invalid file type. Please upload JPG, PNG, or WebP.', 'error');
-        return;
-    }
-    
-    // Validate file size (5MB max)
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-        showNotification('File too large. Maximum size is 5MB.', 'error');
+    const validationError = validateProductImageFile(file);
+    if (validationError) {
+        showNotification(validationError, 'error');
         return;
     }
     
     selectedImageFile = file;
     displayImagePreview(file);
+}
+
+function validateProductImageFile(file) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        return 'Invalid file type. Please upload JPG, PNG, or WebP.';
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        return 'File too large. Maximum size is 5MB.';
+    }
+
+    return '';
 }
 
 function displayImagePreview(file) {
@@ -1843,6 +2019,39 @@ function resetImageUploadForm() {
 }
 
 // Upload image to Supabase Storage
+async function saveProductImageFile(file, productId) {
+    const timestamp = Date.now();
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    const fileName = `product-${productId}-${timestamp}.${fileExtension}`;
+    const filePath = `product-images/${fileName}`;
+
+    const { error: uploadError } = await supabaseClient.storage
+        .from('product-images')
+        .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicUrlData } = supabaseClient.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+    const imageUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabaseClient
+        .from('products')
+        .update({
+            image_url: imageUrl,
+            image_path: filePath,
+            image_uploaded_at: new Date().toISOString()
+        })
+        .eq('product_id', productId);
+
+    if (updateError) throw updateError;
+    return imageUrl;
+}
+
 async function uploadProductImage() {
     if (!selectedImageFile) {
         showNotification('Please select an image', 'warning');
@@ -1864,40 +2073,7 @@ async function uploadProductImage() {
         uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
         uploadBtn.disabled = true;
         
-        // Generate unique filename
-        const timestamp = Date.now();
-        const fileExtension = selectedImageFile.name.split('.').pop();
-        const fileName = `product-${productId}-${timestamp}.${fileExtension}`;
-        const filePath = `product-images/${fileName}`;
-        
-        // Upload to Supabase Storage
-        const { data, error: uploadError } = await supabaseClient.storage
-            .from('product-images')
-            .upload(filePath, selectedImageFile, {
-                cacheControl: '3600',
-                upsert: false
-            });
-        
-        if (uploadError) throw uploadError;
-        
-        // Get public URL
-        const { data: publicUrlData } = supabaseClient.storage
-            .from('product-images')
-            .getPublicUrl(filePath);
-        
-        const imageUrl = publicUrlData.publicUrl;
-        
-        // Update product in database
-        const { error: updateError } = await supabaseClient
-            .from('products')
-            .update({
-                image_url: imageUrl,
-                image_path: filePath,
-                image_uploaded_at: new Date().toISOString()
-            })
-            .eq('product_id', productId);
-        
-        if (updateError) throw updateError;
+        const imageUrl = await saveProductImageFile(selectedImageFile, productId);
         
         // Success
         if (currentEditingProductId) {

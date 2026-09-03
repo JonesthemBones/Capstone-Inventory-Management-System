@@ -276,7 +276,11 @@ async function handleUserSubmit(e) {
 
 async function toggleUserStatus(userId, newStatus) {
     const action = newStatus ? 'activate' : 'deactivate';
-    if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+    if (!await window.utils.confirmDialog(`This will ${action} the selected staff account.`, {
+        title: `${newStatus ? 'Activate' : 'Deactivate'} account?`,
+        confirmText: newStatus ? 'Activate' : 'Deactivate',
+        variant: newStatus ? 'primary' : 'danger'
+    })) return;
     
     try {
         const { error } = await window.supabaseClient
@@ -298,7 +302,11 @@ async function toggleUserStatus(userId, newStatus) {
 }
 
 async function deleteUser(userId) {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+    if (!await window.utils.confirmDialog('This staff account will be permanently deleted. This action cannot be undone.', {
+        title: 'Delete staff account?',
+        confirmText: 'Delete account',
+        variant: 'danger'
+    })) return;
     
     try {
         const { error } = await window.supabaseClient
@@ -591,7 +599,10 @@ async function restoreBackup() {
     if (mode === 'replace') {
         confirmed = prompt(confirmMsg) === 'DELETE';
     } else {
-        confirmed = confirm(confirmMsg);
+        confirmed = await window.utils.confirmDialog(confirmMsg, {
+            title: 'Restore staff backup?',
+            confirmText: 'Restore backup'
+        });
     }
     
     if (!confirmed) {

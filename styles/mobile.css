@@ -317,6 +317,9 @@ textarea {
   .help-button {
     right: max(16px, env(safe-area-inset-right));
     bottom: max(16px, env(safe-area-inset-bottom));
+    width: 48px;
+    height: 48px;
+    padding: 0;
   }
 
   .help-content {
@@ -469,6 +472,39 @@ textarea {
     width: 100%;
     min-width: 0;
     margin: 0;
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  #pos-category-filter,
+  #pos-stock-filter,
+  #pos-unit-filter,
+  #pos-sort {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .pos-filter-secondary {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 8px;
+    padding-top: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pos-filter-secondary .pos-filter-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pos-price-label {
+    grid-column: 1 / -1;
+  }
+
+  .pos-filter-secondary .pos-reset-filter {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .pos-reset-filter {
@@ -720,6 +756,14 @@ textarea {
 }
 
 @media (max-width: 380px) {
+  .pos-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-filter-secondary {
+    grid-column: 1;
+  }
+
   .product-card-image {
     width: 76px;
     min-height: 96px;

@@ -15,8 +15,8 @@ router.use((req, res, next) => {
 const VLM_CONFIG_FILE = path.resolve(__dirname, './vlm_settings.json');
 const PYTHON_BINARY = process.env.PYTHON_BINARY || 'python';
 const PYTHON_SCRIPT = path.resolve(__dirname, './python_vlm.py');
-const DEFAULT_VLM_MODEL = 'openrouter/auto';
-const DEFAULT_VLM_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_VLM_MODEL = 'deepseek-v4-flash-vision-exp';
+const DEFAULT_VLM_ENDPOINT = 'https://api.deepseek.com/chat/completions';
 
 // Supabase client initialization
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wxhkhxsxftundtrahpst.supabase.co';
@@ -29,12 +29,84 @@ function normalizeVLMModel(model) {
     return candidate;
 }
 
+async function loadActiveCategories() {
+    const { data, error } = await supabaseClient
+        .from('categories')
+        .select('category_id, category_name, category_slug, description')
+        .eq('is_active', true)
+        .order('category_name');
+
+    if (error) {
+        throw new Error(`Unable to load product categories: ${error.message}`);
+    }
+
+    return data || [];
+}
+
+function resolveCategory(item, categories) {
+    const byId = new Map(categories.map(category => [category.category_id, category]));
+    const bySlug = new Map(categories.map(category => [String(category.category_slug).toLowerCase(), category]));
+    const requestedId = String(item.category_id || item.suggested_category_id || '').trim();
+    const requestedSlug = String(item.category_slug || item.suggested_category_slug || '').trim().toLowerCase();
+    const fallback = bySlug.get('uncategorized') || null;
+    const requestedCategory = byId.get(requestedId) || bySlug.get(requestedSlug) || null;
+    const normalizedName = normalizeProductName(item.name || item.product_name || '');
+    const categoryRules = [
+        ['safety-equipment', /\b(glove|gloves|helmet|hard hat|goggle|goggles|respirator|safety vest|harness|ppe)\b/],
+        ['plumbing', /\b(pipe cement|pvc cement|water closet|floor drain|teflon tape|gate valve|ball valve|ppr fitting|pvc fitting)\b/],
+        ['construction-materials', /\b(cement|concrete|rebar|reinforcing bar|plywood|lumber|hollow block|sand|gravel|tie wire|masonry|roofing|steel bar)\b/],
+        ['electrical', /\b(thhn|wire|cable|breaker|switch|outlet|socket|electrical|emt|conduit|junction box|utility box|led bulb|led downlight|downlight|electrical tape)\b/],
+        ['plumbing', /\b(ppr|pvc pipe|sanitary pipe|water pipe|male adapter|female adapter|faucet|valve|elbow|reducer|coupling|tee fitting|sanitary|plumbing|flexible hose|floor drain)\b/],
+        ['fasteners', /\b(nail|nails|screw|screws|bolt|bolts|nut|nuts|washer|washers|anchor|anchors|rivet|rivets)\b/],
+        ['power-tools', /\b(drill|grinder|circular saw|jigsaw|rotary hammer|cutting disc|cutting wheel|sander|power tool)\b/],
+        ['hand-tools', /\b(hammer|pliers|wrench|screwdriver|chisel|handsaw|tape measure|measuring tape|level|cutter)\b/],
+        ['paint-and-supplies', /\b(paint|latex|enamel|primer|putty|thinner|epoxy|paint roller|paint brush|masking tape|sandpaper|sealant|varnish|coating)\b/],
+        ['hardware', /\b(hinge|lock|padlock|chain|bracket|caster|doorknob|door knob|hasp|hook|cabinet handle)\b/]
+    ];
+    const inferredRule = categoryRules.find(([, pattern]) => pattern.test(normalizedName));
+    const inferredCategory = inferredRule ? bySlug.get(inferredRule[0]) || null : null;
+    const shouldUseRule = !requestedCategory || requestedCategory.category_slug === 'uncategorized';
+    const matchedCategory = shouldUseRule && inferredCategory ? inferredCategory : requestedCategory;
+    const category = matchedCategory || fallback;
+    const rawConfidence = Number(item.category_confidence);
+
+    return {
+        category,
+        confidence: shouldUseRule && inferredCategory
+            ? 0.9
+            : matchedCategory && Number.isFinite(rawConfidence)
+                ? Math.max(0, Math.min(1, rawConfidence))
+                : 0,
+        source: shouldUseRule && inferredCategory ? 'system_rule' : matchedCategory ? 'vlm' : 'fallback'
+    };
+}
+
+function applyValidatedCategories(parsed, categories) {
+    if (!parsed || !Array.isArray(parsed.items)) return parsed;
+
+    return {
+        ...parsed,
+        items: parsed.items.map(item => {
+            const { category, confidence, source } = resolveCategory(item, categories);
+            return {
+                ...item,
+                category_id: category?.category_id || null,
+                suggested_category_id: category?.category_id || null,
+                category_name: category?.category_name || 'Uncategorized',
+                category_slug: category?.category_slug || 'uncategorized',
+                category_confidence: confidence,
+                category_source: source
+            };
+        })
+    };
+}
+
 function loadVLMConfig() {
     const defaults = {
-        apiKey: process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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',
-        supplierApiKey: process.env.SUPPLIER_OPENROUTER_API_KEY || process.env.SUPPLIER_VLM_API_KEY || process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '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',
+        apiKey: process.env.DEEPSEEK_API_KEY || '',
+        supplierApiKey: process.env.SUPPLIER_DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '',
         model: normalizeVLMModel(process.env.VLM_MODEL || process.env.VISION_MODEL || DEFAULT_VLM_MODEL),
-        endpoint: process.env.OPENROUTER_API_ENDPOINT || process.env.OPENROUTER_ENDPOINT || DEFAULT_VLM_ENDPOINT
+        endpoint: process.env.DEEPSEEK_API_ENDPOINT || DEFAULT_VLM_ENDPOINT
     };
 
     try {
@@ -248,11 +320,12 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
     }
 
     const vlmConfig = loadVLMConfig();
+    const categories = task === 'product' ? await loadActiveCategories() : [];
     const apiKey = task === 'supplier' ? (vlmConfig.supplierApiKey || vlmConfig.apiKey) : vlmConfig.apiKey;
     if (!apiKey) {
         throw new Error(task === 'supplier'
             ? 'Supplier Details Extractor API key is not configured on the server.'
-            : 'OpenRouter API key is not configured on the server.');
+            : 'DeepSeek API key is not configured on the server.');
     }
 
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `${task}-vlm-`));
@@ -262,11 +335,15 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
     try {
         const pythonEnv = {
             ...process.env,
-            OPENROUTER_API_KEY: apiKey,
-            OPENROUTER_API_ENDPOINT: vlmConfig.endpoint,
-            OPENROUTER_ENDPOINT: vlmConfig.endpoint,
+            DEEPSEEK_API_KEY: apiKey,
+            DEEPSEEK_API_ENDPOINT: vlmConfig.endpoint,
             VLM_MODEL: vlmConfig.model,
-            VISION_MODEL: vlmConfig.model
+            VISION_MODEL: vlmConfig.model,
+            VLM_CATEGORIES_JSON: JSON.stringify(categories.map(category => ({
+                slug: category.category_slug,
+                name: category.category_name,
+                description: category.description || ''
+            })))
         };
 
         const child = spawn(PYTHON_BINARY, [PYTHON_SCRIPT, tempFile, task], {
@@ -296,7 +373,12 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
             throw new Error(`Unable to parse JSON from the ${taskLabel} extraction output.`);
         }
 
-        return { parsed, stdout, stderr };
+        return {
+            parsed: task === 'product' ? applyValidatedCategories(parsed, categories) : parsed,
+            categories,
+            stdout,
+            stderr
+        };
     } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -312,7 +394,7 @@ router.post('/vlm-scan', async (req, res) => {
             return res.status(400).json({ error: 'Missing imageDataUrl in request body.' });
         }
 
-        const { parsed, stdout, stderr } = await runUnifiedVLMExtraction({
+        const { parsed, categories, stdout, stderr } = await runUnifiedVLMExtraction({
             imageDataUrl,
             task: 'product',
             taskLabel: 'product'
@@ -321,6 +403,9 @@ router.post('/vlm-scan', async (req, res) => {
         return res.json({
             success: true,
             receipt: parsed,
+            supplierDetails: parsed.supplier || {},
+            categories,
+            usage: parsed._usage || null,
             rawResponse: {
                 stdout: parsed,
                 stderr: stderr.trim()
@@ -332,6 +417,17 @@ router.post('/vlm-scan', async (req, res) => {
             error: 'VLM scan failed on the server.',
             message: error?.message || 'Unknown error.'
         });
+    }
+});
+
+router.get('/categories', async (req, res) => {
+    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Category access required.');
+    if (!operator) return;
+
+    try {
+        return res.json({ success: true, categories: await loadActiveCategories() });
+    } catch (error) {
+        return res.status(500).json({ error: error.message || 'Unable to load categories.' });
     }
 });
 
@@ -417,6 +513,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
             return res.status(400).json({ error: 'Invalid items array. Must be non-empty.' });
         }
 
+        const categories = await loadActiveCategories();
         const receiptItems = items.filter(item => item && typeof item === 'object');
         const acceptedItems = receiptItems.filter(item => item.accepted && !item.removed);
         const rejectedItems = receiptItems.filter(item => item.removed);
@@ -486,16 +583,25 @@ router.post('/save-items-to-inventory', async (req, res) => {
             const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
             const unitOfMeasure = String(item.unit_of_measure || item.unit || 'unit').trim() || 'unit';
             const comment = (item.comment || '').trim();
+            const { category, confidence: categoryConfidence } = resolveCategory(item, categories);
+            const extractedName = String(item.original_name || item.name || '').trim();
+            const nameWasEdited = Boolean(item.name_was_edited) || normalizeProductName(extractedName) !== normalizeProductName(item.name);
 
             return {
                 ...item,
                 originalName: productName,
+                extractedName,
+                nameWasEdited,
                 quantity,
                 price,
                 unit_price: unitPrice,
                 selling_price: sellingPrice,
                 unit_of_measure: unitOfMeasure,
                 thumbnailUrl: item.thumbnailUrl || null,
+                category_id: category?.category_id || null,
+                category_name: category?.category_name || 'Uncategorized',
+                category_slug: category?.category_slug || 'uncategorized',
+                category_confidence: categoryConfidence,
                 comment
             };
         });
@@ -550,7 +656,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 // Check if product already exists (case-insensitive, punctuation-insensitive)
                 const { data: allProducts } = await supabaseClient
                     .from('products')
-                    .select('product_id, product_name, product_code');
+                    .select('product_id, product_name, product_code, category_id');
 
                 const existingProduct = allProducts?.find(p => 
                     normalizeProductName(p.product_name) === normalizedName
@@ -613,7 +719,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             product_name: productName,
                             unit_price: unitPrice,
                             selling_price: sellingPrice,
-                            unit_of_measure: item.unit_of_measure || 'unit'
+                            unit_of_measure: item.unit_of_measure || 'unit',
+                            category_id: existingProduct.category_id || item.category_id || null
                         })
                         .eq('product_id', productId);
 
@@ -655,7 +762,11 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         recordId: productId,
                         newValues: {
                             itemName: productName,
+                            originalExtractedName: item.extractedName,
+                            nameWasEdited: item.nameWasEdited,
                             quantity,
+                            categoryId: existingProduct.category_id || item.category_id || null,
+                            categoryName: existingProduct.category_id ? 'Existing product category' : item.category_name,
                             comment,
                             decision: 'accepted',
                             previousQuantity,
@@ -678,6 +789,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             description: comment || `Imported from receipt scan. Qty: ${item.receipt_quantity}`,
                             reorder_level: Number.isFinite(reorderLevel) ? reorderLevel : 5,
                             maximum_stock: null,
+                            category_id: item.category_id || null,
                             image_url: item.thumbnailUrl || null
                         }])
                         .select()
@@ -722,6 +834,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         name: productName,
                         price: price,
                         quantity: quantity,
+                        categoryId: item.category_id || null,
+                        categoryName: item.category_name,
                         productId: productId,
                         isNew: true,
                         message: `Created new product`
@@ -734,7 +848,11 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         recordId: productId,
                         newValues: {
                             itemName: productName,
+                            originalExtractedName: item.extractedName,
+                            nameWasEdited: item.nameWasEdited,
                             quantity,
+                            categoryId: item.category_id || null,
+                            categoryName: item.category_name,
                             comment,
                             decision: 'accepted',
                             previousQuantity: 0,

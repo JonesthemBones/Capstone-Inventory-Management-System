@@ -181,17 +181,17 @@ function updateReportPreview() {
                 },
                 {
                     icon: 'fa-list',
-                    title: 'Priority Reorder List',
-                    desc: 'Products at or below reorder level'
+                    title: 'Priority Restock List',
+                    desc: 'Products at or below their low-stock alert level'
                 },
                 {
                     icon: 'fa-calculator',
-                    title: 'Reorder Recommendations',
+                    title: 'Restock Recommendations',
                     desc: 'Suggested quantities based on stock levels'
                 },
                 {
                     icon: 'fa-dollar-sign',
-                    title: 'Estimated Reorder Cost',
+                    title: 'Estimated Restock Cost',
                     desc: 'Total investment needed to restock'
                 }
             ]
@@ -232,7 +232,7 @@ function updateReportPreview() {
                 {
                     icon: 'fa-clipboard-list',
                     title: 'Transaction History',
-                    desc: 'Detailed list of all stock movements'
+                    desc: 'Detailed list of all stock changes'
                 },
                 {
                     icon: 'fa-arrow-up',
@@ -276,8 +276,8 @@ function updateReportPreview() {
         },
         'outbound-activity': {
             items: [
-                { icon: 'fa-arrow-up-from-bracket', title: 'Outbound Summary', desc: 'Dispatch count, total units, and unique products' },
-                { icon: 'fa-tags', title: 'Reason Breakdown', desc: 'Sales, returns, damage, transfers, and other outbound reasons' },
+                { icon: 'fa-arrow-up-from-bracket', title: 'Stock Removal Summary', desc: 'Removal count, total units, and unique products' },
+                { icon: 'fa-tags', title: 'Reason Breakdown', desc: 'Sales, returns, damage, transfers, and other removal reasons' },
                 { icon: 'fa-clipboard-list', title: 'Dispatch Register', desc: 'Products, references, quantities, notes, and responsible users' }
             ]
         }
@@ -369,13 +369,13 @@ function configureReportsForRole() {
     } else if (reportsRole === 'staff') {
         if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Inventory Reports';
         if (subtitle) subtitle.textContent = 'Generate inventory status, valuation, alerts, movement, and outbound reports';
-        if (select) select.querySelector('optgroup[label="Point of Sale"]')?.remove();
+        if (select) select.querySelector('optgroup[label="Sales Checkout"]')?.remove();
         renderRoleQuickReports([
             ['complete', 'fa-boxes-stacked', 'Current Inventory', 'Complete product and stock status listing'],
             ['low-stock', 'fa-triangle-exclamation', 'Low Stock Alert', 'Products requiring replenishment'],
             ['valuation', 'fa-coins', 'Inventory Valuation', 'Cost, selling value, and potential margin'],
-            ['movement', 'fa-right-left', 'Stock Movement', 'Inbound, outbound, and adjustment history'],
-            ['outbound-activity', 'fa-truck-ramp-box', 'Outbound Activity', 'Dispatches, reasons, products, and quantities']
+            ['movement', 'fa-right-left', 'Stock Changes', 'History of stock added, removed, and corrected'],
+            ['outbound-activity', 'fa-truck-ramp-box', 'Stock Removal Activity', 'Removed stock, reasons, products, and quantities']
         ]);
     } else {
         if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Admin Reports';
@@ -384,8 +384,8 @@ function configureReportsForRole() {
             ['complete', 'fa-boxes-stacked', 'Current Inventory', 'Complete product and stock status listing'],
             ['low-stock', 'fa-triangle-exclamation', 'Low Stock Alert', 'Products requiring replenishment'],
             ['valuation', 'fa-coins', 'Inventory Valuation', 'Cost, selling value, and potential margin'],
-            ['movement', 'fa-right-left', 'Stock Movement', 'Inbound, outbound, and adjustment history'],
-            ['outbound-activity', 'fa-truck-ramp-box', 'Outbound Activity', 'Dispatches, reasons, products, and quantities'],
+            ['movement', 'fa-right-left', 'Stock Changes', 'History of stock added, removed, and corrected'],
+            ['outbound-activity', 'fa-truck-ramp-box', 'Stock Removal Activity', 'Removed stock, reasons, products, and quantities'],
             ['sales-summary', 'fa-chart-line', 'POS Sales Summary', 'Revenue, payments, discounts, and daily totals'],
             ['product-sales', 'fa-ranking-star', 'Product Performance', 'Best sellers, units sold, and revenue'],
             ['cashier-performance', 'fa-users', 'Sales by Cashier', 'Compare cashier sales and transaction activity'],
@@ -559,7 +559,7 @@ async function generateCashierPaymentReport(fromDate, toDate) {
 async function generateOutboundActivityReport(fromDate, toDate) {
     const { data: rows, error } = await window.supabaseClient.from('stock_movements').select(`movement_date, reference_id, quantity_change, notes, performed_by, products(product_code, product_name)`).eq('movement_type', 'outbound').gte('movement_date', `${fromDate}T00:00:00`).lte('movement_date', `${toDate}T23:59:59.999`).order('movement_date', { ascending: false });
     if (error) throw error;
-    if (!rows?.length) throw new Error('No outbound activity found for the selected period');
+    if (!rows?.length) throw new Error('No stock removals found for the selected period');
     const userIds = [...new Set(rows.map(row => row.performed_by).filter(Boolean))];
     let names = {};
     if (userIds.length) {
@@ -574,8 +574,8 @@ async function generateOutboundActivityReport(fromDate, toDate) {
     const units = rows.reduce((sum, row) => sum + Math.abs(Number(row.quantity_change || 0)), 0);
     const products = new Set(rows.map(row => row.products?.product_code).filter(Boolean)).size;
     const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
-    let y = addReportHeader(doc, 'OUTBOUND ACTIVITY REPORT', 20);
-    y = addSectionHeader(doc, 'OUTBOUND SUMMARY', y + 10);
+    let y = addReportHeader(doc, 'STOCK REMOVAL REPORT', 20);
+    y = addSectionHeader(doc, 'STOCK REMOVAL SUMMARY', y + 10);
     doc.autoTable({ startY: y, body: [['Transactions', String(rows.length)], ['Units Dispatched', String(units)], ['Unique Products', String(products)]], theme: 'grid' });
     y = addSectionHeader(doc, 'OUTBOUND BY REASON', doc.lastAutoTable.finalY + 12);
     doc.autoTable({ startY: y, head: [['Reason', 'Units']], body: Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([reason, count]) => [reason, String(count)]), theme: 'striped' });
@@ -841,7 +841,7 @@ async function generateLowStockReport() {
     yPos = doc.lastAutoTable.finalY + 15;
     
     // Priority Reorder List
-    yPos = addSectionHeader(doc, 'PRIORITY REORDER LIST', yPos);
+    yPos = addSectionHeader(doc, 'PRIORITY RESTOCK LIST', yPos);
     
     const reorderData = lowStockItems
         .sort((a, b) => {
@@ -1042,7 +1042,7 @@ async function generateMovementReport(fromDate, toDate) {
     let filtered = movements || [];
     
     if (filtered.length === 0) {
-        throw new Error('No stock movements found for the selected period');
+        throw new Error('No stock changes found for the selected period');
     }
     
     // Calculate statistics
@@ -1079,7 +1079,7 @@ async function generateMovementReport(fromDate, toDate) {
     const doc = new jsPDFConstructor();
     let yPos = 20;
     
-    yPos = addReportHeader(doc, 'STOCK MOVEMENT REPORT', yPos);
+    yPos = addReportHeader(doc, 'STOCK CHANGE REPORT', yPos);
     
     // Period and Summary
     yPos = addSectionHeader(doc, 'REPORT PERIOD', yPos + 10);

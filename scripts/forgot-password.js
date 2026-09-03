@@ -125,25 +125,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Countdown timer
     function startCountdown() {
         let seconds = 59;
-        const countdownElement = document.getElementById('countdown');
-        
         clearCountdown(); // Clear any existing countdown
+
+        const resendText = document.querySelector('.resend-text');
+        resendText.innerHTML = 'Resend code in <span id="countdown">59s</span>';
         
         countdownInterval = setInterval(() => {
+            const countdownElement = document.getElementById('countdown');
+            if (!countdownElement) {
+                clearCountdown();
+                return;
+            }
+
             countdownElement.textContent = `${seconds}s`;
             seconds--;
             
             if (seconds < 0) {
-                clearInterval(countdownInterval);
-                countdownElement.parentElement.innerHTML = '<a href="#" class="link" id="resend-code">Resend code</a>';
-                
-                document.getElementById('resend-code').addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    await resendOTP();
-                });
+                clearCountdown();
+                resendText.innerHTML = '<a href="#" class="link" id="resend-code">Resend code</a>';
             }
         }, 1000);
     }
+
+    document.querySelector('.resend-text').addEventListener('click', async (e) => {
+        const resendLink = e.target.closest('#resend-code');
+        if (!resendLink) return;
+
+        e.preventDefault();
+        resendLink.style.pointerEvents = 'none';
+        resendLink.textContent = 'Sending...';
+        await resendOTP();
+    });
 
     function clearCountdown() {
         if (countdownInterval) {
@@ -170,12 +182,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Reset countdown
-            const countdownElement = document.getElementById('countdown');
-            if (!countdownElement) {
-                const resendText = document.querySelector('.resend-text');
-                resendText.innerHTML = 'Resend code in <span id="countdown">59s</span>';
-            }
-            
             startCountdown();
             
             // Clear OTP inputs
@@ -190,9 +196,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Resend OTP error:', error);
+            document.querySelector('.resend-text').innerHTML = '<a href="#" class="link" id="resend-code">Resend code</a>';
             alert('❌ ' + error.message);
         }
     }
+
+    document.querySelectorAll('.password-toggle').forEach(toggle => {
+        toggle.addEventListener('click', function() {
+            const passwordInput = document.getElementById(this.dataset.target);
+            if (!passwordInput) return;
+
+            const showPassword = passwordInput.type === 'password';
+            passwordInput.type = showPassword ? 'text' : 'password';
+            this.classList.toggle('fa-eye', showPassword);
+            this.classList.toggle('fa-eye-slash', !showPassword);
+        });
+    });
 
     // Handle OTP verification
     otpVerificationForm.addEventListener('submit', async (e) => {

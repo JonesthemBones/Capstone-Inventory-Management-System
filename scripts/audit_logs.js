@@ -309,7 +309,7 @@ async function loadStockMovements() {
     tableBody.innerHTML = `
         <tr>
             <td colspan="8" class="loading-state">
-                <i class="fas fa-spinner fa-spin"></i> Loading stock movements...
+                <i class="fas fa-spinner fa-spin"></i> Loading stock changes...
             </td>
         </tr>
     `;
@@ -383,7 +383,7 @@ async function loadStockMovements() {
             <tr>
                 <td colspan="8" class="error-state">
                     <i class="fas fa-exclamation-circle"></i>
-                    Error loading stock movements: ${error.message}
+                    Error loading stock changes: ${error.message}
                 </td>
             </tr>
         `;
@@ -397,7 +397,7 @@ function updateStockTable(movements) {
     if (!movements || movements.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="no-data">No stock movements found</td>
+                <td colspan="8" class="no-data">No stock changes found</td>
             </tr>
         `;
         return;
@@ -417,7 +417,7 @@ function updateStockTable(movements) {
             </td>
             <td>
                 <span class="badge ${movementTypeClass}">
-                    ${beautifyText(movement.movement_type)}
+                    ${{ inbound: 'Stock Added', outbound: 'Stock Removed', adjustment: 'Stock Corrected' }[movement.movement_type] || beautifyText(movement.movement_type)}
                 </span>
             </td>
             <td>${escapeHtml(beautifyText(movement.reference_type || ''))}</td>
@@ -600,7 +600,7 @@ function convertStockMovementsToCSV(movements) {
         { key: 'product_name', header: 'Product Name' },
         { key: 'product_code', header: 'Product Code' },
         { key: 'movement_type', header: 'Movement Type' },
-        { key: 'reference_type', header: 'Reference Type' },
+        { key: 'reference_type', header: 'Reason or Source' },
         { key: 'reference_id', header: 'Reference ID' },
         { key: 'quantity_change', header: 'Quantity Change' },
         { key: 'quantity_after', header: 'Stock After' },

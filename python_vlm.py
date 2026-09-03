@@ -94,6 +94,17 @@ def normalize_item(item):
     if product_code:
         normalized_item['product_code'] = str(product_code).strip()[:50]
 
+    category_slug = item.get('category_slug') or item.get('suggested_category_slug')
+    if category_slug:
+        normalized_item['category_slug'] = str(category_slug).strip().lower()[:100]
+
+    category_confidence = item.get('category_confidence')
+    if category_confidence is not None:
+        try:
+            normalized_item['category_confidence'] = max(0.0, min(1.0, float(category_confidence)))
+        except Exception:
+            normalized_item['category_confidence'] = 0.0
+
     return normalized_item
 
 
@@ -109,7 +120,8 @@ def parse_receipt_response(text):
             normalized = normalize_item(item)
             if normalized:
                 items.append(normalized)
-        return {'items': items}
+        supplier = payload.get('supplier') if isinstance(payload.get('supplier'), dict) else {}
+        return {'items': items, 'supplier': supplier}
 
     if isinstance(payload, list):
         items = []
@@ -225,21 +237,17 @@ def parse_supplier_response(text):
 def get_env_model():
     model = os.getenv('VLM_MODEL') or os.getenv('VISION_MODEL')
     if not model:
-        return 'openrouter/auto'
+        return 'deepseek-v4-flash-vision-exp'
     return model.strip()
 
 
 def get_api_endpoint():
-    return os.getenv('OPENROUTER_API_ENDPOINT') or os.getenv('OPENROUTER_ENDPOINT') or 'https://openrouter.ai/api/v1/chat/completions'
+    return os.getenv('DEEPSEEK_API_ENDPOINT') or 'https://api.deepseek.com/chat/completions'
 
 
 def get_api_key():
-    """Get API key from environment or use hardcoded fallback"""
-    api_key = os.getenv('OPENROUTER_API_KEY')
-    if not api_key:
-        # Hardcoded fallback (same as in openrouter.js)
-        api_key = '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'
-    return api_key
+    """Get the DeepSeek API key supplied by the Node server."""
+    return os.getenv('DEEPSEEK_API_KEY')
 
 
 def image_to_text(image_path, api_key, model, task='product'):
@@ -262,9 +270,16 @@ def image_to_text(image_path, api_key, model, task='product'):
 
     data_url = f'data:{mime_type};base64,{base64.b64encode(image_bytes).decode("utf-8")}'
 
+    try:
+        categories = json.loads(os.getenv('VLM_CATEGORIES_JSON') or '[]')
+    except Exception:
+        categories = []
+    category_options = json.dumps(categories, ensure_ascii=False, separators=(',', ':'))
+
     if task == 'supplier':
         payload = {
             'model': model,
+            'thinking': {'type': 'disabled'},
             'messages': [
                 {
                     'role': 'system',
@@ -285,15 +300,16 @@ def image_to_text(image_path, api_key, model, task='product'):
                 }
             ],
             'temperature': 0.0,
-            'max_tokens': 12000
+            'max_tokens': 2048
         }
     else:
         payload = {
             'model': model,
+            'thinking': {'type': 'disabled'},
             'messages': [
                 {
                     'role': 'system',
-                    'content': 'You are a receipt extraction engine. Return ONLY valid JSON that matches the schema {"items":[{"name":"string","quantity":1,"price":0.0,"unit_of_measure":"string","confidence":0.0}]}. Extract ONLY purchased items/products from receipts. Skip totals, taxes, headers, payment info, and store details. Do not add markdown, code fences, or extra text.'
+                    'content': 'You are a receipt extraction, supplier extraction, and product-classification engine. Return ONLY valid JSON. Extract the supplier and purchased products, and select exactly one category_slug from the category list supplied by the user. Never invent a category. Use uncategorized when no listed category fits. Skip totals, taxes, and payment information.'
                 },
                 {
                     'role': 'user',
@@ -303,20 +319,28 @@ def image_to_text(image_path, api_key, model, task='product'):
                             'text': '''Extract all purchased items from this receipt ONLY and return JSON only.
 
 Use exactly this schema:
-{"items":[{"name":"string","quantity":1,"price":0.0,"unit_of_measure":"string","confidence":0.0}]}
+{"supplier":{"supplier_name":"string","contact_name":"string","phone":"string","email":"string","address":"string","tin":"string","vat":"string","website":"string","notes":"string"},"items":[{"name":"string","quantity":1,"price":0.0,"unit_of_measure":"string","confidence":0.0,"category_slug":"string","category_confidence":0.0}]}
+
+Allowed categories:
+''' + category_options + '''
 
 Rules:
 1. Extract ONLY product/item lines (things that were bought)
-2. SKIP totals, subtotals, taxes, discounts, payment methods, customer info, store name, store address
+2. SKIP totals, subtotals, taxes, discounts, payment methods, and customer information
 3. For each item, include name, quantity, price, unit_of_measure, and confidence
 4. If quantity is missing, use 1
 5. If price is missing, use 0.0
 6. If unit_of_measure is missing, use "unit" or "N/A"
 7. confidence must be a number between 0 and 1
 8. Do not include markdown, code fences, explanations, or extra keys
+9. category_slug must exactly match one slug from Allowed categories
+10. Classify by the product's purpose and the category descriptions. Use "uncategorized" only when none of the listed categories reasonably applies
+11. category_confidence must be a number between 0 and 1
+12. Put receipt vendor/store details only in supplier; use empty strings for missing supplier fields
+13. Examples: cement, rebar, plywood, tie wire, sand, and gravel are construction-materials; PVC pipe is plumbing; nails are fasteners; cutting discs are power-tools; safety gloves are safety-equipment
 
 Example:
-{"items":[{"name":"Item Name","quantity":2,"price":100.0,"unit_of_measure":"PCS","confidence":0.92},{"name":"Another Product","quantity":1,"price":250.0,"unit_of_measure":"KG","confidence":0.87}]}'''
+{"supplier":{"supplier_name":"Acme Hardware","contact_name":"","phone":"","email":"","address":"","tin":"","vat":"","website":"","notes":""},"items":[{"name":"GI Elbow","quantity":2,"price":100.0,"unit_of_measure":"PCS","confidence":0.92,"category_slug":"plumbing","category_confidence":0.96}]}'''
                         },
                         {
                             'type': 'image_url',
@@ -328,7 +352,7 @@ Example:
                 }
             ],
             'temperature': 0.0,
-            'max_tokens': 64000
+            'max_tokens': 4096
         }
 
     url = get_api_endpoint()
@@ -339,8 +363,6 @@ Example:
     
 
     ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
     
     request = urllib.request.Request(
         url,
@@ -366,7 +388,7 @@ Example:
 
     choices = data.get('choices') or []
     if not choices:
-        print('No choices returned from OpenRouter', file=sys.stderr)
+        print('No choices returned from DeepSeek', file=sys.stderr)
         sys.exit(1)
 
     message = choices[0].get('message') or {}
@@ -384,6 +406,9 @@ Example:
         print('{}', file=sys.stderr)
         parsed = {'items': []}
 
+    if isinstance(data.get('usage'), dict):
+        parsed['_usage'] = data['usage']
+
     print(json.dumps(parsed, ensure_ascii=False))
 
 
@@ -397,6 +422,9 @@ if __name__ == '__main__':
         task = 'product'
 
     api_key = get_api_key()
+    if not api_key:
+        print('DeepSeek API key is not configured. Restart the Node server after setting DEEPSEEK_API_KEY.', file=sys.stderr)
+        sys.exit(1)
     model = get_env_model()
     try:
         image_to_text(sys.argv[1], api_key, model, task=task)

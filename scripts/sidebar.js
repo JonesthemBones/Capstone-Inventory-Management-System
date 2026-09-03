@@ -1,6 +1,6 @@
 // Increment whenever shared sidebar markup changes so stale cached branding
 // and navigation are not restored after the loading skeleton disappears.
-const SIDEBAR_CACHE_VERSION = 'v4';
+const SIDEBAR_CACHE_VERSION = 'v5';
 
 const sidebarConfig = [
     {
@@ -19,7 +19,7 @@ const sidebarConfig = [
     },
     {
         id: 'pos',
-        title: 'Point of Sale',
+        title: 'Sales Checkout',
         icon: 'fas fa-cash-register',
         path: 'pages/pos.html',
         permission: ['admin', 'manager', 'cashier']
@@ -33,14 +33,14 @@ const sidebarConfig = [
     },
     {
         id: 'users',
-        title: 'User Management',
+        title: 'Staff Accounts',
         icon: 'fas fa-users',
         path: 'pages/users.html',
         permission: ['admin']
     },
     {
         id: 'audit-logs',
-        title: 'Audit Logs',
+        title: 'Activity History',
         icon: 'fas fa-clipboard-list',
         path: 'pages/audit_logs.html',
         permission: ['admin']
@@ -575,7 +575,11 @@ function setupSignOutButtons() {
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
             
-            if (!confirm('Are you sure you want to sign out?')) {
+            if (!await window.utils.confirmDialog('You will need to enter your credentials to access the system again.', {
+                title: 'Sign out?',
+                confirmText: 'Sign out',
+                variant: 'danger'
+            })) {
                 return;
             }
             
@@ -599,8 +603,10 @@ function setupSignOutButtons() {
                     console.error('Error logging logout audit event:', logError);
                 }
 
-                const { error } = await window.supabaseClient.auth.signOut();
+                await window.authHelpers?.releaseCurrentSession?.();
+                const { error } = await window.supabaseClient.auth.signOut({ scope: 'local' });
                 if (error) throw error;
+                localStorage.removeItem('amacar:last-activity');
                 
                 if (window.utils?.showToast) {
                     window.utils.showToast('Signed out successfully', 'success');

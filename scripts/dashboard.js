@@ -119,9 +119,9 @@ function configureDashboardForRole(role) {
             if (statChanges[index]) statChanges[index].textContent = label;
         });
         setPanelVisibility(['sales-trend', 'stock-distribution', 'recent-activity']);
-        activityTitle.textContent = 'Recent Stock Movements';
+        activityTitle.textContent = 'Recent Stock Changes';
         activitySubtitle.textContent = 'Latest receiving and stock adjustments';
-        trendTitle.textContent = 'Stock Movement Activity';
+        trendTitle.textContent = 'Stock Change Activity';
         trendSubtitle.textContent = 'Units received and released over the last 7 days';
         distributionTitle.textContent = 'Stock Health';
         distributionSubtitle.textContent = 'Active products compared with their reorder levels';
@@ -312,7 +312,7 @@ async function loadRecentStockMovements() {
         if (error) throw error;
 
         if (!data?.length) {
-            activityContainer.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>No recent stock movements</p></div>';
+            activityContainer.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>No recent stock changes</p></div>';
             return;
         }
 

@@ -47,8 +47,8 @@
                             </div>
                             <div class="inventory-primary-actions">
                                 <button class="btn btn-primary role-requires-staff-or-admin" id="add-item-btn"><i class="fas fa-plus"></i>Add Item</button>
-                                <button class="btn btn-success role-requires-staff-or-admin" id="create-outbound-btn"><i class="fas fa-shipping-fast"></i>Create Outbound</button>
-                                <button class="btn btn-warning role-requires-staff-or-admin" id="generate-reorder-btn"><i class="fas fa-cart-plus"></i>Generate Reorder List</button>
+                                <button class="btn btn-success role-requires-staff-or-admin" id="create-outbound-btn"><i class="fas fa-shipping-fast"></i>Remove Stock</button>
+                                <button class="btn btn-warning role-requires-staff-or-admin" id="generate-reorder-btn"><i class="fas fa-cart-plus"></i>Create Restock List</button>
                             </div>
                             <div class="inventory-utility-actions" aria-label="Export and backup actions">
                                 <button class="btn btn-soft" id="export-csv-btn"><i class="fas fa-file-csv"></i>Export CSV</button>
@@ -59,23 +59,30 @@
                     </div>
 
                     <div class="inventory-filter-panel" aria-label="Inventory filters">
-                        <div class="filter-panel-heading"><i class="fas fa-sliders"></i><span>Filters</span></div>
-                        <label class="inventory-filter-field"><span>Status</span><select id="status-filter" class="inventory-filter-control">
+                        <label class="inventory-filter-field"><span>Category</span><select id="category-filter" class="inventory-filter-control">
+                            <option value="">All Categories</option>
+                        </select></label>
+                        <label class="inventory-filter-field"><span>Stock Status</span><select id="status-filter" class="inventory-filter-control">
                             <option value="">All Statuses</option><option value="in_stock">In Stock</option><option value="low_stock">Low Stock</option><option value="critical">Critical</option><option value="out_of_stock">Out of Stock</option><option value="overstocked">Overstocked</option>
                         </select></label>
-                        <label class="inventory-filter-field"><span>Unit</span><select id="unit-filter" class="inventory-filter-control"><option value="">All Units</option></select></label>
-                        <label class="inventory-filter-field"><span>Availability</span><select id="active-filter" class="inventory-filter-control">
-                            <option value="">All Products</option><option value="active">Active</option><option value="inactive">Inactive</option>
-                        </select></label>
-                        <fieldset class="inventory-range-field"><legend>Quantity</legend><input type="number" id="min-quantity-filter" class="inventory-filter-control" min="0" placeholder="Min" aria-label="Minimum quantity"><span>to</span><input type="number" id="max-quantity-filter" class="inventory-filter-control" min="0" placeholder="Max" aria-label="Maximum quantity"></fieldset>
-                        <fieldset class="inventory-range-field"><legend>Selling price</legend><input type="number" id="min-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Min" aria-label="Minimum selling price"><span>to</span><input type="number" id="max-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Max" aria-label="Maximum selling price"></fieldset>
                         <label class="inventory-filter-field inventory-sort-field"><span>Sort by</span><select id="inventory-sort" class="inventory-filter-control">
                             <option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option>
                             <option value="quantity_asc">Quantity: Low to High</option><option value="quantity_desc">Quantity: High to Low</option>
                             <option value="price_asc">Selling Price: Low to High</option><option value="price_desc">Selling Price: High to Low</option>
                             <option value="value_desc">Stock Value: High to Low</option>
                         </select></label>
-                        <button type="button" class="btn btn-reset" id="reset-inventory-filters"><i class="fas fa-rotate-left"></i>Reset</button>
+                        <button type="button" class="btn btn-more-filters" id="toggle-advanced-filters" aria-expanded="false" aria-controls="advanced-inventory-filters">
+                            <i class="fas fa-sliders"></i><span id="advanced-filter-toggle-label">More Filters</span><span class="advanced-filter-count" id="advanced-filter-count" hidden>0</span><i class="fas fa-chevron-down filter-chevron" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="btn btn-reset" id="reset-inventory-filters" hidden><i class="fas fa-rotate-left"></i>Clear Filters</button>
+                        <div class="inventory-advanced-filters" id="advanced-inventory-filters" aria-label="Additional inventory filters" hidden>
+                            <label class="inventory-filter-field"><span>Unit</span><select id="unit-filter" class="inventory-filter-control"><option value="">All Units</option></select></label>
+                            <label class="inventory-filter-field"><span>Product Availability</span><select id="active-filter" class="inventory-filter-control">
+                                <option value="">All Products</option><option value="active">Active</option><option value="inactive">Inactive</option>
+                            </select></label>
+                            <fieldset class="inventory-range-field"><legend>Quantity</legend><input type="number" id="min-quantity-filter" class="inventory-filter-control" min="0" placeholder="Minimum" aria-label="Minimum quantity"><span>to</span><input type="number" id="max-quantity-filter" class="inventory-filter-control" min="0" placeholder="Maximum" aria-label="Maximum quantity"></fieldset>
+                            <fieldset class="inventory-range-field"><legend>Selling Price</legend><input type="number" id="min-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Minimum" aria-label="Minimum selling price"><span>to</span><input type="number" id="max-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Maximum" aria-label="Maximum selling price"></fieldset>
+                        </div>
                     </div>
 
                     <div class="table-scroll">
@@ -89,7 +96,7 @@
                                     <th>Unit</th>
                                     <th>Quantity</th>
                                     <th>Status</th>
-                                    <th>Unit Price</th>
+                                    <th>Cost per Unit</th>
                                     <th>Selling Price</th>
                                     <th>Total Value</th>
                                     <th style="min-width: 120px;">Actions</th>
@@ -100,6 +107,22 @@
                         </table>
                     </div>
                     <div id="inventory-mobile-grid" class="inventory-mobile-grid" aria-live="polite"></div>
+                    <div class="inventory-pagination" id="inventory-pagination" aria-label="Inventory pages">
+                        <label class="inventory-page-size">Items per page
+                            <select id="inventory-page-size" aria-label="Items per page">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
+                        <p class="inventory-page-info" id="inventory-page-info">Showing 0 items</p>
+                        <div class="inventory-page-controls">
+                            <button type="button" class="btn" id="inventory-prev-page" aria-label="Previous inventory page"><i class="fas fa-chevron-left"></i> Previous</button>
+                            <span id="inventory-page-number">Page 1 of 1</span>
+                            <button type="button" class="btn" id="inventory-next-page" aria-label="Next inventory page">Next <i class="fas fa-chevron-right"></i></button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>
@@ -110,10 +133,10 @@
         <div class="modal-content reorder-modal-content">
             <div class="modal-header">
                 <div>
-                    <h2>Reorder List</h2>
+                    <h2>Restock List</h2>
                     <p class="reorder-subtitle">Suggested quantities for low, critical, and out-of-stock products.</p>
                 </div>
-                <button class="modal-close" id="close-reorder-modal" aria-label="Close reorder list"><i class="fas fa-times"></i></button>
+                <button class="modal-close" id="close-reorder-modal" aria-label="Close restock list"><i class="fas fa-times"></i></button>
             </div>
             <div class="reorder-summary" id="reorder-summary"></div>
             <div class="reorder-table-wrap">
@@ -125,7 +148,7 @@
             <p class="reorder-empty" id="reorder-empty" hidden><i class="fas fa-circle-check"></i> No products currently require reordering.</p>
             <div class="modal-actions">
                 <button type="button" class="btn" id="cancel-reorder-btn">Close</button>
-                <button type="button" class="btn btn-primary" id="print-reorder-btn"><i class="fas fa-print"></i>Print Reorder List</button>
+                <button type="button" class="btn btn-primary" id="print-reorder-btn"><i class="fas fa-print"></i>Print Restock List</button>
             </div>
         </div>
     </div>
@@ -150,7 +173,13 @@
                         <input type="text" id="product-code" required>
                     </div>
                     <div class="form-group">
-                        <label for="product-unit">Unit of Measure *</label>
+                        <label for="product-category">Category *</label>
+                        <select id="product-category" required>
+                            <option value="">Select Category</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-unit">How This Item Is Counted *</label>
                         <select id="product-unit" required>
                             <option value="">Select Unit</option>
                             <option value="pcs">Pieces (pcs)</option>
@@ -172,7 +201,7 @@
                         <input type="number" id="product-quantity" min="0" required>
                     </div>
                     <div class="form-group">
-                        <label for="product-price">Unit Price *</label>
+                        <label for="product-price">Cost per Unit *</label>
                         <input type="number" id="product-price" step="0.01" min="0" required>
                     </div>
                     <div class="form-group">
@@ -180,7 +209,7 @@
                         <input type="number" id="selling-price" step="0.01" min="0" required>
                     </div>
                     <div class="form-group">
-                        <label for="reorder-level">Reorder Level *</label>
+                        <label for="reorder-level">Low-stock Alert at *</label>
                         <input type="number" id="reorder-level" min="0" value="10" required>
                     </div>
                     <div class="form-group">
@@ -199,12 +228,13 @@
                 <div class="form-group" id="product-thumbnail-section" style="display: none; grid-column: 1 / -1;">
                     <label>Thumbnail</label>
                     <div id="product-thumbnail-preview" class="product-form-thumbnail-preview"></div>
+                    <input type="file" id="new-product-thumbnail-input" accept="image/jpeg,image/png,image/webp" hidden>
                     <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
                         <button type="button" class="btn" id="change-product-thumbnail-btn" onclick="openThumbnailUploadForCurrentProduct()">
                             <i class="fas fa-image"></i>
-                            Change Thumbnail
+                            <span id="product-thumbnail-button-label">Add Thumbnail</span>
                         </button>
-                        <small style="color: var(--text-secondary);">Update the item image whenever you edit this product.</small>
+                        <small id="product-thumbnail-help" style="color: var(--text-secondary);">JPG, PNG or WebP (Max 5MB).</small>
                     </div>
                 </div>
 
@@ -284,7 +314,7 @@
     <div id="outbound-modal" class="modal">
         <div class="modal-content outbound-modal-content">
             <div class="modal-header">
-                <h2>Create Outbound Transaction</h2>
+                <h2>Remove Stock</h2>
                 <button class="modal-close" id="close-outbound-modal">
                     <i class="fas fa-times"></i>
                 </button>
@@ -295,7 +325,7 @@
                     <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
                         <i class="fas fa-box" style="margin-right: 8px;"></i>Select Product
                     </h3>
-                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Click on a product to select it for outbound</p>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Choose the product you are removing from inventory.</p>
                     
                     <!-- Product Grid -->
                     <div id="outbound-product-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px;">
@@ -319,7 +349,7 @@
                             <input type="text" id="available-quantity" disabled>
                         </div>
                         <div class="form-group">
-                            <label for="unit-price">Unit Price</label>
+                            <label for="unit-price">Selling Price per Unit</label>
                             <input type="text" id="unit-price" disabled>
                         </div>
                     </div>
@@ -328,15 +358,15 @@
                 <!-- Outbound Details -->
                 <div class="outbound-modal-section">
                     <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
-                        <i class="fas fa-truck" style="margin-right: 8px;"></i>Outbound Details
+                        <i class="fas fa-truck" style="margin-right: 8px;"></i>Removal Details
                     </h3>
                     <div class="outbound-details-grid">
                         <div class="form-group">
-                            <label for="outbound-quantity">Quantity to Dispatch *</label>
+                            <label for="outbound-quantity">Quantity to Remove *</label>
                             <input type="number" id="outbound-quantity" min="1" required placeholder="Enter quantity">
                         </div>
                         <div class="form-group">
-                            <label for="outbound-type">Outbound Type *</label>
+                            <label for="outbound-type">Reason for Removal *</label>
                             <select id="outbound-type" required>
                                 <option value="">Select Type</option>
                                 <option value="sales">Sales</option>
@@ -347,8 +377,8 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="outbound-reference">Reference (e.g. Order #) *</label>
-                            <input type="text" id="outbound-reference" required placeholder="SO-001, RMA-001, etc.">
+                            <label for="outbound-reference">Document or Order Number *</label>
+                            <input type="text" id="outbound-reference" required placeholder="For example: SO-001 or RMA-001">
                         </div>
                         <div class="form-group">
                             <label for="outbound-total">Total Amount</label>
@@ -364,7 +394,7 @@
                     </h3>
                     <div class="form-group">
                         <label for="outbound-notes">Notes (Optional)</label>
-                        <textarea id="outbound-notes" rows="3" placeholder="Add any notes about this outbound transaction..."></textarea>
+                        <textarea id="outbound-notes" rows="3" placeholder="Add any notes about why this stock was removed..."></textarea>
                     </div>
                 </div>
 
@@ -372,7 +402,7 @@
                     <button type="button" class="btn" id="cancel-outbound-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-shipping-fast"></i>
-                        Process Outbound
+                        Confirm Stock Removal
                     </button>
                 </div>
             </form>
@@ -492,7 +522,7 @@
     <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
         <div class="help-content">
             <div class="help-header">
-                <h2>Inventory Management Guide</h2>
+                <h2>Inventory Guide</h2>
                 <button class="close-help" onclick="closeHelp()">&times;</button>
             </div>
             <div class="help-body">
@@ -512,8 +542,11 @@
                     <h3>Search & Filter</h3>
                     <ul>
                         <li>
-                            Use the search bar to quickly find products, or use the filter by status to view items based on stock levels.
-                        </li>                       
+                            Use Search, Category, and Stock Status for common lookups. Choose "More Filters" when you need to filter by unit, availability, quantity, or selling price. The number beside the button shows how many additional filters are active.
+                        </li>
+                        <li>
+                            Use Previous and Next below the product list to move between pages, or change how many items appear on each page.
+                        </li>
                     </ul>
                 </div>
 
@@ -530,7 +563,7 @@
                     <h3>Add or Update Items</h3>
                     <ul>
                         <li>
-                            To add a new product, click "Add Item" and fill out the form. To update stock, use the "Create Outbound" feature and specify the quantity to dispatch.
+                            To add a new product, click "Add Item," choose its category, and complete the form. When editing a product, you can also move it to a different category. To take items out of inventory, use "Remove Stock" and enter the quantity and reason.
                         </li>
                     </ul>
                 </div>
@@ -550,7 +583,7 @@
                         </li>
                     </ul>
                 </div>
-                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️Always record stock movement with the audit trail. Also, ensure all quantity updates are accurate and reviewed for compliance.⚠️</p>
+                <p style="color: rgb(255, 66, 66); text-align: center;">⚠️ Always record why stock was changed, and review every quantity update for accuracy. ⚠️</p>
             </div>
         </div>
     </div>
