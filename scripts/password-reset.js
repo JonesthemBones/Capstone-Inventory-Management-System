@@ -2,8 +2,15 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
+const path = require('path');
 
 const router = express.Router();
+const BRAND_LOGO_PATH = path.join(__dirname, '..', 'styles', 'img', 'AmacarLogo.png');
+const BRAND_LOGO_CID = 'amacar-logo';
+
+function brandLogoAttachment() {
+  return [{ filename: 'AmacarLogo.png', path: BRAND_LOGO_PATH, cid: BRAND_LOGO_CID }];
+}
 
 // Initialize Supabase client with service role key
 const supabase = createClient(
@@ -82,12 +89,11 @@ router.post('/send-otp', async (req, res) => {
       from: `"Amacar Hardware Inventory System" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Password Reset OTP - Amacar Hardware Inventory System',
+      attachments: brandLogoAttachment(),
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
-            <div style="width: 64px; height: 64px; background-color: #1f2937; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px;">
-              <span style="color: white; font-size: 28px;">📊</span>
-            </div>
+            <img src="cid:${BRAND_LOGO_CID}" alt="Amacar Enterprise" style="display: inline-block; width: 110px; height: auto; margin-bottom: 20px;">
             <h1 style="color: #1f2937; margin-bottom: 10px;">Password Reset Request</h1>
             <p style="color: #6b7280; font-size: 14px;">Hello ${user.first_name || 'User'},</p>
           </div>
@@ -271,8 +277,12 @@ router.post('/reset-password', async (req, res) => {
         from: `"Amacar Hardware Inventory System" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Password Changed Successfully',
+        attachments: brandLogoAttachment(),
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <img src="cid:${BRAND_LOGO_CID}" alt="Amacar Enterprise" style="display: inline-block; width: 110px; height: auto;">
+            </div>
             <h2 style="color: #1f2937;">Password Changed</h2>
             <p>Hello ${user.first_name || 'User'},</p>
             <p>Your password has been successfully changed.</p>
