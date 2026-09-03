@@ -21,6 +21,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         await ensureMinLoadingTime(startTime);
 
         if (session) {
+            const activityKey = 'amacar:last-activity';
+            const lastActivity = Number(localStorage.getItem(activityKey));
+            const sessionTimedOut = Number.isFinite(lastActivity) && lastActivity > 0
+                && Date.now() - lastActivity >= 15 * 60 * 1000;
+
+            if (sessionTimedOut) {
+                await supabase.rpc('release_current_session');
+                await supabase.auth.signOut({ scope: 'local' });
+                localStorage.removeItem(activityKey);
+                redirectTo('pages/auth.html?logged_out=true&reason=inactivity');
+                return;
+            }
+            if (!lastActivity) localStorage.setItem(activityKey, String(Date.now()));
+
             // Get user role for redirect
             const { data: userProfile } = await supabase
                 .from('users')

@@ -11,15 +11,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (loggedOut === 'true') {
         window.history.replaceState({}, document.title, window.location.pathname);
         
-        let message = 'You have been signed out successfully';
+        let message = reason === 'session_replaced'
+            ? 'This account was signed in on another browser. This session has been closed.'
+            : 'You have been signed out successfully';
         if (reason === 'inactivity') {
             message = '⏱️ You have been logged out due to inactivity';
         }
         
         if (window.utils && window.utils.showToast) {
-            window.utils.showToast(message, reason === 'inactivity' ? 'info' : 'success');
+            const isAutomaticLogout = reason === 'inactivity' || reason === 'session_replaced';
+            window.utils.showToast(message, isAutomaticLogout ? 'info' : 'success');
         } else {
-            alert(reason === 'inactivity' ? '⏱️ ' + message : '✅ ' + message);
+            alert(reason === 'inactivity' || reason === 'session_replaced' ? message : '✅ ' + message);
         }
     }
 
@@ -95,6 +98,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else if (userError) {
                 console.error('Error fetching user profile:', userError);
             }
+
+            await window.authHelpers.claimCurrentSession();
             
             // Get user role for redirect
             const { data: userProfile } = await supabaseClient
@@ -106,6 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const redirectPage = 'dashboard.html';
             
             window.history.replaceState({}, document.title, window.location.pathname);
+            localStorage.setItem('amacar:last-activity', String(Date.now()));
             alert('✅ Email confirmed successfully!\n\nRedirecting...');
             window.location.href = redirectPage;
             return;
@@ -118,17 +124,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const session = await window.authHelpers.checkAuth();
     if (session) {
-        // Get user role for redirect
-        const user = await window.authHelpers.getCurrentUser();
-        const { data: userProfile } = await supabaseClient
-            .from('users')
-            .select('role')
-            .eq('user_id', user.id)
-            .single();
-        
-        const redirectPage = 'dashboard.html';
-        window.location.href = redirectPage;
-        return;
+        const activityKey = 'amacar:last-activity';
+        const lastActivity = Number(localStorage.getItem(activityKey));
+        const sessionTimedOut = Number.isFinite(lastActivity) && lastActivity > 0
+            && Date.now() - lastActivity >= 15 * 60 * 1000;
+
+        if (sessionTimedOut) {
+            await window.authHelpers.releaseCurrentSession();
+            await supabaseClient.auth.signOut({ scope: 'local' });
+            localStorage.removeItem(activityKey);
+            if (window.utils?.showToast) {
+                window.utils.showToast('Your session expired after 15 minutes of inactivity. Please sign in again.', 'info');
+            }
+        } else if (await window.authHelpers.validateCurrentSession()) {
+            if (!lastActivity) localStorage.setItem(activityKey, String(Date.now()));
+            window.location.replace('dashboard.html');
+            return;
+        }
     }
     
     checkLoginLockout();
@@ -283,7 +295,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         
         if (!data.user.email_confirmed_at) {
             alert('Please confirm your email before logging in. Check your inbox for the confirmation link.');
-            await supabaseClient.auth.signOut();
+            await supabaseClient.auth.signOut({ scope: 'local' });
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
             submitBtn.style.opacity = '1';
@@ -322,7 +334,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                     'Error: ' + createError.message + '\n\n' +
                     'Please contact support or try again.'
                 );
-                await supabaseClient.auth.signOut();
+                await supabaseClient.auth.signOut({ scope: 'local' });
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalText;
                 submitBtn.style.opacity = '1';
@@ -337,6 +349,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                 .eq('user_id', userData.user_id);
         }
         
+        // Make this the only active browser session for this account.
+        await window.authHelpers.claimCurrentSession();
+
         // Write login audit log
         try {
             await window.logAuditEvent({
@@ -352,6 +367,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         
         // Reset failed login attempts on successful login
         localStorage.removeItem('loginAttempts');
+        localStorage.setItem('amacar:last-activity', String(Date.now()));
         
         // Redirect based on role
         const redirectPage = 'dashboard.html';
@@ -371,6 +387,18 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
         submitBtn.style.opacity = '1';
+
+        const sessionLockError = error.message.includes('Session security is not configured yet')
+            || error.message.includes('already signed in on another browser');
+        if (sessionLockError) {
+            await supabaseClient.auth.signOut({ scope: 'local' });
+            if (window.utils?.showToast) {
+                window.utils.showToast(error.message, 'error');
+            } else {
+                alert(error.message);
+            }
+            return;
+        }
         
         // Track failed login attempts with progressive lockout
         const loginAttempts = JSON.parse(localStorage.getItem('loginAttempts') || '{"count": 0, "lockoutUntil": null, "lockoutLevel": 0}');

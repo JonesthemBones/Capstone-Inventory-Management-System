@@ -3,6 +3,10 @@ let currentAdjustingProductId = null;
 let currentUserRole = null;
 let inventoryProducts = [];
 let generatedReorderItems = [];
+let inventoryCategories = [];
+let filteredInventoryProducts = [];
+let inventoryCurrentPage = 1;
+let inventoryPageSize = 25;
 
 document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();
@@ -15,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyRoleBasedAccess();
     window.authHelpers.revealProtectedContent();
     
+    await loadInventoryCategories();
     await loadInventory();
     initImageUpload();
     setupEventListeners();
@@ -125,12 +130,44 @@ function updateInventoryUnitOptions(products) {
     if (units.includes(selected)) select.value = selected;
 }
 
+async function loadInventoryCategories() {
+    const filterSelect = document.getElementById('category-filter');
+    const productSelect = document.getElementById('product-category');
+    if (!filterSelect && !productSelect) return;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('categories')
+            .select('category_id, category_name')
+            .eq('is_active', true)
+            .order('category_name');
+
+        if (error) throw error;
+        inventoryCategories = data || [];
+        if (filterSelect) {
+            filterSelect.replaceChildren(
+                new Option('All Categories', ''),
+                ...inventoryCategories.map(category => new Option(category.category_name, category.category_id))
+            );
+        }
+        if (productSelect) {
+            productSelect.replaceChildren(
+                new Option('Select Category', ''),
+                ...inventoryCategories.map(category => new Option(category.category_name, category.category_id))
+            );
+        }
+    } catch (error) {
+        console.error('Error loading inventory categories:', error);
+    }
+}
+
 function filterAndSortInventory(products, filters) {
     const hasNumber = value => value !== '' && value !== null && value !== undefined;
     const result = (products || []).filter(product => {
         const quantity = getInventoryQuantity(product);
         const price = Number(product.selling_price || 0);
         const isActive = product.is_active !== false;
+        if (filters.category && String(product.category_id || '') !== String(filters.category)) return false;
         if (filters.status && getProductStockStatus(product) !== filters.status) return false;
         if (filters.unit && String(product.unit_of_measure || '').trim().toUpperCase() !== String(filters.unit).trim().toUpperCase()) return false;
         if (filters.active === 'active' && !isActive) return false;
@@ -205,12 +242,10 @@ async function loadInventory(filters = {}) {
 
         updateInventoryUnitOptions(products);
         const filteredProducts = filterAndSortInventory(products, filters);
+        filteredInventoryProducts = filteredProducts;
 
         await backfillMissingProductCodes(filteredProducts);
-        
-        displayInventory(filteredProducts);
-        document.getElementById('inventory-count').textContent = 
-            `${filteredProducts.length} items in inventory`;
+        renderInventoryPage();
         
     } catch (error) {
         console.error('Error loading inventory:', error);
@@ -308,7 +343,7 @@ function renderInboundBatchHistory(product, batchRow) {
 
     if (!batchCell) return;
     if (movements.length === 0) {
-        batchCell.innerHTML = '<div class="batch-history-empty">No inbound stock movements found.</div>';
+        batchCell.innerHTML = '<div class="batch-history-empty">No stock receipts found.</div>';
         return;
     }
 
@@ -318,9 +353,9 @@ function renderInboundBatchHistory(product, batchRow) {
             <thead>
                 <tr>
                     <th>Date Added</th>
-                    <th>Reference Type</th>
+                    <th>Source</th>
                     <th>Quantity</th>
-                    <th>Unit Price</th>
+                    <th>Cost per Unit</th>
                     <th>Selling Price</th>
                     <th>Notes</th>
                     ${currentUserRole !== 'cashier' ? '<th>Actions</th>' : ''}
@@ -623,7 +658,7 @@ function renderMobileInventoryCards(products) {
                     <dl>
                         <div><dt>Unit cost</dt><dd>${formatCurrency(unitPrice)}</dd></div>
                         <div><dt>Stock value</dt><dd>${formatCurrency(totalValue)}</dd></div>
-                        <div><dt>Reorder level</dt><dd>${Number(product.reorder_level || 0)} ${safeUnit}</dd></div>
+                        <div><dt>Low-stock alert at</dt><dd>${Number(product.reorder_level || 0)} ${safeUnit}</dd></div>
                         <div><dt>Maximum stock</dt><dd>${Number(product.maximum_stock || 0)} ${safeUnit}</dd></div>
                     </dl>
                 </div>
@@ -649,22 +684,39 @@ function getStockAdjustmentElements() {
 
 function setupEventListeners() {
     const reloadInventory = debounce(() => loadInventory(getFilters()), 250);
-    document.getElementById('inventory-search').addEventListener('input', reloadInventory);
-    ['status-filter', 'unit-filter', 'active-filter', 'inventory-sort'].forEach(id => {
-        document.getElementById(id)?.addEventListener('change', reloadInventory);
+    const filtersChanged = () => {
+        inventoryCurrentPage = 1;
+        updateInventoryFilterControls();
+        reloadInventory();
+    };
+
+    document.getElementById('inventory-search').addEventListener('input', filtersChanged);
+    ['category-filter', 'status-filter', 'unit-filter', 'active-filter', 'inventory-sort'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', filtersChanged);
     });
     ['min-quantity-filter', 'max-quantity-filter', 'min-price-filter', 'max-price-filter'].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', reloadInventory);
+        document.getElementById(id)?.addEventListener('input', filtersChanged);
     });
+    document.getElementById('toggle-advanced-filters')?.addEventListener('click', toggleAdvancedInventoryFilters);
     document.getElementById('reset-inventory-filters')?.addEventListener('click', () => {
-        ['inventory-search', 'status-filter', 'unit-filter', 'active-filter', 'min-quantity-filter',
+        ['inventory-search', 'category-filter', 'status-filter', 'unit-filter', 'active-filter', 'min-quantity-filter',
             'max-quantity-filter', 'min-price-filter', 'max-price-filter'].forEach(id => {
             const element = document.getElementById(id);
             if (element) element.value = '';
         });
         document.getElementById('inventory-sort').value = 'name_asc';
+        inventoryCurrentPage = 1;
+        updateInventoryFilterControls();
         loadInventory(getFilters());
     });
+    document.getElementById('inventory-page-size')?.addEventListener('change', event => {
+        inventoryPageSize = Number(event.target.value) || 25;
+        inventoryCurrentPage = 1;
+        renderInventoryPage();
+    });
+    document.getElementById('inventory-prev-page')?.addEventListener('click', () => changeInventoryPage(-1));
+    document.getElementById('inventory-next-page')?.addEventListener('click', () => changeInventoryPage(1));
+    updateInventoryFilterControls();
 
     document.getElementById('generate-reorder-btn')?.addEventListener('click', openReorderModal);
     document.getElementById('close-reorder-modal')?.addEventListener('click', closeReorderModal);
@@ -727,6 +779,7 @@ function setupEventListeners() {
 function getFilters() {
     return {
         search: document.getElementById('inventory-search').value,
+        category: document.getElementById('category-filter').value,
         status: document.getElementById('status-filter').value,
         unit: document.getElementById('unit-filter').value,
         active: document.getElementById('active-filter').value,
@@ -736,6 +789,69 @@ function getFilters() {
         maxPrice: document.getElementById('max-price-filter').value,
         sort: document.getElementById('inventory-sort').value
     };
+}
+
+function getAdvancedFilterCount() {
+    const hasValue = id => Boolean(document.getElementById(id)?.value);
+    return Number(hasValue('unit-filter'))
+        + Number(hasValue('active-filter'))
+        + Number(hasValue('min-quantity-filter') || hasValue('max-quantity-filter'))
+        + Number(hasValue('min-price-filter') || hasValue('max-price-filter'));
+}
+
+function updateInventoryFilterControls() {
+    const filters = getFilters();
+    const advancedCount = getAdvancedFilterCount();
+    const countBadge = document.getElementById('advanced-filter-count');
+    const clearButton = document.getElementById('reset-inventory-filters');
+    const hasAnyFilter = Boolean(filters.search.trim() || filters.category || filters.status || advancedCount || filters.sort !== 'name_asc');
+
+    if (countBadge) {
+        countBadge.textContent = advancedCount;
+        countBadge.hidden = advancedCount === 0;
+    }
+    if (clearButton) clearButton.hidden = !hasAnyFilter;
+}
+
+function toggleAdvancedInventoryFilters() {
+    const button = document.getElementById('toggle-advanced-filters');
+    const panel = document.getElementById('advanced-inventory-filters');
+    const label = document.getElementById('advanced-filter-toggle-label');
+    if (!button || !panel) return;
+
+    const willOpen = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(willOpen));
+    panel.hidden = !willOpen;
+    if (label) label.textContent = willOpen ? 'Hide Filters' : 'More Filters';
+}
+
+function renderInventoryPage() {
+    const totalItems = filteredInventoryProducts.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / inventoryPageSize));
+    inventoryCurrentPage = Math.min(Math.max(1, inventoryCurrentPage), totalPages);
+
+    const startIndex = (inventoryCurrentPage - 1) * inventoryPageSize;
+    const pageProducts = filteredInventoryProducts.slice(startIndex, startIndex + inventoryPageSize);
+    const shownFrom = totalItems ? startIndex + 1 : 0;
+    const shownTo = Math.min(startIndex + inventoryPageSize, totalItems);
+
+    displayInventory(pageProducts);
+    document.getElementById('inventory-count').textContent = `${totalItems} items in inventory`;
+    document.getElementById('inventory-page-info').textContent = totalItems
+        ? `Showing ${shownFrom}–${shownTo} of ${totalItems} items`
+        : 'Showing 0 items';
+    document.getElementById('inventory-page-number').textContent = `Page ${inventoryCurrentPage} of ${totalPages}`;
+    document.getElementById('inventory-prev-page').disabled = inventoryCurrentPage <= 1;
+    document.getElementById('inventory-next-page').disabled = inventoryCurrentPage >= totalPages;
+}
+
+function changeInventoryPage(direction) {
+    const totalPages = Math.max(1, Math.ceil(filteredInventoryProducts.length / inventoryPageSize));
+    const nextPage = Math.min(Math.max(1, inventoryCurrentPage + direction), totalPages);
+    if (nextPage === inventoryCurrentPage) return;
+    inventoryCurrentPage = nextPage;
+    renderInventoryPage();
+    document.querySelector('.inventory-filter-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function buildReorderItems() {
@@ -794,7 +910,7 @@ function renderReorderList() {
 
 function openReorderModal() {
     if (!['admin', 'manager'].includes(String(currentUserRole).toLowerCase())) {
-        alert('Only an admin or manager can generate a reorder list.');
+        alert('Only an admin or manager can create a restock list.');
         return;
     }
     generatedReorderItems = buildReorderItems();
@@ -823,8 +939,8 @@ function printReorderList() {
     const documentNumber = `RO-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`;
     const rows = items.map(item => `<tr><td>${escapeInventoryHTML(item.name)}</td><td>${escapeInventoryHTML(item.code)}</td><td>${reorderStatusLabel(item.status)}</td><td>${item.onHand} ${escapeInventoryHTML(item.unit)}</td><td>${item.quantity} ${escapeInventoryHTML(item.unit)}</td><td>${formatPeso(item.unitCost)}</td><td>${formatPeso(item.quantity * item.unitCost)}</td></tr>`).join('');
     const printWindow = window.open('', '_blank', 'width=1000,height=750');
-    if (!printWindow) return alert('Allow pop-ups to print the reorder list.');
-    printWindow.document.write(`<!doctype html><html><head><title>${documentNumber}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{margin:0}header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px}.meta{text-align:right;font-size:13px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#eee}.total{text-align:right;font-size:16px;font-weight:bold;margin-top:18px}.signatures{display:flex;justify-content:space-between;margin-top:70px}.signature{width:220px;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>AMACAR HARDWARE</h1><p>Inventory Reorder List</p></div><div class="meta"><strong>${documentNumber}</strong><br>${new Date().toLocaleString('en-PH')}<br>Prepared by: ${escapeInventoryHTML(String(currentUserRole).toUpperCase())}</div></header><table><thead><tr><th>Product</th><th>Code</th><th>Priority</th><th>On Hand</th><th>Order Qty</th><th>Unit Cost</th><th>Estimated Cost</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Estimated Total: ${formatPeso(estimatedTotal)}</p><div class="signatures"><div class="signature">Prepared by</div><div class="signature">Approved by</div><div class="signature">Supplier acknowledgment</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+    if (!printWindow) return alert('Allow pop-ups to print the restock list.');
+    printWindow.document.write(`<!doctype html><html><head><title>${documentNumber}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{margin:0}header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px}.meta{text-align:right;font-size:13px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#eee}.total{text-align:right;font-size:16px;font-weight:bold;margin-top:18px}.signatures{display:flex;justify-content:space-between;margin-top:70px}.signature{width:220px;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>AMACAR HARDWARE</h1><p>Inventory Restock List</p></div><div class="meta"><strong>${documentNumber}</strong><br>${new Date().toLocaleString('en-PH')}<br>Prepared by: ${escapeInventoryHTML(String(currentUserRole).toUpperCase())}</div></header><table><thead><tr><th>Product</th><th>Code</th><th>Priority</th><th>In Stock</th><th>Order Quantity</th><th>Cost per Unit</th><th>Estimated Cost</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Estimated Total: ${formatPeso(estimatedTotal)}</p><div class="signatures"><div class="signature">Prepared by</div><div class="signature">Approved by</div><div class="signature">Supplier acknowledgment</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
     printWindow.document.close();
 }
 
@@ -990,6 +1106,7 @@ async function saveProduct(e) {
     const productData = {
         product_name: document.getElementById('product-name').value.trim().toUpperCase(),
         product_code: document.getElementById('product-code').value.trim(),
+        category_id: document.getElementById('product-category').value,
         unit_of_measure: document.getElementById('product-unit').value,
         unit_price: parseFloat(document.getElementById('product-price').value),
         selling_price: parseFloat(document.getElementById('selling-price').value),
@@ -1068,6 +1185,7 @@ async function editProduct(productId) {
         document.getElementById('modal-title').textContent = 'Edit Product';
         document.getElementById('product-name').value = product.product_name;
         document.getElementById('product-code').value = product.product_code || '';
+        document.getElementById('product-category').value = product.category_id || '';
         document.getElementById('product-unit').value = product.unit_of_measure || '';
         document.getElementById('product-price').value = product.unit_price || 0;
         document.getElementById('selling-price').value = product.selling_price || 0;
@@ -1092,7 +1210,7 @@ async function editProduct(productId) {
 
 async function deleteProduct(productId) {
     try {
-        if (!confirm('Are you sure you want to delete this product? This will also remove its stock movement history.')) {
+        if (!confirm('Are you sure you want to delete this product? This will also remove its stock change history.')) {
             return;
         }
 

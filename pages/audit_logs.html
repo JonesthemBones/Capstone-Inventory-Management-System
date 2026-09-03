@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audit Log - Amacar Hardware Inventory System</title>
+    <title>Activity History - Amacar Hardware Inventory System</title>
     <link rel="icon" type="image/png" href="../styles/img/AmacarLogo.png">
     <link rel="stylesheet" href="../styles/main.css">
     <link rel="stylesheet" href="../styles/audit_logs.css">
@@ -118,9 +118,9 @@
                 <div class="page-header">
                     <div>
                         <h1 class="page-title">
-                            <i class="fas fa-shield-alt"></i> Audit & Stock Tracking
+                            <i class="fas fa-shield-alt"></i> Activity & Stock History
                         </h1>
-                        <p class="page-subtitle">Monitor system activities and track inventory movements</p>
+                        <p class="page-subtitle">See who changed the system and when stock was added, removed, or corrected</p>
                     </div>
                 </div>
 
@@ -128,11 +128,11 @@
                 <div class="tabs-container">
                     <button class="tab-button active" id="audit-tab">
                         <i class="fas fa-clipboard-list"></i>
-                        Audit Logs
+                        System Activity
                     </button>
                     <button class="tab-button" id="stock-tab">
                         <i class="fas fa-exchange-alt"></i>
-                        Stock Movements
+                        Stock Changes
                     </button>
                 </div>
 
@@ -140,7 +140,7 @@
                 <div id="audit-logs-section">
                     <div class="filter-section">
                         <h3 class="filter-title">Activity Filter</h3>
-                        <p class="filter-subtitle">Search and filter audit logs by user, action, category, or role</p>
+                        <p class="filter-subtitle">Find system activity by user, action, category, or role</p>
                         
                         <div class="filter-grid">
                             <div class="filter-group">
@@ -202,7 +202,7 @@
                     <div class="table-section">
                         <div class="table-header">
                             <div>
-                                <h3 class="table-title">Activity Log</h3>
+                                <h3 class="table-title">System Activity History</h3>
                                 <p class="table-subtitle" id="logs-count">Showing 0 of 0 entries</p>
                             </div>
                         </div>
@@ -258,25 +258,25 @@
                 <!-- STOCK MOVEMENTS SECTION -->
                 <div id="stock-movements-section" style="display: none;">
                     <div class="filter-section">
-                        <h3 class="filter-title">Stock Movement Filter</h3>
-                        <p class="filter-subtitle">Search and filter stock movements by product, type, or date range</p>
+                        <h3 class="filter-title">Filter Stock Changes</h3>
+                        <p class="filter-subtitle">Find stock changes by product, change type, or date</p>
                         
                         <div class="filter-grid">
                             <div class="filter-group">
                                 <label>Search</label>
                                 <div class="search-input-wrapper">
                                     <i class="fas fa-search"></i>
-                                    <input type="text" id="stock-search" placeholder="Search by reference ID or notes...">
+                                    <input type="text" id="stock-search" placeholder="Search by document number or notes...">
                                 </div>
                             </div>
 
                             <div class="filter-group">
-                                <label>Movement Type</label>
+                                <label>Change Type</label>
                                 <select id="movement-type-filter">
                                     <option value="">All Types</option>
-                                    <option value="inbound">Inbound</option>
-                                    <option value="outbound">Outbound</option>
-                                    <option value="adjustment">Adjustment</option>
+                                    <option value="inbound">Stock Added</option>
+                                    <option value="outbound">Stock Removed</option>
+                                    <option value="adjustment">Stock Corrected</option>
                                 </select>
                             </div>
 
@@ -306,7 +306,7 @@
                     <div class="table-section">
                         <div class="table-header">
                             <div>
-                                <h3 class="table-title">Stock Movement History</h3>
+                                <h3 class="table-title">Stock Change History</h3>
                                 <p class="table-subtitle" id="stock-count">Showing 0 of 0 movements</p>
                             </div>
                         </div>
@@ -317,19 +317,19 @@
                                     <tr>
                                         <th>Date & Time</th>
                                         <th>Product</th>
-                                        <th>Type</th>
-                                        <th>Reference Type</th>
-                                        <th>Reference ID</th>
-                                        <th>Qty Change</th>
-                                        <th>Stock After</th>
-                                        <th>Performed By</th>
+                                        <th>Change</th>
+                                        <th>Reason or Source</th>
+                                        <th>Document Number</th>
+                                        <th>Quantity Changed</th>
+                                        <th>New Stock Level</th>
+                                        <th>Changed By</th>
                                     </tr>
                                 </thead>
                                 <tbody id="stock-table-body">
                                     <tr>
                                         <td colspan="8" class="loading-cell">
                                             <i class="fas fa-spinner fa-spin"></i>
-                                            <span>Loading stock movements...</span>
+                                            <span>Loading stock changes...</span>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -372,14 +372,14 @@
     <div class="help-modal" id="helpModal" onclick="closeHelpOnOutside(event)">
         <div class="help-content">
             <div class="help-header">
-                <h2>Audit & Stock Tracking Guide</h2>
+                <h2>Activity History Guide</h2>
                 <button class="close-help" onclick="closeHelp()">&times;</button>
             </div>
             <div class="help-body">
                 <p>Track and review all system activities, user actions, and inventory movements for transparency, control, and audit readiness.</p>
                 <br>
                 <div class="help-section">
-                    <h3>Audit Logs Tab</h3>
+                    <h3>System Activity Tab</h3>
                     <ul>
                         <li>View a comprehensive timeline of system events showing who performed what action and when</li>
                         <li>Filter by category, user role, action type, and date range</li>
@@ -389,21 +389,21 @@
                 </div>
                 
                 <div class="help-section">
-                    <h3>Stock Movements Tab</h3>
+                    <h3>Stock Changes Tab</h3>
                     <ul>
-                        <li>Track all inventory changes including inbound receipts, outbound dispatches, and adjustments</li>
+                        <li>Track when stock is added, removed, or manually corrected</li>
                         <li>See quantity changes, stock levels after each movement, and who performed the action</li>
                         <li>Filter by movement type, date range, or search by reference ID</li>
-                        <li>Export stock movement history for inventory audits and analysis</li>
+                        <li>Export stock change history for inventory checks and analysis</li>
                     </ul>
                 </div>
 
                 <div class="help-section">
-                    <h3>Understanding Movement Types</h3>
+                    <h3>Understanding Stock Changes</h3>
                     <ul>
-                        <li><strong>Inbound:</strong> Stock received (purchases, returns from customers)</li>
-                        <li><strong>Outbound:</strong> Stock dispatched (sales, transfers, returns to suppliers)</li>
-                        <li><strong>Adjustment:</strong> Manual stock corrections (count adjustments, damaged items)</li>
+                        <li><strong>Stock Added:</strong> Items received through purchases or customer returns</li>
+                        <li><strong>Stock Removed:</strong> Items taken out for sales, transfers, or supplier returns</li>
+                        <li><strong>Stock Corrected:</strong> Manual changes after a stock count or damage report</li>
                     </ul>
                 </div>
 

@@ -2,6 +2,7 @@ let currentCart = [];
 let currentUserRole = null;
 let currentUserId = null;
 let currentTransaction = null;
+let posCategories = [];
 
 // Roles allowed to use the POS terminal
 const POS_ALLOWED_ROLES = ['cashier', 'admin', 'manager'];
@@ -16,7 +17,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
     window.authHelpers.revealProtectedContent();
-    
+
+    await loadPOSCategories();
     setupEventListeners();
     setupKeyboardShortcuts();
     handleProductSearch({ target: document.getElementById('product-search') });
@@ -75,7 +77,7 @@ function setupEventListeners() {
     if (stockFilter) {
         stockFilter.addEventListener('change', () => handleProductSearch({ target: productSearch }));
     }
-    ['pos-unit-filter', 'pos-sort'].forEach(id => {
+    ['pos-category-filter', 'pos-unit-filter', 'pos-sort'].forEach(id => {
         document.getElementById(id)?.addEventListener('change', () => handleProductSearch({ target: productSearch }));
     });
     ['pos-min-price', 'pos-max-price'].forEach(id => {
@@ -83,6 +85,7 @@ function setupEventListeners() {
     });
     document.getElementById('pos-reset-filters')?.addEventListener('click', () => {
         productSearch.value = '';
+        document.getElementById('pos-category-filter').value = '';
         document.getElementById('pos-stock-filter').value = 'available';
         document.getElementById('pos-unit-filter').value = '';
         document.getElementById('pos-min-price').value = '';
@@ -230,6 +233,28 @@ function updatePOSUnitOptions(products) {
     if (units.includes(selected)) select.value = selected;
 }
 
+async function loadPOSCategories() {
+    const select = document.getElementById('pos-category-filter');
+    if (!select) return;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('categories')
+            .select('category_id, category_name')
+            .eq('is_active', true)
+            .order('category_name');
+
+        if (error) throw error;
+        posCategories = data || [];
+        select.replaceChildren(
+            new Option('All categories', ''),
+            ...posCategories.map(category => new Option(category.category_name, category.category_id))
+        );
+    } catch (error) {
+        console.error('Error loading Sales Checkout categories:', error);
+    }
+}
+
 function renderProductGrid(products) {
     const productGrid = document.getElementById('product-grid');
     if (!productGrid) return;
@@ -282,6 +307,7 @@ async function handleProductSearch(e) {
     const productGrid = document.getElementById('product-grid');
     const stockFilter = document.getElementById('pos-stock-filter');
     const filterValue = stockFilter ? stockFilter.value : 'available';
+    const categoryFilter = document.getElementById('pos-category-filter')?.value || '';
     const unitFilter = document.getElementById('pos-unit-filter')?.value || '';
     const minPrice = document.getElementById('pos-min-price')?.value ?? '';
     const maxPrice = document.getElementById('pos-max-price')?.value ?? '';
@@ -298,6 +324,7 @@ async function handleProductSearch(e) {
                 product_id,
                 product_code,
                 product_name,
+                category_id,
                 selling_price,
                 image_url,
                 image_path,
@@ -321,6 +348,7 @@ async function handleProductSearch(e) {
             const quantity = getPOSProductQuantity(product);
             const price = Number(product.selling_price || 0);
             const status = getPOSStockStatus(product);
+            if (categoryFilter && String(product.category_id || '') !== String(categoryFilter)) return false;
             if (filterValue === 'available' && quantity <= 0) return false;
             if (['in_stock', 'low_stock', 'out_of_stock'].includes(filterValue) && status !== filterValue) return false;
             if (unitFilter && String(product.unit_of_measure || '').trim().toUpperCase() !== String(unitFilter).trim().toUpperCase()) return false;

@@ -7,11 +7,14 @@ class InactivityLogout {
         this.checkInterval = options.checkInterval || 1000; 
         
         // State
-        this.lastActivity = Date.now();
+        this.activityStorageKey = 'amacar:last-activity';
+        this.lastActivity = this.readLastActivity();
+        this.lastActivityWrite = 0;
         this.warningShown = false;
         this.checkTimer = null;
         this.warningTimer = null;
         this.isEnabled = true;
+        this.isLoggingOut = false;
         
         // Events to track for user activity
         this.activityEvents = [
@@ -49,17 +52,52 @@ class InactivityLogout {
         });
         
         // Listen for visibility changes
-        document.addEventListener('visibilitychange', () => {
+        this.visibilityHandler = () => {
             if (!document.hidden) {
-                this.onActivity();
+                if (Date.now() - this.lastActivity >= this.inactivityTimeout) {
+                    this.performLogout();
+                } else {
+                    this.onActivity();
+                }
             }
-        });
+        };
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+
+        this.storageHandler = event => {
+            if (event.key !== this.activityStorageKey || !event.newValue) return;
+            const timestamp = Number(event.newValue);
+            if (Number.isFinite(timestamp) && timestamp > this.lastActivity) {
+                this.lastActivity = timestamp;
+                if (this.warningShown) this.hideWarning();
+            }
+        };
+        window.addEventListener('storage', this.storageHandler);
+    }
+
+    readLastActivity() {
+        try {
+            const stored = Number(localStorage.getItem('amacar:last-activity'));
+            if (Number.isFinite(stored) && stored > 0) return stored;
+            const now = Date.now();
+            localStorage.setItem('amacar:last-activity', String(now));
+            return now;
+        } catch (error) {
+            return Date.now();
+        }
     }
     
     onActivity() {
         if (!this.isEnabled) return;
         
         this.lastActivity = Date.now();
+        if (this.lastActivity - this.lastActivityWrite >= 1000) {
+            try {
+                localStorage.setItem(this.activityStorageKey, String(this.lastActivity));
+                this.lastActivityWrite = this.lastActivity;
+            } catch (error) {
+                // Continue with this tab's in-memory timer if storage is unavailable.
+            }
+        }
         
         // Reset warning if user becomes active again
         if (this.warningShown) {
@@ -186,6 +224,8 @@ class InactivityLogout {
     }
     
     async performLogout() {
+        if (this.isLoggingOut) return;
+        this.isLoggingOut = true;
         console.log('Performing automatic logout due to inactivity...');
         
         // Clean up
@@ -208,10 +248,16 @@ class InactivityLogout {
                 } catch (logError) {
                     console.error('Error logging inactivity logout audit event:', logError);
                 }
-                await window.supabaseClient.auth.signOut();
+                await window.authHelpers?.releaseCurrentSession?.();
+                await window.supabaseClient.auth.signOut({ scope: 'local' });
             }
         } catch (error) {
             console.error('Error signing out:', error);
+        }
+        try {
+            localStorage.removeItem(this.activityStorageKey);
+        } catch (error) {
+            // Redirect even if browser storage is unavailable.
         }
         
         // Redirect to auth page with message
@@ -364,6 +410,8 @@ class InactivityLogout {
         this.activityEvents.forEach(event => {
             document.removeEventListener(event, this.activityHandler);
         });
+        document.removeEventListener('visibilitychange', this.visibilityHandler);
+        window.removeEventListener('storage', this.storageHandler);
         
         // Clear timers
         if (this.checkTimer) {

@@ -6,6 +6,7 @@ let currentItems = [];
 let currentSupplierDetails = {};
 let currentCategories = [];
 let receiptCameraStream = null;
+let isReceiptProcessing = false;
 let thumbnailModalContext = {
     itemIndex: null,
     inventoryId: null,
@@ -25,18 +26,50 @@ function setPreviewImage(dataUrl) {
     const preview = document.getElementById('receipt-image-preview');
     const viewButton = document.getElementById('view-receipt-image-btn');
     const modalImage = document.getElementById('receipt-image-modal-img');
+    const processButton = document.getElementById('process-receipt-btn');
     if (!preview) return;
     if (!dataUrl) {
         preview.innerHTML = 'No image selected';
         preview.style.backgroundImage = 'none';
         if (viewButton) viewButton.style.display = 'none';
         if (modalImage) modalImage.src = '';
+        if (processButton) processButton.disabled = true;
         return;
     }
     preview.innerHTML = '';
     preview.style.backgroundImage = `url('${dataUrl}')`;
     if (viewButton) viewButton.style.display = 'inline-flex';
     if (modalImage) modalImage.src = dataUrl;
+    if (processButton) processButton.disabled = isReceiptProcessing;
+}
+
+function setReceiptProcessing(isProcessing) {
+    isReceiptProcessing = isProcessing;
+    const loadingPanel = document.getElementById('vlm-loading-panel');
+    const processButton = document.getElementById('process-receipt-btn');
+    ['receipt-image-input', 'clear-receipt-btn', 'open-camera-btn'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = isProcessing;
+    });
+    if (processButton) {
+        processButton.disabled = isProcessing || !currentReceiptImage?.dataUrl;
+        processButton.innerHTML = isProcessing
+            ? '<i class="fas fa-spinner fa-spin"></i> Scanning receipt…'
+            : '<i class="fas fa-wand-magic-sparkles"></i> Scan Receipt';
+    }
+    if (loadingPanel) loadingPanel.hidden = !isProcessing;
+    document.querySelector('.vlm-upload-card')?.setAttribute('aria-busy', String(isProcessing));
+}
+
+function setReceiptLoadingStage(stage, title) {
+    const stages = ['prepare', 'read', 'find', 'load'];
+    const activeIndex = stages.indexOf(stage);
+    const titleElement = document.getElementById('vlm-loading-title');
+    if (titleElement) titleElement.textContent = title;
+    document.querySelectorAll('.vlm-loading-steps li').forEach((item, index) => {
+        item.classList.toggle('active', index === activeIndex);
+        item.classList.toggle('complete', index < activeIndex);
+    });
 }
 
 async function prepareReceiptImage(file) {
@@ -125,11 +158,12 @@ function captureReceiptPhoto() {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
     currentReceiptImage = { file: null, dataUrl, source: 'camera' };
     setPreviewImage(dataUrl);
-    setStatus('Receipt photo ready. Tap Extract Receipt to process.', 'neutral');
+    setStatus('Receipt photo ready. Tap Scan Receipt to continue.', 'neutral');
     closeReceiptCamera();
 }
 
 function clearReceiptSelection() {
+    if (isReceiptProcessing) return;
     const input = document.getElementById('receipt-image-input');
     if (input) {
         input.value = '';
@@ -138,7 +172,7 @@ function clearReceiptSelection() {
     currentSupplierDetails = {};
     setPreviewImage(null);
     setStatus('No receipt selected. Choose or capture a receipt to begin.');
-    document.getElementById('vlm-items-grid').innerHTML = '';
+    document.getElementById('vlm-items-grid').innerHTML = '<div class="vlm-empty-state"><i class="fas fa-receipt"></i><strong>Your scanned items will appear here</strong><span>Add a clear receipt photo, then choose Scan Receipt.</span></div>';
     document.getElementById('vlm-raw-output').hidden = true;
     renderSupplierDetailsPanel({});
     updateSupplierSaveButton();
@@ -522,7 +556,7 @@ async function saveSupplierDetailsToSupabase() {
         saveBtn.innerHTML = '<i class="fas fa-check"></i> Supplier saved';
     } catch (error) {
         console.error('Supplier save error:', error);
-        setStatus('Failed to save supplier details to the VLM extraction table.', 'danger');
+        setStatus('The supplier details could not be saved. Please try again.', 'danger');
         alert(`Supplier save failed: ${error.message || error}`);
         saveBtn.innerHTML = '<i class="fas fa-user-plus"></i> Save Supplier Details';
     } finally {
@@ -543,12 +577,14 @@ function renderItems(items) {
     grid.innerHTML = items.map((item, index) => {
         const removedClass = item.removed ? 'vlm-card-removed' : '';
         const acceptedClass = item.accepted && !item.removed ? 'vlm-card-accepted' : '';
+        const pendingClass = !item.accepted && !item.removed ? 'vlm-card-pending' : '';
         const statusLabel = item.removed ? 'Rejected' : item.accepted ? 'Accepted' : 'Pending';
         const statusClass = item.removed ? 'vlm-item-status-rejected' : item.accepted ? 'vlm-item-status-accepted' : 'vlm-item-status-pending';
         const acceptLabel = item.accepted && !item.removed ? 'Accepted' : 'Accept';
         const acceptIcon = item.accepted && !item.removed ? 'fa-check-circle' : 'fa-check';
         const rejectLabel = item.removed ? 'Restore' : 'Reject';
         const rejectIcon = item.removed ? 'fa-undo' : 'fa-ban';
+        const rejectButtonClass = item.removed ? 'btn-secondary' : 'btn-danger';
         const disableAccept = item.removed ? 'disabled' : '';
         const thumbnailHtml = item.thumbnailUrl
             ? `<img src="${escapeHtml(item.thumbnailUrl)}" alt="${escapeHtml(item.name)} thumbnail" class="product-thumbnail" loading="lazy">`
@@ -565,7 +601,7 @@ function renderItems(items) {
                 : `AI confidence: ${formatConfidence(item.category_confidence)}`;
 
         return `
-            <article class="vlm-card-item ${removedClass} ${acceptedClass}" data-index="${index}">
+            <article class="vlm-card-item ${removedClass} ${acceptedClass} ${pendingClass}" data-index="${index}">
                 <div class="vlm-card-item-header">
                     <button type="button" class="vlm-card-item-thumbnail-column vlm-thumbnail-trigger" data-action="edit-thumbnail" data-index="${index}" aria-label="Change ${escapeHtml(item.name)} thumbnail">
                         ${thumbnailHtml}
@@ -576,18 +612,8 @@ function renderItems(items) {
                             <input id="vlm-item-name-${index}" type="text" maxlength="100" value="${escapeHtml(item.name)}" data-field="name" data-index="${index}">
                             ${item.name_was_edited ? '<small class="vlm-name-edited"><i class="fas fa-pen"></i> Edited from extracted name</small>' : ''}
                         </div>
-                        <p class="vlm-card-item-meta">Unit Price: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Receipt Qty: <strong>${item.receipt_quantity}</strong> | Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
+                        <p class="vlm-card-item-meta">Cost per Unit: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Quantity on Receipt: <strong>${item.receipt_quantity}</strong> | Scan Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
                         <span class="vlm-item-status ${statusClass}">${statusLabel}</span>
-                    </div>
-                    <div class="vlm-card-item-actions">
-                        <button type="button" class="btn btn-secondary vlm-item-accept-btn" data-action="toggle-accept" ${disableAccept}>
-                            <i class="fas ${acceptIcon}"></i>
-                            ${acceptLabel}
-                        </button>
-                        <button type="button" class="btn btn-danger vlm-item-remove-btn" data-action="toggle-remove">
-                            <i class="fas ${rejectIcon}"></i>
-                            ${rejectLabel}
-                        </button>
                     </div>
                 </div>
                 <div class="vlm-card-item-fields">
@@ -615,6 +641,17 @@ function renderItems(items) {
                         <label>Comment</label>
                         <textarea rows="2" data-field="comment" data-index="${index}">${escapeHtml(item.comment)}</textarea>
                     </div>
+                </div>
+                <div class="vlm-card-item-actions" aria-label="Review decision for ${escapeHtml(item.name)}">
+                    <span class="vlm-decision-prompt">Finished reviewing this item?</span>
+                    <button type="button" class="btn btn-success vlm-item-accept-btn" data-action="toggle-accept" ${disableAccept}>
+                        <i class="fas ${acceptIcon}"></i>
+                        ${acceptLabel}
+                    </button>
+                    <button type="button" class="btn ${rejectButtonClass} vlm-item-remove-btn" data-action="toggle-remove">
+                        <i class="fas ${rejectIcon}"></i>
+                        ${rejectLabel}
+                    </button>
                 </div>
             </article>
         `;
@@ -826,7 +863,7 @@ async function fetchAdminVLMConfig() {
 async function saveAdminVLMConfig() {
     const token = await getSupabaseAccessToken();
     if (!token) {
-        alert('Unable to save VLM settings because you are not authenticated.');
+        alert('Please sign in before changing the receipt scanner settings.');
         return;
     }
 
@@ -862,10 +899,10 @@ async function saveAdminVLMConfig() {
 
         const result = await response.json();
         if (!response.ok) {
-            throw new Error(result?.error || 'Unable to save VLM settings.');
+            throw new Error(result?.error || 'Unable to save the receipt scanner settings.');
         }
 
-        setVlmConfigStatus('VLM settings saved successfully.', 'success');
+        setVlmConfigStatus('Receipt scanner settings saved.', 'success');
         apiKeyInput.value = result.config?.apiKey || apiKey;
         if (supplierApiKeyInput) {
             supplierApiKeyInput.value = result.config?.supplierApiKey || supplierApiKey || apiKey;
@@ -874,10 +911,10 @@ async function saveAdminVLMConfig() {
         endpointInput.value = result.config?.endpoint || endpoint;
     } catch (error) {
         console.error('VLM config save failed:', error);
-        setVlmConfigStatus(error.message || 'Failed to save VLM settings.', 'error');
+        setVlmConfigStatus(error.message || 'The receipt scanner settings could not be saved.', 'error');
     } finally {
         saveButton.disabled = false;
-        saveButton.innerHTML = '<i class="fas fa-save"></i> Save VLM Settings';
+        saveButton.innerHTML = '<i class="fas fa-save"></i> Save Scanner Settings';
     }
 }
 
@@ -892,7 +929,7 @@ async function initAdminVLMSettings() {
     }
 
     adminSettings.classList.remove('hidden');
-    setVlmConfigStatus('Loading admin VLM settings...', 'neutral');
+    setVlmConfigStatus('Loading receipt scanner settings...', 'neutral');
 
     const saveButton = document.getElementById('save-vlm-config-btn');
     if (saveButton) {
@@ -912,7 +949,7 @@ async function initAdminVLMSettings() {
         if (supplierApiKeyInput) supplierApiKeyInput.value = config?.supplierApiKey || config?.apiKey || '';
         if (modelInput) modelInput.value = config?.model || '';
         if (endpointInput) endpointInput.value = config?.endpoint || 'https://api.deepseek.com/chat/completions';
-        setVlmConfigStatus('Admin VLM settings loaded.', 'success');
+        setVlmConfigStatus('Receipt scanner settings loaded.', 'success');
     } catch (error) {
         console.error('Unable to load admin VLM settings:', error);
         setVlmConfigStatus('Unable to load admin settings.', 'error');
@@ -1051,6 +1088,7 @@ async function fetchSupplierDetails(imageDataUrl) {
 }
 
 async function processReceiptImage() {
+    if (isReceiptProcessing) return;
     if (!currentReceiptImage || !currentReceiptImage.dataUrl) {
         alert('Please select or capture a receipt image before scanning.');
         return;
@@ -1062,7 +1100,13 @@ async function processReceiptImage() {
         return;
     }
 
-    setStatus('Scanning receipt... please wait.', 'warning');
+    setReceiptProcessing(true);
+    setReceiptLoadingStage('prepare', 'Preparing image…');
+    setStatus('Scanning receipt… Please keep this page open.', 'warning');
+    currentItems = [];
+    currentSupplierDetails = {};
+    updateSaveButton();
+    renderSupplierDetailsPanel({});
     document.getElementById('vlm-items-grid').innerHTML = '';
     document.getElementById('vlm-raw-output').hidden = true;
 
@@ -1074,6 +1118,8 @@ async function processReceiptImage() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`
         };
+
+        setReceiptLoadingStage('read', 'Reading receipt…');
 
         const productResponse = await fetch(VLM_API_ENDPOINT, {
             method: 'POST',
@@ -1088,11 +1134,13 @@ async function processReceiptImage() {
             return;
         }
 
+        setReceiptLoadingStage('find', 'Finding products…');
+
         const parsed = parseVLMResponse(productResult.receipt ?? productResult);
         if (!parsed) {
-            setStatus('Unable to parse VLM output. Please try again with a clearer receipt image.', 'danger');
+            setStatus('The scanner could not read the receipt. Please try again with a clearer photo.', 'danger');
             document.getElementById('vlm-raw-output').textContent = JSON.stringify(productResult.rawResponse || productResult, null, 2);
-            document.getElementById('vlm-raw-output').hidden = false;
+            document.getElementById('vlm-raw-output').hidden = true;
             return;
         }
 
@@ -1104,6 +1152,7 @@ async function processReceiptImage() {
             confidence: item.confidence ?? null,
         }));
 
+        setReceiptLoadingStage('load', 'Loading results…');
         currentItems = await mergeWithExistingProductDefaults(currentItems);
         currentItems = await lookupThumbnails(currentItems);
         renderItems(currentItems);
@@ -1112,18 +1161,18 @@ async function processReceiptImage() {
         currentSupplierDetails = normalizeSupplierDetails(supplierDetails);
         renderSupplierDetailsPanel(currentSupplierDetails);
 
-        const totalTokens = Number(productResult?.usage?.total_tokens);
-        const usageText = Number.isFinite(totalTokens) ? ` Used ${totalTokens.toLocaleString()} API tokens.` : '';
-        setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found.${usageText}`, 'success');
+        setStatus(`Receipt scanned successfully. ${currentItems.length} item(s) found. Review each item before saving.`, 'success');
         const rawOutput = document.getElementById('vlm-raw-output');
         rawOutput.textContent = JSON.stringify({
             receipt: parsed,
             supplierDetails: currentSupplierDetails
         }, null, 2);
-        rawOutput.hidden = false;
+        rawOutput.hidden = true;
     } catch (error) {
         console.error('Receipt scan error:', error);
         setStatus('Receipt scan failed. Check the backend server and try again.', 'danger');
+    } finally {
+        setReceiptProcessing(false);
     }
 }
 
@@ -1163,6 +1212,14 @@ function updateSaveButton() {
     const rejectedCount = currentItems.filter(item => item.removed).length;
     const pendingCount = currentItems.filter(item => !item.accepted && !item.removed).length;
     const hasDecisions = acceptedCount > 0 || rejectedCount > 0;
+    const reviewActions = document.getElementById('vlm-review-actions');
+    const reviewSummary = document.getElementById('vlm-review-summary');
+
+    if (reviewActions) reviewActions.hidden = totalCount === 0;
+    if (reviewSummary) {
+        reviewSummary.hidden = totalCount === 0;
+        reviewSummary.innerHTML = `<span><strong>${totalCount}</strong> found</span><span><strong>${acceptedCount}</strong> ready</span><span><strong>${pendingCount}</strong> need review</span><span><strong>${rejectedCount}</strong> removed</span>`;
+    }
 
     const noPendingAndHasDecisions = pendingCount === 0 && hasDecisions;
     saveBtn.disabled = !noPendingAndHasDecisions;

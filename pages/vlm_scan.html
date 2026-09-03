@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Management - Receipt Extraction</title>
+    <title>Receipt Scanner - Amacar Hardware Inventory System</title>
     <link rel="icon" type="image/png" href="../styles/img/AmacarLogo.png">
     <link rel="stylesheet" href="../styles/main.css">
     <link rel="stylesheet" href="../styles/modal.css">
@@ -28,8 +28,8 @@
             <div class="page active">
                 <div class="page-header">
                     <div>
-                        <h1 class="page-title">Receipt Extraction</h1>
-                        <p class="page-subtitle">Take or upload a receipt image, then review extracted items and adjust values before accepting.</p>
+                        <h1 class="page-title">Receipt Scanner</h1>
+                        <p class="page-subtitle">Take or upload a receipt photo, then review the items found before adding them to inventory.</p>
                     </div>
                 </div>
 
@@ -37,7 +37,7 @@
                     <section class="vlm-card vlm-upload-card">
                         <div class="vlm-card-header">
                             <div>
-                                <h2>Capture / Upload Receipt</h2>
+                                <h2><span class="vlm-step-number">1</span> Add Receipt Photo</h2>
                                 <p class="vlm-card-subtitle">Use your device camera or choose a receipt image from your files.</p>
                             </div>
                         </div>
@@ -59,14 +59,21 @@
                                 </button>
                             </div>
 
+                            <div class="vlm-photo-checklist" aria-label="Tips for a successful receipt scan">
+                                <strong>Before scanning, check that:</strong>
+                                <span><i class="fas fa-check"></i> The entire receipt is visible</span>
+                                <span><i class="fas fa-check"></i> The photo is clear and well-lit</span>
+                                <span><i class="fas fa-check"></i> The text is upright and readable</span>
+                            </div>
+
                             <div class="vlm-button-row">
                                 <button type="button" class="btn btn-primary vlm-mobile-camera-button" id="open-camera-btn">
                                     <i class="fas fa-camera"></i>
                                     Take Photo
                                 </button>
-                                <button type="button" class="btn btn-primary" id="process-receipt-btn">
-                                    <i class="fas fa-camera"></i>
-                                    Extract Receipt
+                                <button type="button" class="btn btn-primary" id="process-receipt-btn" disabled>
+                                    <i class="fas fa-wand-magic-sparkles"></i>
+                                    Scan Receipt
                                 </button>
                                 <button type="button" class="btn" id="clear-receipt-btn">
                                     <i class="fas fa-trash-alt"></i>
@@ -74,12 +81,18 @@
                                 </button>
                             </div>
 
+                            <div class="vlm-loading-panel" id="vlm-loading-panel" role="status" aria-live="polite" hidden>
+                                <div class="vlm-loading-spinner" aria-hidden="true"></div>
+                                <div><strong id="vlm-loading-title">Preparing image…</strong><p>Please wait. Keep this page open while the receipt is being scanned.</p></div>
+                                <ol class="vlm-loading-steps"><li data-stage="prepare">Preparing image</li><li data-stage="read">Reading receipt</li><li data-stage="find">Finding products</li><li data-stage="load">Loading results</li></ol>
+                            </div>
+
                             <p class="vlm-hint">The receipt image is processed by the backend and sent to DeepSeek. Your data is only used for this scan.</p>
 
                             <div id="vlm-admin-settings" class="vlm-admin-settings hidden">
                                 <div class="vlm-admin-settings-header">
-                                    <h3>VLM Settings</h3>
-                                    <p>Change the DeepSeek API key and vision model used for receipt extraction.</p>
+                                    <h3>Receipt Scanner Settings</h3>
+                                    <p>Change the service credentials and image-reading model used by the receipt scanner.</p>
                                 </div>
                                 <div class="vlm-admin-settings-row">
                                     <div class="vlm-admin-settings-field">
@@ -104,7 +117,7 @@
                                 <div class="vlm-admin-settings-actions">
                                     <button type="button" class="btn btn-primary" id="save-vlm-config-btn">
                                         <i class="fas fa-save"></i>
-                                        Save VLM Settings
+                                        Save Scanner Settings
                                     </button>
                                     <span id="vlm-config-status" class="vlm-config-status"></span>
                                 </div>
@@ -115,15 +128,15 @@
                     <section class="vlm-card vlm-results-card">
                         <div class="vlm-card-header vlm-results-header">
                             <div>
-                                <h2>Extracted Items</h2>
-                                <p class="vlm-card-subtitle">Review items extracted by the VLM, then accept or remove them individually or in bulk.</p>
+                                <h2><span class="vlm-step-number">2</span> Review Items</h2>
+                                <p class="vlm-card-subtitle">Check the items found by the scanner, then approve or remove them one at a time or all at once.</p>
                             </div>
-                            <div class="vlm-action-buttons">
+                            <div class="vlm-action-buttons" id="vlm-review-actions" hidden>
                                 <button type="button" class="btn btn-secondary" id="download-json-btn">
                                     <i class="fas fa-download"></i>
-                                    Download JSON
+                                    Download Scan Data
                                 </button>
-                                <button type="button" class="btn btn-primary" id="accept-all-btn">
+                                <button type="button" class="btn btn-success" id="accept-all-btn">
                                     <i class="fas fa-check"></i>
                                     Accept All
                                 </button>
@@ -135,6 +148,7 @@
                         </div>
 
                         <div id="vlm-status" class="vlm-status vlm-status-neutral">No receipt scanned yet.</div>
+                        <div class="vlm-review-summary" id="vlm-review-summary" aria-live="polite" hidden></div>
                         <div id="supplier-details-panel" class="supplier-details-panel hidden" data-expanded="true">
                             <button type="button" id="supplier-details-toggle" class="supplier-details-toggle" aria-expanded="true">
                                 <span>Supplier Details</span>
@@ -154,9 +168,9 @@
                         </div>
                         <div class="vlm-items-column-header" aria-hidden="true">
                             <span>Thumbnail</span>
-                            <span>Extracted item</span>
+                            <span>Item found</span>
                         </div>
-                        <div id="vlm-items-grid" class="vlm-items-grid"></div>
+                        <div id="vlm-items-grid" class="vlm-items-grid"><div class="vlm-empty-state"><i class="fas fa-receipt"></i><strong>Your scanned items will appear here</strong><span>Add a clear receipt photo, then choose Scan Receipt.</span></div></div>
                         <pre id="vlm-raw-output" class="vlm-raw-output" hidden></pre>
                     </section>
                 </div>
@@ -218,6 +232,19 @@
                 <button type="button" class="btn btn-primary" id="capture-camera-btn">
                     <i class="fas fa-camera"></i> Capture Photo
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <button class="help-button" onclick="openHelp()" aria-label="Open Receipt Scanner help"><i class="fas fa-question"></i></button>
+    <div class="help-modal" id="helpModal" aria-hidden="true">
+        <div class="help-content" role="dialog" aria-modal="true" aria-labelledby="scanner-help-title">
+            <div class="help-header"><h2 id="scanner-help-title">Receipt Scanner Guide</h2><button class="close-help" onclick="closeHelp()" aria-label="Close help">&times;</button></div>
+            <div class="help-body">
+                <p>Turn a supplier receipt into inventory items without typing every line manually.</p>
+                <div class="help-section"><h3>How do I scan a receipt?</h3><ul><li>Take or upload a clear photo, choose Scan Receipt, and wait for the items to appear.</li></ul></div>
+                <div class="help-section"><h3>What should I review?</h3><ul><li>Check every product name, quantity, cost, category, and selling price before approval.</li></ul></div>
+                <div class="help-section"><h3>What if the scan is incorrect?</h3><ul><li>Edit incorrect values or remove unwanted items. A clearer, well-lit photo can improve the result.</li></ul></div>
             </div>
         </div>
     </div>

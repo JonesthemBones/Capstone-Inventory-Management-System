@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Point of Sale - Amacar Hardware Inventory System</title>
+    <title>Sales Checkout - Amacar Hardware Inventory System</title>
     <link rel="icon" type="image/png" href="../styles/img/AmacarLogo.png">
     <link rel="stylesheet" href="../styles/main.css">
     <link rel="stylesheet" href="../styles/pos.css">
+    <link rel="stylesheet" href="../styles/help.css">
     <link rel="stylesheet" href="../styles/dark-mode.css">
     <link rel="stylesheet" href="../styles/mobile.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -18,6 +19,7 @@
     <script src="../scripts/util.js"></script>
     <script src="../scripts/supabase_check.js"></script>
     <script src="../scripts/sidebar.js"></script>
+    <script src="../scripts/help.js"></script>
     <script src="../scripts/dark-mode.js"></script>
 
     <div class="app-container">
@@ -25,7 +27,7 @@
             <div class="page active">
                 <!-- Page Header -->
                 <div class="page-header">
-                    <h1 class="page-title">Point of Sale</h1>
+                    <h1 class="page-title">Sales Checkout</h1>
                     <p class="page-subtitle">Process customer transactions</p>
                 </div>
 
@@ -50,6 +52,7 @@
                                 <i class="fas fa-chevron-down" aria-hidden="true"></i>
                             </button>
                             <div class="pos-toolbar" id="pos-toolbar">
+                                <select id="pos-category-filter" class="pos-filter-select" aria-label="Filter by category"><option value="">All categories</option></select>
                                 <select id="pos-stock-filter" class="pos-filter-select">
                                     <option value="available">Available items</option>
                                     <option value="all">All items</option>
@@ -224,6 +227,20 @@
                 <button class="btn btn-danger" onclick="confirmVoidTransaction()">
                     <i class="fas fa-trash"></i> Void Transaction
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <button class="help-button" onclick="openHelp()" aria-label="Open Sales Checkout help"><i class="fas fa-question"></i></button>
+    <div class="help-modal" id="helpModal" aria-hidden="true">
+        <div class="help-content" role="dialog" aria-modal="true" aria-labelledby="pos-help-title">
+            <div class="help-header"><h2 id="pos-help-title">Sales Checkout Guide</h2><button class="close-help" onclick="closeHelp()" aria-label="Close help">&times;</button></div>
+            <div class="help-body">
+                <p>Use this page to sell products and give the customer a receipt.</p>
+                <div class="help-section"><h3>How do I make a sale?</h3><ul><li>Search for a product, add it to the cart, check the quantity, then choose Checkout.</li></ul></div>
+                <div class="help-section"><h3>How do I find an item?</h3><ul><li>Search by product name or code, or use the Category filter to browse a product group.</li></ul></div>
+                <div class="help-section"><h3>What if an item cannot be added?</h3><ul><li>Check its available stock. Out-of-stock products cannot be added to the cart.</li></ul></div>
+                <div class="help-section"><h3>How do I correct a completed sale?</h3><ul><li>Open today's transactions, view the sale, and use Void Transaction with a clear reason.</li></ul></div>
             </div>
         </div>
     </div>
