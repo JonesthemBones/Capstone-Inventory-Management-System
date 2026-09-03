@@ -577,7 +577,8 @@ function setupSignOutButtons() {
             
             if (!await window.utils.confirmDialog('You will need to enter your credentials to access the system again.', {
                 title: 'Sign out?',
-                confirmText: 'Sign out'
+                confirmText: 'Sign out',
+                variant: 'danger'
             })) {
                 return;
             }

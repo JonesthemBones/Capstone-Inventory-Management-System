@@ -53,6 +53,23 @@
     transform: rotate(90deg);
 }
 
+/* The toggle sits against the table's left edge, so its tooltip must open inward. */
+.batch-toggle-btn.icon-btn[title]:hover::after {
+    bottom: 50%;
+    left: calc(100% + 8px);
+    margin-bottom: 0;
+    transform: translateY(50%);
+}
+
+.batch-toggle-btn.icon-btn[title]:hover::before {
+    bottom: 50%;
+    left: 100%;
+    margin-bottom: 0;
+    transform: translateY(50%);
+    border-top-color: transparent;
+    border-right-color: #1f2937;
+}
+
 .batch-history-row[hidden] {
     display: none;
 }
