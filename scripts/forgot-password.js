@@ -1,4 +1,8 @@
-const API_URL = `${window.location.hostname ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://localhost:3001'}/api`;
+const isLocalDevelopment = window.location.hostname === 'localhost'
+    || window.location.hostname === '127.0.0.1';
+const API_URL = isLocalDevelopment && window.location.port !== '3001'
+    ? `${window.location.protocol}//${window.location.hostname}:3001/api`
+    : '/api';
 
 document.addEventListener('DOMContentLoaded', () => {
     const forgotPasswordPage = document.getElementById('forgot-password-page');

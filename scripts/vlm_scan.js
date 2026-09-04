@@ -1126,12 +1126,25 @@ async function processReceiptImage() {
             headers: authHeaders,
             body: JSON.stringify({ imageDataUrl })
         });
-        const productResult = await productResponse.json();
+        const productBody = await productResponse.text();
+        let productResult = null;
+        if (productBody.trim()) {
+            try {
+                productResult = JSON.parse(productBody);
+            } catch (parseError) {
+                throw new Error(`Backend returned invalid JSON (HTTP ${productResponse.status}).`);
+            }
+        }
 
         if (!productResponse.ok) {
-            const message = productResult?.details || productResult?.error || productResult?.message || 'Unable to scan receipt.';
+            const message = productResult?.details || productResult?.error || productResult?.message
+                || `Backend returned an empty response (HTTP ${productResponse.status}).`;
             setStatus(`Scan failed: ${message}`, 'danger');
             return;
+        }
+
+        if (!productResult) {
+            throw new Error(`Backend returned an empty response (HTTP ${productResponse.status}).`);
         }
 
         setReceiptLoadingStage('find', 'Finding products…');

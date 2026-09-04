@@ -31,10 +31,15 @@ console.log('Password reset env:', {
   EMAIL_USER: !!process.env.EMAIL_USER,
 });
 const SMTP_HOST = process.env.SMTP_HOST?.trim();
+const SMTP_ADDRESS = process.env.SMTP_ADDRESS?.trim() || SMTP_HOST;
 const SMTP_PORT = process.env.SMTP_PORT?.trim();
 const SMTP_SECURE = process.env.SMTP_SECURE?.trim();
 const EMAIL_USER = process.env.EMAIL_USER?.trim();
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD?.trim();
+const SMTP_FAMILY = Number(process.env.SMTP_FAMILY || (SMTP_HOST === 'smtp.gmail.com' ? 4 : 0));
+const SMTP_PASSWORD = SMTP_HOST === 'smtp.gmail.com'
+  ? EMAIL_PASSWORD?.replace(/\s+/g, '')
+  : EMAIL_PASSWORD;
 
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 console.log('Password reset supabase client created?', !!supabase);
@@ -50,21 +55,31 @@ if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
   console.log('SMTP_SECURE:', SMTP_SECURE);
 
   transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
+    host: SMTP_ADDRESS,
     port: Number(SMTP_PORT),
     secure: SMTP_SECURE === 'true',
+    family: SMTP_FAMILY,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
     auth: {
       user: EMAIL_USER,
-      pass: EMAIL_PASSWORD
+      pass: SMTP_PASSWORD
     },
     tls: {
+      servername: SMTP_HOST,
       rejectUnauthorized: false
     }
   });
 
   transporter.verify((error, success) => {
     if (error) {
-      console.error('❌ Email transporter error:', error);
+      console.error('❌ Email transporter error:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        responseCode: error.responseCode
+      });
     } else {
       console.log('✅ Email server is ready to send messages');
     }
@@ -93,7 +108,7 @@ function generateOTP() {
 // 1. Send OTP to email
 router.post('/send-otp', async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
 
     if (!checkPasswordResetEnabled(res)) {
       return;
@@ -120,8 +135,6 @@ router.post('/send-otp', async (req, res) => {
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-    console.log(`Generated OTP for ${email}: ${otp}`);
-
     // Store OTP in database
     const { error: updateError } = await supabase
       .from('users')
@@ -136,6 +149,8 @@ router.post('/send-otp', async (req, res) => {
       console.error('Database update error:', updateError);
       throw updateError;
     }
+
+    console.log(`OTP stored for ${email}; sending password-reset email.`);
 
     // Send email with OTP
     const mailOptions = {
@@ -172,7 +187,9 @@ router.post('/send-otp', async (req, res) => {
       `
     };
 
-    await transporter.sendMail(mailOptions);
+    console.log(`Attempting SMTP delivery for ${email}.`);
+    const delivery = await transporter.sendMail(mailOptions);
+    console.log(`SMTP accepted password-reset email for ${email}: ${delivery.messageId}`);
     console.log(`✅ OTP email sent successfully to ${email}`);
 
     res.json({ 
@@ -182,7 +199,15 @@ router.post('/send-otp', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Send OTP error:', error);
+    console.error(`Send OTP failed: ${error?.message || String(error)}`);
+    console.error('Send OTP error:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      responseCode: error.responseCode,
+      response: error.response
+    });
+    if (error?.stack) console.error(error.stack);
     res.status(500).json({ 
       error: 'Failed to send OTP. Please try again.' 
     });
@@ -192,7 +217,8 @@ router.post('/send-otp', async (req, res) => {
 // 2. Verify OTP
 router.post('/verify-otp', async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const { otp } = req.body;
 
     if (!email || !otp) {
       return res.status(400).json({ error: 'Email and OTP are required' });
@@ -265,7 +291,8 @@ router.post('/verify-otp', async (req, res) => {
 // 3. Reset password (after OTP verification)
 router.post('/reset-password', async (req, res) => {
   try {
-    const { email, newPassword } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const { newPassword } = req.body;
 
     if (!email || !newPassword) {
       return res.status(400).json({ 

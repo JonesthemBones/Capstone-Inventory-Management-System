@@ -6,6 +6,13 @@ const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const router = express.Router();
 
+function resolvePythonBinary() {
+    const configuredBinary = String(process.env.PYTHON_BINARY || '').trim();
+    const isWindowsPath = /^[A-Za-z]:[\\/]/.test(configuredBinary);
+    if (process.platform !== 'win32' && isWindowsPath) return 'python3';
+    return configuredBinary || (process.platform === 'win32' ? 'python' : 'python3');
+}
+
 // Debug middleware to log all routes
 router.use((req, res, next) => {
     console.log(`OpenRouter middleware: ${req.method} ${req.path}`);
@@ -13,7 +20,7 @@ router.use((req, res, next) => {
 });
 
 const VLM_CONFIG_FILE = path.resolve(__dirname, './vlm_settings.json');
-const PYTHON_BINARY = process.env.PYTHON_BINARY || 'python';
+const PYTHON_BINARY = resolvePythonBinary();
 const PYTHON_SCRIPT = path.resolve(__dirname, './python_vlm.py');
 const DEFAULT_VLM_MODEL = 'deepseek-v4-flash-vision-exp';
 const DEFAULT_VLM_ENDPOINT = 'https://api.deepseek.com/chat/completions';
@@ -362,7 +369,12 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
             stderr += chunk.toString();
         });
 
-        const exitCode = await new Promise((resolve) => child.on('close', resolve));
+        const exitCode = await new Promise((resolve, reject) => {
+            child.once('error', (error) => {
+                reject(new Error(`Unable to start ${taskLabel} extraction subprocess: ${error.message}`));
+            });
+            child.once('close', resolve);
+        });
 
         if (exitCode !== 0) {
             throw new Error(stderr.trim() || `${taskLabel} extraction subprocess failed without error details.`);

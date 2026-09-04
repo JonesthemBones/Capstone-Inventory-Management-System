@@ -31,8 +31,8 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log('Blocked by CORS:', origin);
-      callback(null, true); 
+      console.log('Allowing CORS origin:', origin);
+      callback(null, true);
     }
   },
   credentials: true,
