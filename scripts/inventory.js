@@ -119,10 +119,35 @@ function getProductStockStatus(product) {
     return 'in_stock';
 }
 
+const normalizeUnit = unit => String(unit || '').trim().toUpperCase();
+
+function setProductUnitValue(unit) {
+    const select = document.getElementById('product-unit');
+    const normalizedUnit = normalizeUnit(unit);
+
+    if (!select || !normalizedUnit) {
+        if (select) select.value = '';
+        return;
+    }
+
+    const matchingOption = Array.from(select.options).find(option =>
+        normalizeUnit(option.value) === normalizedUnit
+    );
+
+    if (matchingOption) {
+        select.value = matchingOption.value;
+        return;
+    }
+
+    // Imported or restored products may use a valid unit that is not in the
+    // standard list. Preserve it so the edit form does not silently clear it.
+    select.add(new Option(normalizedUnit, normalizedUnit));
+    select.value = normalizedUnit;
+}
+
 function updateInventoryUnitOptions(products) {
     const select = document.getElementById('unit-filter');
     if (!select) return;
-    const normalizeUnit = unit => String(unit || '').trim().toUpperCase();
     const selected = normalizeUnit(select.value);
     const units = [...new Set((products || []).map(product => normalizeUnit(product.unit_of_measure)).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b));
@@ -1139,7 +1164,7 @@ async function saveProduct(e) {
         product_name: document.getElementById('product-name').value.trim().toUpperCase(),
         product_code: document.getElementById('product-code').value.trim(),
         category_id: document.getElementById('product-category').value,
-        unit_of_measure: document.getElementById('product-unit').value,
+        unit_of_measure: normalizeUnit(document.getElementById('product-unit').value),
         unit_price: parseFloat(document.getElementById('product-price').value),
         selling_price: parseFloat(document.getElementById('selling-price').value),
         reorder_level: parseInt(document.getElementById('reorder-level').value),
@@ -1232,7 +1257,7 @@ async function editProduct(productId) {
         document.getElementById('product-name').value = product.product_name;
         document.getElementById('product-code').value = product.product_code || '';
         document.getElementById('product-category').value = product.category_id || '';
-        document.getElementById('product-unit').value = product.unit_of_measure || '';
+        setProductUnitValue(product.unit_of_measure);
         document.getElementById('product-price').value = product.unit_price || 0;
         document.getElementById('selling-price').value = product.selling_price || 0;
         document.getElementById('reorder-level').value = product.reorder_level || 10;

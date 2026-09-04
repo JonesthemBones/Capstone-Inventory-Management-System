@@ -1384,7 +1384,30 @@ async function saveAcceptedItemsToInventory() {
         // Clear items after successful save
         clearReceiptSelection();
         
-        alert(`Save complete!\n\nProcessed: ${successCount}\nFailed: ${failedCount}`);
+        let notificationMessage;
+        let notificationType;
+
+        if (failedCount === 0 && successCount > 0) {
+            notificationMessage = `${successCount} item(s) saved to inventory successfully.`;
+            notificationType = 'success';
+        } else if (successCount > 0) {
+            notificationMessage = `Save partially completed: ${successCount} item(s) saved and ${failedCount} failed.`;
+            notificationType = 'warning';
+        } else if (failedCount > 0) {
+            notificationMessage = `No items were saved. ${failedCount} item(s) failed.`;
+            notificationType = 'error';
+        } else {
+            notificationMessage = rejectedCount > 0
+                ? `Review complete. ${rejectedCount} rejected item(s) were recorded; no items were added to inventory.`
+                : 'Save complete. No items were added to inventory.';
+            notificationType = 'info';
+        }
+
+        if (window.utils?.showToast) {
+            window.utils.showToast(notificationMessage, notificationType);
+        } else {
+            alert(notificationMessage);
+        }
     } catch (error) {
         console.error('Save to inventory error:', error);
         setStatus('Save failed. Check the backend server and try again.', 'danger');
