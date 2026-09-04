@@ -256,6 +256,43 @@
     border-top: 1px solid var(--border-color);
 }
 
+#restore-modal .modal-actions {
+    margin-top: 0;
+    padding: 16px 24px 20px;
+    background: var(--bg-white);
+}
+
+#restore-modal .modal-body {
+    display: grid;
+    gap: 16px;
+}
+
+#restore-modal .form-group {
+    min-width: 0;
+}
+
+#backup-file {
+    width: 100%;
+    min-width: 0;
+    padding: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+}
+
+#backup-file::file-selector-button {
+    min-height: 36px;
+    margin-right: 10px;
+    padding: 7px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--bg-light);
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+
 .btn {
     display: inline-flex;
     align-items: center;
