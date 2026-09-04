@@ -226,33 +226,61 @@ class InactivityLogout {
     async performLogout() {
         if (this.isLoggingOut) return;
         this.isLoggingOut = true;
+        window.__amacarLogoutReason = 'inactivity';
         console.log('Performing automatic logout due to inactivity...');
         
         // Clean up
         this.cleanup();
         
-        // Sign out using Supabase
+        // Do not let a slow audit/RPC request keep an expired session open.
+        const withDeadline = (promise, milliseconds, label) => Promise.race([
+            Promise.resolve(promise),
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error(`${label} timed out`)),
+                milliseconds
+            ))
+        ]);
+
+        // Sign out using Supabase. Audit and lock release are best-effort; local
+        // sign-out and navigation must still happen when the network is down.
         try {
             if (window.supabaseClient) {
                 try {
-                    const { data: { user }, error: userError } = await window.supabaseClient.auth.getUser();
+                    const { data: { user }, error: userError } = await withDeadline(
+                        window.supabaseClient.auth.getUser(), 1500, 'User lookup'
+                    );
                     if (!userError && user) {
-                        await window.logAuditEvent({
+                        await withDeadline(window.logAuditEvent({
                             actionType: 'logout',
                             tableAffected: 'auth',
                             recordId: user.id,
                             oldValues: {},
                             newValues: { reason: 'inactivity' }
-                        });
+                        }), 1500, 'Logout audit');
                     }
                 } catch (logError) {
                     console.error('Error logging inactivity logout audit event:', logError);
                 }
-                await window.authHelpers?.releaseCurrentSession?.();
-                await window.supabaseClient.auth.signOut({ scope: 'local' });
+                try {
+                    await withDeadline(
+                        window.authHelpers?.releaseCurrentSession?.(), 1500, 'Session release'
+                    );
+                } catch (releaseError) {
+                    console.error('Error releasing inactive session:', releaseError);
+                }
+                await withDeadline(
+                    window.supabaseClient.auth.signOut({ scope: 'local' }), 2000, 'Local sign out'
+                );
             }
         } catch (error) {
             console.error('Error signing out:', error);
+        } finally {
+            // Supabase normally removes this during signOut. Remove it directly as
+            // a fallback so auth.html cannot restore an expired local session.
+            const authStorageKey = window.supabaseClient?.auth?.storageKey;
+            if (authStorageKey) {
+                try { localStorage.removeItem(authStorageKey); } catch (_) { /* Storage is optional. */ }
+            }
         }
         try {
             localStorage.removeItem(this.activityStorageKey);
@@ -261,7 +289,7 @@ class InactivityLogout {
         }
         
         // Redirect to auth page with message
-        window.location.href = '/pages/auth.html?logged_out=true&reason=inactivity';
+        window.location.replace('/pages/auth.html?logged_out=true&reason=inactivity');
     }
     
     injectStyles() {
