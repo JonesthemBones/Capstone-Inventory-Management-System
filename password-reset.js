@@ -31,10 +31,12 @@ console.log('Password reset env:', {
   EMAIL_USER: !!process.env.EMAIL_USER,
 });
 const SMTP_HOST = process.env.SMTP_HOST?.trim();
+const SMTP_ADDRESS = process.env.SMTP_ADDRESS?.trim() || SMTP_HOST;
 const SMTP_PORT = process.env.SMTP_PORT?.trim();
 const SMTP_SECURE = process.env.SMTP_SECURE?.trim();
 const EMAIL_USER = process.env.EMAIL_USER?.trim();
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD?.trim();
+const SMTP_FAMILY = Number(process.env.SMTP_FAMILY || (SMTP_HOST === 'smtp.gmail.com' ? 4 : 0));
 const SMTP_PASSWORD = SMTP_HOST === 'smtp.gmail.com'
   ? EMAIL_PASSWORD?.replace(/\s+/g, '')
   : EMAIL_PASSWORD;
@@ -53,9 +55,10 @@ if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
   console.log('SMTP_SECURE:', SMTP_SECURE);
 
   transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
+    host: SMTP_ADDRESS,
     port: Number(SMTP_PORT),
     secure: SMTP_SECURE === 'true',
+    family: SMTP_FAMILY,
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 30000,
@@ -64,6 +67,7 @@ if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
       pass: SMTP_PASSWORD
     },
     tls: {
+      servername: SMTP_HOST,
       rejectUnauthorized: false
     }
   });
