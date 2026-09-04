@@ -477,8 +477,8 @@ class InactivityLogout {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {    
     window.inactivityLogout = new InactivityLogout({
-        timeout: 15 * 60 * 1000,       
-        warningTime: 2 * 60 * 1000,
+        timeout: 5 * 60 * 1000,
+        warningTime: 1 * 60 * 1000,
         checkInterval: 1000             
     });
 });

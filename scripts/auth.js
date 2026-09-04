@@ -127,14 +127,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const activityKey = 'amacar:last-activity';
         const lastActivity = Number(localStorage.getItem(activityKey));
         const sessionTimedOut = Number.isFinite(lastActivity) && lastActivity > 0
-            && Date.now() - lastActivity >= 15 * 60 * 1000;
+            && Date.now() - lastActivity >= 5 * 60 * 1000;
 
         if (sessionTimedOut) {
             await window.authHelpers.releaseCurrentSession();
             await supabaseClient.auth.signOut({ scope: 'local' });
             localStorage.removeItem(activityKey);
             if (window.utils?.showToast) {
-                window.utils.showToast('Your session expired after 15 minutes of inactivity. Please sign in again.', 'info');
+                window.utils.showToast('Your session expired after 5 minutes of inactivity. Please sign in again.', 'info');
             }
         } else if (await window.authHelpers.validateCurrentSession()) {
             if (!lastActivity) localStorage.setItem(activityKey, String(Date.now()));
