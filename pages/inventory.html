@@ -78,7 +78,7 @@
                         <div class="inventory-advanced-filters" id="advanced-inventory-filters" aria-label="Additional inventory filters" hidden>
                             <label class="inventory-filter-field"><span>Unit</span><select id="unit-filter" class="inventory-filter-control"><option value="">All Units</option></select></label>
                             <label class="inventory-filter-field"><span>Product Availability</span><select id="active-filter" class="inventory-filter-control">
-                                <option value="">All Products</option><option value="active">Active</option><option value="inactive">Inactive</option>
+                                <option value="active" selected>Active Products</option><option value="inactive">Archived Products</option><option value="">All Products</option>
                             </select></label>
                             <fieldset class="inventory-range-field"><legend>Quantity</legend><input type="number" id="min-quantity-filter" class="inventory-filter-control" min="0" placeholder="Minimum" aria-label="Minimum quantity"><span>to</span><input type="number" id="max-quantity-filter" class="inventory-filter-control" min="0" placeholder="Maximum" aria-label="Maximum quantity"></fieldset>
                             <fieldset class="inventory-range-field"><legend>Selling Price</legend><input type="number" id="min-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Minimum" aria-label="Minimum selling price"><span>to</span><input type="number" id="max-price-filter" class="inventory-filter-control" min="0" step="0.01" placeholder="Maximum" aria-label="Maximum selling price"></fieldset>
@@ -436,7 +436,6 @@
                     <select id="restore-mode" required style="padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; width: 100%;">
                         <option value="">Select restore mode...</option>
                         <option value="merge">Merge - Update existing products and add new ones</option>
-                        <option value="replace">Replace - Delete all existing products and restore from backup</option>
                         <option value="add-only">Add Only - Only add new products, skip existing ones</option>
                     </select>
                 </div>
@@ -554,7 +553,7 @@
                     <h3>Actions</h3>
                     <ul>
                        <li>
-                        The action buttons allow you to view product history, edit details, or delete items.
+                        The action buttons allow you to view product history, edit details, adjust stock, or archive items while preserving their records.
                        </li>
                     </ul>
                 </div>

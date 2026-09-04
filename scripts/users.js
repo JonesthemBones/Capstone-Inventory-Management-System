@@ -116,9 +116,6 @@ function renderUsers() {
                             title="${user.is_active ? 'Deactivate' : 'Activate'}">
                         <i class="fas fa-${user.is_active ? 'user-slash' : 'user-check'}"></i>
                     </button>
-                    <button class="icon-btn delete" onclick="deleteUser('${user.user_id}')" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
                 </div>
             </td>
         </tr>
@@ -292,35 +289,20 @@ async function toggleUserStatus(userId, newStatus) {
             .eq('user_id', userId);
         
         if (error) throw error;
+
+        await window.logAuditEvent?.({
+            actionType: newStatus ? 'user_reactivated' : 'user_deactivated',
+            tableAffected: 'users',
+            recordId: userId,
+            oldValues: { is_active: !newStatus },
+            newValues: { is_active: newStatus }
+        });
         
         showToast(`User ${action}d successfully`, 'success');
         await loadUsers();
     } catch (error) {
         console.error('Error updating user status:', error);
         showToast('Failed to update user status', 'error');
-    }
-}
-
-async function deleteUser(userId) {
-    if (!await window.utils.confirmDialog('This staff account will be permanently deleted. This action cannot be undone.', {
-        title: 'Delete staff account?',
-        confirmText: 'Delete account',
-        variant: 'danger'
-    })) return;
-    
-    try {
-        const { error } = await window.supabaseClient
-            .from('users')
-            .delete()
-            .eq('user_id', userId);
-        
-        if (error) throw error;
-        
-        showToast('User deleted successfully', 'success');
-        await loadUsers();
-    } catch (error) {
-        console.error('Error deleting user:', error);
-        showToast('Failed to delete user', 'error');
     }
 }
 
@@ -407,7 +389,7 @@ function openRestoreModal() {
     const fileInput = document.getElementById('backup-file');
     fileInput.value = '';
     
-    document.getElementById('restore-mode').value = 'replace';
+    document.getElementById('restore-mode').value = 'merge';
     
     const restoreBtn = document.getElementById('confirm-restore-btn');
     restoreBtn.disabled = true;
@@ -591,6 +573,10 @@ async function restoreBackup() {
     }
     
     const mode = document.getElementById('restore-mode').value;
+    if (mode === 'replace') {
+        showToast('Destructive replacement is disabled. Use Merge or Add Only.', 'error');
+        return;
+    }
     const confirmMsg = mode === 'replace' 
         ? `⚠️ This will DELETE all ${allUsers.length} users and restore ${backupData.length} users.\n\nType 'DELETE' to confirm:`
         : `Restore ${backupData.length} users in "${mode}" mode?`;

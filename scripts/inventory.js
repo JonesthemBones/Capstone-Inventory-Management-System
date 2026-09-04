@@ -521,8 +521,8 @@ function displayInventory(products) {
         if (currentUserRole === 'cashier') {
             actionButtons = '<span style="color: var(--text-secondary); font-size: 12px;">View Only</span>';
         } else {
-            const deleteButton = ['owner', 'admin', 'manager'].includes(currentUserRole)
-                ? `<button class="icon-btn delete delete-btn" data-id="${product.product_id}" title="Delete Product"><i class="fas fa-trash"></i></button>`
+            const archiveButton = ['owner', 'admin', 'manager'].includes(currentUserRole)
+                ? `<button class="icon-btn archive-btn" data-id="${product.product_id}" data-active="${product.is_active !== false}" title="${product.is_active === false ? 'Restore Product' : 'Archive Product'}"><i class="fas fa-${product.is_active === false ? 'undo' : 'archive'}"></i></button>`
                 : '';
             actionButtons = `
                 <div class="action-btns">
@@ -532,7 +532,7 @@ function displayInventory(products) {
                     <button class="icon-btn edit-btn" data-id="${product.product_id}" title="Edit Product">
                         <i class="fas fa-edit"></i>
                     </button>
-                    ${deleteButton}
+                    ${archiveButton}
                 </div>
             `;
         }
@@ -606,8 +606,8 @@ function displayInventory(products) {
         });
         
         if (['owner', 'admin', 'manager'].includes(currentUserRole)) {
-            document.querySelectorAll('.delete-btn').forEach(btn => {
-                btn.addEventListener('click', () => deleteProduct(btn.dataset.id));
+            document.querySelectorAll('.archive-btn').forEach(btn => {
+                btn.addEventListener('click', () => setProductArchived(btn.dataset.id, btn.dataset.active === 'true'));
             });
         }
     }
@@ -667,7 +667,7 @@ function renderMobileInventoryCards(products) {
             : `<div class="inventory-card-image-placeholder"><i class="fas fa-image"></i></div>`;
         const actions = canManage
             ? `<div class="inventory-card-actions" aria-label="Actions for ${safeName}">
-                    ${canDelete ? `<button type="button" class="btn inventory-card-action inventory-card-delete delete-btn" data-id="${safeId}" aria-label="Delete ${safeName}"><i class="fas fa-trash"></i> Delete</button>` : ''}
+                    ${canDelete ? `<button type="button" class="btn inventory-card-action archive-btn" data-id="${safeId}" data-active="${product.is_active !== false}" aria-label="${product.is_active === false ? 'Restore' : 'Archive'} ${safeName}"><i class="fas fa-${product.is_active === false ? 'undo' : 'archive'}"></i> ${product.is_active === false ? 'Restore' : 'Archive'}</button>` : ''}
                     <button type="button" class="btn inventory-card-action edit-btn" data-id="${safeId}"><i class="fas fa-edit"></i> Edit</button>
                     <button type="button" class="btn inventory-card-action adjust-btn" data-id="${safeId}"><i class="fas fa-boxes"></i> Adjust</button>
                </div>`
@@ -743,11 +743,12 @@ function setupEventListeners() {
     });
     document.getElementById('toggle-advanced-filters')?.addEventListener('click', toggleAdvancedInventoryFilters);
     document.getElementById('reset-inventory-filters')?.addEventListener('click', () => {
-        ['inventory-search', 'category-filter', 'status-filter', 'unit-filter', 'active-filter', 'min-quantity-filter',
+        ['inventory-search', 'category-filter', 'status-filter', 'unit-filter', 'min-quantity-filter',
             'max-quantity-filter', 'min-price-filter', 'max-price-filter'].forEach(id => {
             const element = document.getElementById(id);
             if (element) element.value = '';
         });
+        document.getElementById('active-filter').value = 'active';
         document.getElementById('inventory-sort').value = 'name_asc';
         inventoryCurrentPage = 1;
         updateInventoryFilterControls();
@@ -853,7 +854,7 @@ function updateInventoryFilterControls() {
     const advancedCount = getAdvancedFilterCount();
     const countBadge = document.getElementById('advanced-filter-count');
     const clearButton = document.getElementById('reset-inventory-filters');
-    const hasAnyFilter = Boolean(filters.search.trim() || filters.category || filters.status || advancedCount || filters.sort !== 'name_asc');
+    const hasAnyFilter = Boolean(filters.search.trim() || filters.category || filters.status || (filters.active && filters.active !== 'active') || advancedCount || filters.sort !== 'name_asc');
 
     if (countBadge) {
         countBadge.textContent = advancedCount;
@@ -1372,49 +1373,45 @@ async function editProduct(productId) {
     }
 }
 
-async function deleteProduct(productId) {
+async function setProductArchived(productId, currentlyActive) {
     try {
         if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
-            alert('Only management can permanently delete products.');
+            alert('Only management can archive or restore products.');
             return;
         }
-        if (!await window.utils.confirmDialog('This will permanently delete the product and its stock change history.', {
-            title: 'Delete product?',
-            confirmText: 'Delete product',
-            variant: 'danger'
+        const willArchive = currentlyActive;
+        const action = willArchive ? 'Archive' : 'Restore';
+        if (!await window.utils.confirmDialog(
+            willArchive
+                ? 'The product will be hidden from active inventory, sales, receipt matching, and stock-removal lists. Its history will be preserved.'
+                : 'The product will return to active inventory and operational lists.', {
+            title: `${action} product?`,
+            confirmText: action,
+            variant: willArchive ? 'danger' : 'primary'
         })) {
             return;
         }
 
-        // Delete dependent records first (FK constraints)
-        const { error: movementsError } = await supabaseClient
-            .from('stock_movements')
-            .delete()
-            .eq('product_id', productId);
-        
-        if (movementsError) throw movementsError;
-
-        const { error: inventoryError } = await supabaseClient
-            .from('inventory_stock')
-            .delete()
-            .eq('product_id', productId);
-        
-        if (inventoryError) throw inventoryError;
-
-        // Now delete the product itself
-        const { error: productError } = await supabaseClient
+        const { error } = await supabaseClient
             .from('products')
-            .delete()
+            .update({ is_active: !willArchive })
             .eq('product_id', productId);
-        
-        if (productError) throw productError;
+        if (error) throw error;
+
+        await window.logAuditEvent?.({
+            actionType: willArchive ? 'product_archived' : 'product_restored',
+            tableAffected: 'products',
+            recordId: productId,
+            oldValues: { is_active: currentlyActive },
+            newValues: { is_active: !willArchive }
+        });
 
         await loadInventory(getFilters());
-        alert('Product deleted successfully!');
+        alert(`Product ${willArchive ? 'archived' : 'restored'} successfully.`);
         
     } catch (error) {
-        console.error('Error deleting product:', error);
-        alert('Error deleting product: ' + error.message);
+        console.error('Error changing product archive status:', error);
+        alert('Error changing product status: ' + error.message);
     }
 }
 
@@ -1752,6 +1749,10 @@ async function restoreBackup() {
     const restoreMode = document.getElementById('restore-mode').value;
     if (!restoreMode) {
         alert('Please select a restore mode.');
+        return;
+    }
+    if (restoreMode === 'replace') {
+        alert('Destructive replacement is disabled. Use Merge or Add Only.');
         return;
     }
 
