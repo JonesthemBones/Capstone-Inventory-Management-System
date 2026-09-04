@@ -1,6 +1,7 @@
 const VLM_API_ENDPOINT = '/api/vlm-scan';
 const SUPPLIER_VLM_API_ENDPOINT = '/api/vlm-scan-supplier';
 const VLM_CONFIG_ENDPOINT = '/api/vlm-config';
+const VLM_HISTORY_ENDPOINT = '/api/vlm-extraction-history';
 let currentReceiptImage = null;
 let currentItems = [];
 let currentSupplierDetails = {};
@@ -20,6 +21,66 @@ function setStatus(message, variant = 'neutral') {
     if (!statusElement) return;
     statusElement.textContent = message;
     statusElement.className = `vlm-status vlm-status-${variant}`;
+}
+
+function formatHistoryDate(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Unknown date' : date.toLocaleString();
+}
+
+function renderExtractionHistory(history) {
+    const list = document.getElementById('vlm-history-list');
+    if (!list) return;
+    if (!Array.isArray(history) || history.length === 0) {
+        list.innerHTML = '<div class="vlm-history-empty"><i class="fas fa-clock"></i> No saved extractions yet.</div>';
+        return;
+    }
+
+    list.innerHTML = history.map((entry, index) => {
+        const items = Array.isArray(entry.items) ? entry.items : [];
+        const itemRows = items.map(item => `
+            <tr>
+                <td>${escapeHtml(item.name || 'Unnamed item')}</td>
+                <td>${escapeHtml(String(item.quantity ?? 0))} ${escapeHtml(item.unitOfMeasure || 'unit')}</td>
+                <td>₱${Number(item.unitPrice || 0).toFixed(2)}</td>
+                <td>${escapeHtml(item.categoryName || 'Uncategorized')}</td>
+                <td>${item.inventoryAction === 'created' ? 'New product' : 'Stock updated'}</td>
+            </tr>`).join('');
+        return `
+            <details class="vlm-history-entry" ${index === 0 ? 'open' : ''}>
+                <summary>
+                    <span><strong>${escapeHtml(formatHistoryDate(entry.savedAt))}</strong><small>Saved by ${escapeHtml(entry.savedBy || 'Unknown user')}</small></span>
+                    <span class="vlm-history-count">${items.length} item${items.length === 1 ? '' : 's'}</span>
+                </summary>
+                <div class="vlm-history-table-wrap">
+                    <table class="vlm-history-table">
+                        <thead><tr><th>Item</th><th>Quantity</th><th>Cost</th><th>Category</th><th>Result</th></tr></thead>
+                        <tbody>${itemRows}</tbody>
+                    </table>
+                </div>
+            </details>`;
+    }).join('');
+}
+
+async function loadExtractionHistory() {
+    const list = document.getElementById('vlm-history-list');
+    if (!list) return;
+    list.setAttribute('aria-busy', 'true');
+    try {
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
+        if (!session?.access_token) throw new Error('Your session has expired.');
+        const response = await fetch(`${VLM_HISTORY_ENDPOINT}?limit=20`, {
+            headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result?.error || 'Unable to load extraction history.');
+        renderExtractionHistory(result.history);
+    } catch (error) {
+        console.error('Extraction history load failed:', error);
+        list.innerHTML = `<div class="vlm-history-empty vlm-history-error">${escapeHtml(error.message || 'Unable to load extraction history.')}</div>`;
+    } finally {
+        list.removeAttribute('aria-busy');
+    }
 }
 
 function setPreviewImage(dataUrl) {
@@ -1408,6 +1469,7 @@ async function saveAcceptedItemsToInventory() {
         } else {
             alert(notificationMessage);
         }
+        if (successCount > 0) await loadExtractionHistory();
     } catch (error) {
         console.error('Save to inventory error:', error);
         setStatus('Save failed. Check the backend server and try again.', 'danger');
@@ -1439,6 +1501,7 @@ async function initReceiptScanner() {
     const saveThumbnailBtn = document.getElementById('save-thumbnail-btn');
     const cancelThumbnailBtn = document.getElementById('cancel-thumbnail-btn');
     const closeThumbnailBtn = document.getElementById('thumbnail-modal-close');
+    const refreshHistoryBtn = document.getElementById('refresh-vlm-history-btn');
 
     if (imageInput) {
         imageInput.addEventListener('change', async (event) => {
@@ -1516,6 +1579,8 @@ async function initReceiptScanner() {
         });
     }
 
+    refreshHistoryBtn?.addEventListener('click', loadExtractionHistory);
+
     if (changeThumbnailBtn && thumbnailFileInput) {
         changeThumbnailBtn.addEventListener('click', () => thumbnailFileInput.click());
     }
@@ -1573,6 +1638,7 @@ async function initReceiptScanner() {
     }
 
     await initAdminVLMSettings();
+    await loadExtractionHistory();
     window.authHelpers.revealProtectedContent();
     clearReceiptSelection();
 }

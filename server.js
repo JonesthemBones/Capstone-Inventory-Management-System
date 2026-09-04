@@ -79,6 +79,7 @@ app.listen(PORT, () => {
   console.log(`  POST /api/verify-otp`);
   console.log(`  POST /api/reset-password`);
   console.log(`  POST /api/vlm-scan`);
+  console.log(`  GET  /api/vlm-extraction-history`);
   console.log(`  POST /api/save-items-to-inventory`);
   console.log(`\n`);
 });
