@@ -35,28 +35,30 @@ async function loadUserRole() {
             attempts++;
         }
         
-        currentUserRole = window.currentUserRole || 'staff';
+        currentUserRole = window.currentUserRole || 'guest';
         console.log('Current user role:', currentUserRole);
     } catch (error) {
         console.error('Error loading user role:', error);
-        currentUserRole = 'staff';
+        currentUserRole = 'guest';
     }
 }
 
 function applyRoleBasedAccess() {
-    // Staff and cashiers have a read-only inventory catalog.
-    if (currentUserRole === 'staff' || currentUserRole === 'cashier') {
+    // Cashiers have a read-only inventory catalog. Staff are inventory operators.
+    if (currentUserRole === 'cashier') {
         const title = document.querySelector('.page-title');
         const subtitle = document.querySelector('.page-subtitle');
-        if (title) title.textContent = currentUserRole === 'cashier' ? 'Inventory Lookup' : 'Inventory Catalog';
+        if (title) title.textContent = 'Inventory Lookup';
         if (subtitle) subtitle.textContent = 'View product availability and current stock levels (read-only)';
-        const backupRestoreButtons = document.querySelectorAll('.role-backup-restore');
-        backupRestoreButtons.forEach(btn => {
+    }
+
+    if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
+        document.querySelectorAll('.role-backup-restore').forEach(btn => {
             btn.style.display = 'none';
         });
     }
     
-    if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
+    if (currentUserRole === 'cashier') {
         const staffButtons = document.querySelectorAll('.role-requires-staff-or-admin');
         staffButtons.forEach(btn => {
             btn.style.display = 'none';
@@ -335,6 +337,9 @@ function renderBatchMovementEditRow(movement) {
 }
 
 async function saveBatchMovementPrices(product, movement, row) {
+    if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+        throw new Error('Only management can edit historical batch prices.');
+    }
     const unitPriceInput = row.querySelector('[data-field="unit_price"]');
     const sellingPriceInput = row.querySelector('[data-field="selling_price"]');
     const unitPrice = parseBatchPrice(unitPriceInput.value);
@@ -383,7 +388,7 @@ function renderInboundBatchHistory(product, batchRow) {
                     <th>Cost per Unit</th>
                     <th>Selling Price</th>
                     <th>Notes</th>
-                    ${currentUserRole !== 'cashier' ? '<th>Actions</th>' : ''}
+                    ${['owner', 'admin', 'manager'].includes(currentUserRole) ? '<th>Actions</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -402,7 +407,7 @@ function renderInboundBatchHistory(product, batchRow) {
                             <td class="${unitPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.unit_price || 0)}</td>
                             <td class="${sellingPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.selling_price || 0)}</td>
                             <td>${movement.notes || ''}</td>
-                            ${currentUserRole !== 'cashier' ? '<td class="batch-actions-cell"><button type="button" class="icon-btn batch-edit-btn" title="Edit batch prices" aria-label="Edit batch prices"><i class="fas fa-pen"></i></button></td>' : ''}
+                            ${['owner', 'admin', 'manager'].includes(currentUserRole) ? '<td class="batch-actions-cell"><button type="button" class="icon-btn batch-edit-btn" title="Edit batch prices" aria-label="Edit batch prices"><i class="fas fa-pen"></i></button></td>' : ''}
                         </tr>
                     `;
                 }).join('')}
@@ -513,10 +518,12 @@ function displayInventory(products) {
         
         // Generate action buttons based on role
         let actionButtons = '';
-        if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
+        if (currentUserRole === 'cashier') {
             actionButtons = '<span style="color: var(--text-secondary); font-size: 12px;">View Only</span>';
         } else {
-            // Staff and admins get full action buttons
+            const deleteButton = ['owner', 'admin', 'manager'].includes(currentUserRole)
+                ? `<button class="icon-btn delete delete-btn" data-id="${product.product_id}" title="Delete Product"><i class="fas fa-trash"></i></button>`
+                : '';
             actionButtons = `
                 <div class="action-btns">
                     <button class="icon-btn adjust-btn" data-id="${product.product_id}" title="Adjust Stock">
@@ -525,9 +532,7 @@ function displayInventory(products) {
                     <button class="icon-btn edit-btn" data-id="${product.product_id}" title="Edit Product">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button class="icon-btn delete delete-btn" data-id="${product.product_id}" title="Delete Product">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    ${deleteButton}
                 </div>
             `;
         }
@@ -544,7 +549,7 @@ function displayInventory(products) {
                          loading="lazy">
                 </td>
             `;
-        } else if (currentUserRole === 'cashier' || currentUserRole === 'staff') {
+        } else if (currentUserRole === 'cashier') {
             thumbnailCell = `
                 <td class="product-thumbnail-cell">
                     <div class="product-thumbnail-placeholder" title="No product image available">
@@ -590,8 +595,8 @@ function displayInventory(products) {
         `;
     }).join('');
     
-    // Only attach mutation listeners for inventory managers.
-    if (currentUserRole !== 'cashier' && currentUserRole !== 'staff') {
+    // Staff can maintain operational details and stock; deletion remains managerial.
+    if (['owner', 'admin', 'manager', 'staff'].includes(currentUserRole)) {
         document.querySelectorAll('.adjust-btn').forEach(btn => {
             btn.addEventListener('click', () => openStockAdjustmentModal(btn.dataset.id));
         });
@@ -600,9 +605,11 @@ function displayInventory(products) {
             btn.addEventListener('click', () => editProduct(btn.dataset.id));
         });
         
-        document.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', () => deleteProduct(btn.dataset.id));
-        });
+        if (['owner', 'admin', 'manager'].includes(currentUserRole)) {
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', () => deleteProduct(btn.dataset.id));
+            });
+        }
     }
 
     setupBatchHistoryToggles(products);
@@ -640,7 +647,8 @@ function renderMobileInventoryCards(products) {
         return;
     }
 
-    const canManage = currentUserRole !== 'cashier' && currentUserRole !== 'staff';
+    const canManage = ['owner', 'admin', 'manager', 'staff'].includes(currentUserRole);
+    const canDelete = ['owner', 'admin', 'manager'].includes(currentUserRole);
     grid.innerHTML = products.map(product => {
         const quantity = getInventoryQuantity(product);
         const unitPrice = Number(product.unit_price || 0);
@@ -659,7 +667,7 @@ function renderMobileInventoryCards(products) {
             : `<div class="inventory-card-image-placeholder"><i class="fas fa-image"></i></div>`;
         const actions = canManage
             ? `<div class="inventory-card-actions" aria-label="Actions for ${safeName}">
-                    <button type="button" class="btn inventory-card-action inventory-card-delete delete-btn" data-id="${safeId}" aria-label="Delete ${safeName}"><i class="fas fa-trash"></i> Delete</button>
+                    ${canDelete ? `<button type="button" class="btn inventory-card-action inventory-card-delete delete-btn" data-id="${safeId}" aria-label="Delete ${safeName}"><i class="fas fa-trash"></i> Delete</button>` : ''}
                     <button type="button" class="btn inventory-card-action edit-btn" data-id="${safeId}"><i class="fas fa-edit"></i> Edit</button>
                     <button type="button" class="btn inventory-card-action adjust-btn" data-id="${safeId}"><i class="fas fa-boxes"></i> Adjust</button>
                </div>`
@@ -705,6 +713,17 @@ function getStockAdjustmentElements() {
         quantity: document.getElementById('adjustment-quantity') || document.getElementById('stock-quantity'),
         notes: document.getElementById('adjustment-notes') || document.getElementById('stock-notes')
     };
+}
+
+function updateAdjustmentForm() {
+    const type = document.getElementById('adjustment-type')?.value;
+    const label = document.getElementById('adjustment-quantity-label');
+    if (!label) return;
+    label.textContent = type === 'add'
+        ? 'Quantity to Add *'
+        : type === 'reduce'
+            ? 'Quantity to Reduce *'
+            : 'New Stock Quantity *';
 }
 
 function setupEventListeners() {
@@ -756,6 +775,8 @@ function setupEventListeners() {
         currentEditingProductId = null;
         document.getElementById('modal-title').textContent = 'Add New Product';
         document.getElementById('product-form').reset();
+        document.getElementById('product-price').disabled = false;
+        document.getElementById('selling-price').disabled = false;
         pendingNewProductImageFile = null;
         toggleProductThumbnailSection(true);
         updateProductThumbnailPreview(null);
@@ -937,8 +958,8 @@ function renderReorderList() {
 }
 
 function openReorderModal() {
-    if (!['owner', 'admin', 'manager'].includes(String(currentUserRole).toLowerCase())) {
-        alert('Only an owner, admin, or manager can create a restock list.');
+    if (!['owner', 'admin', 'manager', 'staff'].includes(String(currentUserRole).toLowerCase())) {
+        alert('You do not have permission to create a restock list.');
         return;
     }
     generatedReorderItems = buildReorderItems();
@@ -1070,6 +1091,11 @@ async function openStockAdjustmentModal(productId) {
         if (stockElements.quantity) {
             stockElements.quantity.value = '';
         }
+        const adjustmentType = document.getElementById('adjustment-type');
+        const adjustmentReason = document.getElementById('adjustment-reason');
+        if (adjustmentType) adjustmentType.value = '';
+        if (adjustmentReason) adjustmentReason.value = '';
+        updateAdjustmentForm();
         if (stockElements.notes) {
             stockElements.notes.value = '';
         }
@@ -1085,10 +1111,24 @@ async function openStockAdjustmentModal(productId) {
 async function saveStockAdjustment(e) {
     e.preventDefault();  
     const stockElements = getStockAdjustmentElements();
-    const quantity = parseInt(stockElements.quantity?.value || '0');
-    const notes = stockElements.notes?.value || '';
+    const enteredQuantity = parseInt(stockElements.quantity?.value || '0', 10);
+    const adjustmentType = document.getElementById('adjustment-type')?.value;
+    const reason = document.getElementById('adjustment-reason')?.value;
+    const notes = stockElements.notes?.value.trim() || '';
     
     try {
+        if (!['owner', 'admin', 'manager', 'staff'].includes(currentUserRole)) {
+            throw new Error('You do not have permission to adjust inventory.');
+        }
+        if (!['add', 'reduce', 'set'].includes(adjustmentType) || !reason || !Number.isInteger(enteredQuantity) || enteredQuantity < 0) {
+            alert('Select an adjustment type and reason, then enter a valid quantity.');
+            return;
+        }
+
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+        if (authError || !user) throw new Error('Your session could not be verified. Please sign in again.');
+        let quantity = enteredQuantity;
+
         // Get product with maximum stock limit
         const { data: product } = await supabaseClient
             .from('products')
@@ -1097,7 +1137,7 @@ async function saveStockAdjustment(e) {
             .single();
         
         // Validate against maximum stock
-        if (product.maximum_stock && quantity > product.maximum_stock) {
+        if (adjustmentType === 'set' && product.maximum_stock && quantity > product.maximum_stock) {
             alert(`❌ Cannot adjust stock!\n\nThe quantity (${quantity}) exceeds the maximum stock limit of ${product.maximum_stock} for ${product.product_name}.\n\nPlease enter a quantity at or below the maximum stock limit.`);
             return;
         }
@@ -1107,6 +1147,22 @@ async function saveStockAdjustment(e) {
             .select('quantity, stock_id')
             .eq('product_id', currentAdjustingProductId)
             .maybeSingle();
+
+        const previousQuantity = Number(existingStock?.quantity || 0);
+        quantity = adjustmentType === 'add'
+            ? previousQuantity + enteredQuantity
+            : adjustmentType === 'reduce'
+                ? previousQuantity - enteredQuantity
+                : enteredQuantity;
+
+        if (quantity < 0) {
+            alert(`Cannot reduce stock below zero. Current quantity: ${previousQuantity}.`);
+            return;
+        }
+        if (product.maximum_stock && quantity > product.maximum_stock) {
+            alert(`Cannot adjust stock to ${quantity}; the maximum for ${product.product_name} is ${product.maximum_stock}.`);
+            return;
+        }
         
         let updateError;
         
@@ -1134,17 +1190,35 @@ async function saveStockAdjustment(e) {
 
         if (updateError) throw updateError;
         
-        const quantityChange = quantity - (existingStock?.quantity || 0);
+        const quantityChange = quantity - previousQuantity;
 
-        await supabaseClient
+        const { error: movementError } = await supabaseClient
             .from('stock_movements')
             .insert([{
                 product_id: currentAdjustingProductId,
                 movement_type: 'adjustment',
                 quantity_change: quantityChange,
+                quantity_before: previousQuantity,
                 quantity_after: quantity,
-                notes: notes || 'Stock adjustment'
+                reference_type: `manual_${reason}`,
+                performed_by: user.id,
+                notes: notes || `Manual stock adjustment: ${reason.replaceAll('_', ' ')}`
             }]);
+        if (movementError) {
+            // Avoid an untraceable stock change if the audit movement cannot be recorded.
+            if (existingStock) {
+                await supabaseClient
+                    .from('inventory_stock')
+                    .update({ quantity: previousQuantity })
+                    .eq('product_id', currentAdjustingProductId);
+            } else {
+                await supabaseClient
+                    .from('inventory_stock')
+                    .delete()
+                    .eq('product_id', currentAdjustingProductId);
+            }
+            throw movementError;
+        }
         
         getStockAdjustmentElements().modal?.classList.remove('active');
         await loadInventory(getFilters());
@@ -1159,6 +1233,16 @@ async function saveStockAdjustment(e) {
 async function saveProduct(e) {
     e.preventDefault();
     let thumbnailUploadError = null;
+
+    if (!['owner', 'admin', 'manager', 'staff'].includes(currentUserRole)) {
+        alert('You do not have permission to save products.');
+        return;
+    }
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+        alert('Your session could not be verified. Please sign in again.');
+        return;
+    }
     
     const productData = {
         product_name: document.getElementById('product-name').value.trim().toUpperCase(),
@@ -1171,6 +1255,12 @@ async function saveProduct(e) {
         maximum_stock: parseInt(document.getElementById('maximum-stock').value) || null,
         description: document.getElementById('product-description').value || null
     };
+
+    // Staff may price a new item, but changes to established pricing require management.
+    if (currentEditingProductId && currentUserRole === 'staff') {
+        delete productData.unit_price;
+        delete productData.selling_price;
+    }
     
     const quantity = parseInt(document.getElementById('product-quantity').value);
     
@@ -1215,6 +1305,7 @@ async function saveProduct(e) {
                     quantity_change: quantity,
                     quantity_before: 0,
                     quantity_after: quantity,
+                    performed_by: user.id,
                     notes: 'Initial stock'
                 }]);
 
@@ -1260,6 +1351,8 @@ async function editProduct(productId) {
         setProductUnitValue(product.unit_of_measure);
         document.getElementById('product-price').value = product.unit_price || 0;
         document.getElementById('selling-price').value = product.selling_price || 0;
+        document.getElementById('product-price').disabled = currentUserRole === 'staff';
+        document.getElementById('selling-price').disabled = currentUserRole === 'staff';
         document.getElementById('reorder-level').value = product.reorder_level || 10;
         document.getElementById('maximum-stock').value = product.maximum_stock || '';
         document.getElementById('product-description').value = product.description || '';
@@ -1281,6 +1374,10 @@ async function editProduct(productId) {
 
 async function deleteProduct(productId) {
     try {
+        if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+            alert('Only management can permanently delete products.');
+            return;
+        }
         if (!await window.utils.confirmDialog('This will permanently delete the product and its stock change history.', {
             title: 'Delete product?',
             confirmText: 'Delete product',
@@ -1448,6 +1545,10 @@ async function exportToCSV() {
 let selectedBackupData = null;
 
 async function exportBackup() {
+    if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+        alert('Only management can create inventory backups.');
+        return;
+    }
     try {
         // Show loading indicator
         const originalText = document.getElementById('export-backup-btn').innerHTML;
@@ -1639,6 +1740,10 @@ function resetRestoreModal() {
 }
 
 async function restoreBackup() {
+    if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+        alert('Only management can restore inventory backups.');
+        return;
+    }
     if (!selectedBackupData) {
         alert('Please select a backup file first.');
         return;

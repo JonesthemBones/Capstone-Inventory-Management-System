@@ -133,11 +133,11 @@ async function getUserRole() {
             .maybeSingle();
 
         if (error) {
-            console.warn('⚠️ Error fetching user role; falling back to staff:', error.message);
-            return 'staff';
+            console.warn('⚠️ Error fetching user role; denying role-based access:', error.message);
+            return 'guest';
         }
 
-        const role = (userData?.role || 'staff').toLowerCase();
+        const role = (userData?.role || 'guest').toLowerCase();
         return role;
     } catch (error) {
         console.error('Error in getUserRole:', error);
