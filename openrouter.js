@@ -510,6 +510,50 @@ router.post('/vlm-scan-supplier', async (req, res) => {
     }
 });
 
+router.get('/vlm-extraction-history', async (req, res) => {
+    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Extraction history access required.');
+    if (!operator) return;
+
+    try {
+        const requestedLimit = Number.parseInt(req.query.limit, 10);
+        const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 20;
+        const { data, error } = await supabaseClient
+            .from('audit_logs')
+            .select('log_id, user_id, new_values, action_timestamp')
+            .eq('action_type', 'receipt_scan_saved')
+            .order('action_timestamp', { ascending: false })
+            .limit(limit);
+
+        if (error) throw error;
+
+        const userIds = [...new Set((data || []).map(entry => entry.user_id).filter(Boolean))];
+        let usersById = {};
+        if (userIds.length > 0) {
+            const { data: users, error: usersError } = await supabaseClient
+                .from('users')
+                .select('user_id, first_name, last_name')
+                .in('user_id', userIds);
+            if (usersError) throw usersError;
+            usersById = (users || []).reduce((map, user) => {
+                map[user.user_id] = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                return map;
+            }, {});
+        }
+
+        res.json({
+            history: (data || []).map(entry => ({
+                id: entry.log_id,
+                savedAt: entry.action_timestamp,
+                savedBy: usersById[entry.user_id] || 'Unknown user',
+                ...(entry.new_values || {})
+            }))
+        });
+    } catch (error) {
+        console.error('Unable to load VLM extraction history:', error);
+        res.status(500).json({ error: 'Unable to load extraction history.' });
+    }
+});
+
 router.post('/save-items-to-inventory', async (req, res) => {
     const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Inventory import access required.');
     if (!operator) return;
@@ -760,6 +804,10 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     results.successful.push({
                         name: productName,
                         quantity: quantity,
+                        unitPrice,
+                        sellingPrice,
+                        unitOfMeasure: item.unit_of_measure,
+                        categoryName: existingProduct.category_id ? 'Existing product category' : item.category_name,
                         previousQuantity: previousQuantity,
                         newQuantity: newQuantity,
                         productId: productId,
@@ -846,6 +894,9 @@ router.post('/save-items-to-inventory', async (req, res) => {
                         name: productName,
                         price: price,
                         quantity: quantity,
+                        unitPrice,
+                        sellingPrice,
+                        unitOfMeasure: item.unit_of_measure,
                         categoryId: item.category_id || null,
                         categoryName: item.category_name,
                         productId: productId,
@@ -880,6 +931,30 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     error: itemError.message || 'Unknown error while saving item'
                 });
             }
+        }
+
+        // A saved extraction is history only after reviewed items have actually
+        // reached inventory. Failed and merely pending items are never included.
+        if (results.successful.length > 0) {
+            await logReceiptAuditEvent({
+                userId,
+                actionType: 'receipt_scan_saved',
+                tableAffected: 'receipt_scan',
+                newValues: {
+                    savedItemCount: results.successful.length,
+                    rejectedItemCount: results.rejected.length,
+                    items: results.successful.map(item => ({
+                        productId: item.productId,
+                        name: item.name,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice ?? item.price ?? 0,
+                        sellingPrice: item.sellingPrice ?? item.price ?? 0,
+                        unitOfMeasure: item.unitOfMeasure || 'unit',
+                        categoryName: item.categoryName || 'Uncategorized',
+                        inventoryAction: item.isNew ? 'created' : 'updated'
+                    }))
+                }
+            });
         }
 
         res.json({

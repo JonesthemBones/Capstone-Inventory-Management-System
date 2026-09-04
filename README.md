@@ -186,6 +186,7 @@ All routes are mounted under `/api`.
 | `POST` | `/verify-otp` | Verify a password-reset OTP |
 | `POST` | `/reset-password` | Reset a user password |
 | `POST` | `/vlm-scan` | Process a receipt image |
+| `GET` | `/vlm-extraction-history` | List reviewed extractions successfully saved to inventory |
 | `GET` | `/categories` | Read active categories available to receipt extraction |
 | `GET` | `/vlm-config` | Read the active VLM configuration |
 | `POST` | `/vlm-config` | Update VLM configuration |

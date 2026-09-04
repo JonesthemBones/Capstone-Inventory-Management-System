@@ -173,6 +173,21 @@
                         <div id="vlm-items-grid" class="vlm-items-grid"><div class="vlm-empty-state"><i class="fas fa-receipt"></i><strong>Your scanned items will appear here</strong><span>Add a clear receipt photo, then choose Scan Receipt.</span></div></div>
                         <pre id="vlm-raw-output" class="vlm-raw-output" hidden></pre>
                     </section>
+
+                    <section class="vlm-card vlm-history-card" aria-labelledby="vlm-history-title">
+                        <div class="vlm-card-header vlm-results-header">
+                            <div>
+                                <h2 id="vlm-history-title"><i class="fas fa-clock-rotate-left"></i> Extraction History</h2>
+                                <p class="vlm-card-subtitle">Previously reviewed items that were successfully saved to inventory.</p>
+                            </div>
+                            <button type="button" class="btn btn-secondary" id="refresh-vlm-history-btn">
+                                <i class="fas fa-rotate"></i> Refresh
+                            </button>
+                        </div>
+                        <div id="vlm-history-list" class="vlm-history-list" aria-live="polite">
+                            <div class="vlm-history-empty"><i class="fas fa-spinner fa-spin"></i> Loading extraction history…</div>
+                        </div>
+                    </section>
                 </div>
             </div>
         </main>

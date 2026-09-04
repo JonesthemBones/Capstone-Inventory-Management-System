@@ -145,6 +145,22 @@
   gap: 10px;
 }
 
+.vlm-history-card { grid-column: 1 / -1; }
+.vlm-history-list { display: grid; gap: 12px; margin-top: 18px; }
+.vlm-history-empty { padding: 28px; border: 1px dashed var(--border-color); border-radius: 12px; color: var(--text-secondary); text-align: center; }
+.vlm-history-empty i { margin-right: 8px; }
+.vlm-history-error { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
+.vlm-history-entry { overflow: hidden; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-white); }
+.vlm-history-entry summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 18px; cursor: pointer; color: var(--text-primary); }
+.vlm-history-entry summary span:first-child { display: grid; gap: 4px; }
+.vlm-history-entry summary small { color: var(--text-secondary); font-weight: 400; }
+.vlm-history-count { padding: 5px 10px; border-radius: 999px; background: rgba(59,130,246,.12); color: var(--primary-color); font-weight: 700; white-space: nowrap; }
+.vlm-history-table-wrap { overflow-x: auto; border-top: 1px solid var(--border-color); }
+.vlm-history-table { width: 100%; border-collapse: collapse; min-width: 680px; }
+.vlm-history-table th, .vlm-history-table td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); text-align: left; }
+.vlm-history-table th { color: var(--text-secondary); background: var(--bg-light); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.vlm-history-table tbody tr:last-child td { border-bottom: 0; }
+
 .vlm-status {
   padding: 16px 18px;
   border-radius: 12px;
