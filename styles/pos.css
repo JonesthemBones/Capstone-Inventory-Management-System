@@ -748,11 +748,13 @@
 }
 
 .modal-content {
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   border-radius: 18px;
   max-width: 700px;
   width: min(100%, 700px);
-  max-height: 90vh;
+  max-height: min(90dvh, calc(100dvh - 32px));
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.28);
 }
@@ -768,6 +770,7 @@
   gap: 12px;
   padding: 18px 20px;
   border-bottom: 1px solid #e5e7eb;
+  flex: 0 0 auto;
 }
 
 .modal-header h2 {
@@ -791,7 +794,10 @@
 }
 
 .modal-body {
+  min-height: 0;
   padding: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 #void-reason {
@@ -812,6 +818,7 @@
   gap: 12px;
   padding: 18px 20px 20px;
   border-top: 1px solid #e5e7eb;
+  flex: 0 0 auto;
 }
 
 .receipt-content {
@@ -937,4 +944,15 @@
     justify-content: flex-start;
   }
 
+}
+
+@media (max-height: 720px) and (min-width: 641px) {
+  .modal { padding: 12px; }
+  .modal-content { max-height: calc(100dvh - 24px); }
+  .modal-header { padding: 13px 18px; }
+  .modal-body { padding: 12px 18px; }
+  .modal-footer { padding: 12px 18px 14px; }
+  .receipt-content { padding: 4px 8px 8px; }
+  .receipt-header { margin-bottom: 10px; }
+  .receipt-header h2 { font-size: 1.4rem; }
 }

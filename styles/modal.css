@@ -23,12 +23,14 @@
 }
 
 .modal-content {
+    display: flex;
+    flex-direction: column;
     background: white;
     border-radius: 12px;
     width: 90%;
     max-width: 600px;
-    max-height: 90vh;
-    overflow-y: auto;
+    max-height: min(90dvh, calc(100dvh - 32px));
+    overflow: hidden;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
     margin: 0;
     transform: scale(0.9);
@@ -215,6 +217,24 @@ form {
 
     .modal-actions .btn,
     .modal-footer .btn { min-height: 44px; }
+}
+
+.modal-body {
+    min-height: 0;
+    padding: 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.modal-content > form {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.modal-header,
+.modal-actions,
+.modal-footer {
+    flex: 0 0 auto;
 }
 
 .table-scroll {
@@ -520,4 +540,11 @@ input[readonly] {
 .icon-btn,
 .data-table tbody tr {
     transition: all 0.2s ease;
+}
+
+@media (max-height: 720px) and (min-width: 641px) {
+    .modal { padding: 12px; }
+    .modal-content { max-height: calc(100dvh - 24px); }
+    .modal-header { padding: 16px 20px 14px; }
+    .modal-body { padding: 18px 20px; }
 }
