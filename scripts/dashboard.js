@@ -1,6 +1,7 @@
 let salesTrendChart = null;
 let stockDistributionChart = null;
 let categoryChart = null;
+let supplierFrequencyChart = null;
 let dashboardRole = 'guest';
 let dashboardUserId = null;
 
@@ -118,7 +119,7 @@ function configureDashboardForRole(role) {
         ['Products in the catalog', 'Items above reorder level', 'Items at or below reorder level', 'Items needing immediate attention'].forEach((label, index) => {
             if (statChanges[index]) statChanges[index].textContent = label;
         });
-        setPanelVisibility(['sales-trend', 'stock-distribution', 'recent-activity']);
+        setPanelVisibility(['sales-trend', 'stock-distribution', 'recent-activity', 'supplier-frequency']);
         activityTitle.textContent = 'Recent Stock Changes';
         activitySubtitle.textContent = 'Latest receiving and stock adjustments';
         trendTitle.textContent = 'Stock Change Activity';
@@ -128,7 +129,7 @@ function configureDashboardForRole(role) {
     } else {
         title.textContent = role === 'owner' ? 'Owner Dashboard' : (role === 'manager' ? 'Manager Dashboard' : 'Admin Dashboard');
         subtitle.textContent = 'System-wide sales, inventory, and operational overview';
-        setPanelVisibility(['sales-trend', 'stock-distribution', 'product-value', 'recent-activity']);
+        setPanelVisibility(['sales-trend', 'stock-distribution', 'product-value', 'recent-activity', 'supplier-frequency']);
         trendTitle.textContent = 'Sales Trends';
         trendSubtitle.textContent = 'Monthly sales performance';
         distributionTitle.textContent = 'Stock Distribution';
@@ -219,7 +220,11 @@ async function loadDashboardStats() {
         animateValue('low-stock', 0, lowStock, 1000);
         animateValue('total-value', 0, dashboardRole === 'staff' ? outOfStock : totalValue, 1000, dashboardRole !== 'staff');
         if (dashboardRole === 'staff') {
-            await Promise.all([updateStockDistributionChart(), updateStaffMovementTrend()]);
+            await Promise.all([
+                updateStockDistributionChart(),
+                updateStaffMovementTrend(),
+                updateSupplierFrequencyChart()
+            ]);
         } else {
             await updateAllCharts();
         }
@@ -545,6 +550,39 @@ function initializeCharts() {
             }
         });
     }
+
+    const supplierCtx = document.getElementById('supplierFrequencyChart');
+    if (supplierCtx) {
+        supplierFrequencyChart = new Chart(supplierCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Distinct receipts',
+                    data: [],
+                    backgroundColor: '#10b981',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: context => `${context.parsed.x} distinct receipt${context.parsed.x === 1 ? '' : 's'}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    }
 }
 
 function getLastSevenDays() {
@@ -657,9 +695,68 @@ async function updateAllCharts() {
         await updateStockDistributionChart();
         await updateSalesTrendChart();
         await updateProductValueChart();
+        await updateSupplierFrequencyChart();
         
     } catch (error) {
         console.error('Error updating charts:', error);
+    }
+}
+
+async function updateSupplierFrequencyChart() {
+    if (!supplierFrequencyChart) return;
+
+    try {
+        const currentYear = new Date().getFullYear();
+        const { data, error } = await supabaseClient
+            .from('vlm_extractions')
+            .select('image_id, supplier_name, created_at')
+            .not('supplier_name', 'is', null)
+            .eq('extraction_status', 'success')
+            .gte('created_at', new Date(currentYear, 0, 1).toISOString())
+            .lte('created_at', new Date(currentYear, 11, 31, 23, 59, 59, 999).toISOString())
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        const receipts = new Map();
+        (data || []).forEach((row, index) => {
+            const name = String(row.supplier_name || '').trim();
+            if (!name) return;
+            const receiptKey = row.image_id
+                ? `image:${row.image_id}`
+                : `record:${row.created_at || index}:${name.toLocaleUpperCase()}`;
+            if (!receipts.has(receiptKey)) receipts.set(receiptKey, row);
+        });
+
+        const suppliers = new Map();
+        receipts.forEach(row => {
+            const name = String(row.supplier_name).trim();
+            const key = name.toLocaleUpperCase();
+            const supplier = suppliers.get(key) || { name: key, receipts: 0 };
+            supplier.receipts += 1;
+            suppliers.set(key, supplier);
+        });
+
+        const topSuppliers = [...suppliers.values()]
+            .sort((a, b) => b.receipts - a.receipts || a.name.localeCompare(b.name))
+            .slice(0, 5);
+        supplierFrequencyChart.data.labels = topSuppliers.length
+            ? topSuppliers.map(supplier => supplier.name)
+            : ['No supplier receipts yet'];
+        supplierFrequencyChart.data.datasets[0].data = topSuppliers.length
+            ? topSuppliers.map(supplier => supplier.receipts)
+            : [0];
+        supplierFrequencyChart.update();
+
+        const subtitle = document.getElementById('supplier-frequency-subtitle');
+        if (subtitle) {
+            subtitle.textContent = topSuppliers.length
+                ? `Top suppliers by distinct receipts received in ${currentYear}`
+                : `No supplier receipts recorded in ${currentYear}`;
+        }
+    } catch (error) {
+        console.error('Error updating supplier frequency chart:', error);
+        const subtitle = document.getElementById('supplier-frequency-subtitle');
+        if (subtitle) subtitle.textContent = 'Supplier analytics could not be loaded';
     }
 }
 
@@ -796,6 +893,14 @@ function setupRealtimeSubscriptions() {
                 loadLowStockAlerts();
                 showLowStockNotifications();
             }
+        )
+        .subscribe();
+
+    supabaseClient
+        .channel('supplier_extraction_changes')
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'vlm_extractions' },
+            () => updateSupplierFrequencyChart()
         )
         .subscribe();
 }
