@@ -11,16 +11,16 @@ The current development focus is interface refinement, data consistency, product
 ## Current features
 
 - Dashboard metrics for inventory, sales, recent transactions, stock movements, and top products by value
-- Product inventory management with categories, images, pricing, stock thresholds, adjustments, inbound batch history, active/inactive status, filtering, and pagination
+- Product inventory management with categories, images, pricing, stock thresholds, audited adjustments, inbound batch history, reversible archive/restore, filtering, and pagination
 - Inbound inventory through VLM-assisted receipt extraction and product matching
 - Manual outbound transactions for sales, returns, damage/disposal, transfers, and other stock-outs
 - Point of Sale (POS) with category filtering, cart management, discounts, cash payments, PayMongo test checkout, receipts, transaction history, and voiding
 - Automatic POS inventory deductions and stock-movement records through an authenticated server endpoint
 - Low-stock monitoring and stock alerts
-- Admin reorder-list generation for low, critical, and out-of-stock products, with editable suggested quantities and a printable purchase document
+- Staff and management reorder-list generation for low, critical, and out-of-stock products, with editable suggested quantities and a printable purchase document
 - Inventory, valuation, low-stock, stock-movement, and cashier sales reports
 - Audit logs and stock-movement history with export options
-- User viewing, editing, activation, backup/restore, and role assignment for `owner`, `admin`, `cashier`, and `staff`
+- User viewing, editing, activation/deactivation, non-destructive backup/restore, and role assignment for `owner`, `admin`, `cashier`, and `staff`
 - Supabase authentication, OTP password reset, first-login-wins session control, five-minute inactivity logout, failed-login throttling, role-based navigation, responsive desktop/mobile layouts, and dark mode
 - Inventory and user backup/restore tools
 
@@ -46,7 +46,10 @@ The current development focus is interface refinement, data consistency, product
 - Added uppercase presentation for older product records so existing mixed-case data remains visually consistent.
 - Made unit-filter options case-insensitive and uppercase. Values such as `pcs`, `Pcs`, and `PCS` now appear once as `PCS`, while matching all equivalent stored records.
 - Improved mobile inventory cards by showing all product details without a disclosure dropdown.
-- Reordered mobile inventory actions to `Delete | Edit | Adjust`, added a visible Delete label, and retained confirmation before deletion.
+- Replaced product deletion with reversible Archive/Restore actions so stock, movement, and transaction history remain intact.
+- Replaced permanent staff-account deletion with activation/deactivation so user-linked audit, receipt, stock, and transaction history remains attributable.
+- Removed destructive `Replace All` restore choices. Inventory and user restores now use merge or add-only workflows.
+- Added database-enforced archive metadata, role-aware RLS, append-only audit/movement history, and protection against frontend hard deletion.
 - Redesigned the mobile POS product catalog as compact single-column cashier rows with thumbnails, unit/code information, prices, stock indicators, and larger circular add controls.
 - Preserved the mobile POS bottom cart bar and slide-up checkout panel for quick cart access.
 - Reduced the expanded inbound batch-history inset and simplified its dark-mode borders so it blends with the inventory table.
@@ -61,7 +64,7 @@ The application includes responsive views designed for phones and small tablets.
 | Mobile screen | Current behavior |
 | --- | --- |
 | Inventory | Products appear as full-width cards with a thumbnail, status, uppercase product name, code, available quantity, selling price, unit cost, stock value, reorder level, and maximum stock. Details remain visible without an extra dropdown. |
-| Inventory actions | Authorized users receive evenly sized `Delete`, `Edit`, and `Adjust` controls. Delete is positioned on the left, visually marked as destructive, and still requires confirmation. |
+| Inventory actions | Authorized users receive `Archive`/`Restore`, `Edit`, and `Adjust` controls. Archived products are excluded from operational lists while remaining available to history and reports. |
 | Inventory filters | Search, status, category, availability, unit, quantity, price, and sorting controls reflow into touch-friendly columns. Unit values are deduplicated without regard to capitalization. |
 | Point of Sale | Products appear in a cashier-focused single-column list with thumbnail, stock status, uppercase name, unit, code, selling price, and a prominent circular add control. |
 | POS cart | A persistent bottom bar shows cart count and total. Selecting it opens a slide-up cart and checkout panel without leaving the product catalog. |
@@ -92,6 +95,8 @@ Capstone-Inventory-Management-System/
 |-- pos-api.js                 # Authenticated POS stock finalization
 |-- python_vlm.py              # Python receipt-image helper
 |-- vlm_settings.json          # Selected vision model configuration
+|-- AMACAR_RLS_FLOW_ALIGNMENT.sql       # Archive schema and role-aligned RLS policies
+|-- AMACAR_ADMIN_ACCESS_RECOVERY.sql    # Recovery for recursive users-table RLS
 |-- pages/                     # Application HTML pages
 |-- scripts/                   # Page logic and shared browser helpers
 |-- styles/                    # Shared and page-specific styles
@@ -154,14 +159,26 @@ supabase/migrations/20260903_first_login_wins.sql
 
 The migration adds active-session fields to `public.users` and creates authenticated RPC functions for claiming, validating, refreshing, and releasing the session lock. It also replaces the earlier latest-login-wins functions if that draft was previously installed.
 
+### Required archive and RLS alignment
+
+After applying the session-security migration, back up the hosted database and run this file through **Supabase Dashboard -> SQL Editor**:
+
+```text
+AMACAR_RLS_FLOW_ALIGNMENT.sql
+```
+
+The migration adds archive metadata to products, categories, and user profiles; replaces conflicting permissive policies; enables RLS on exposed operational tables; and aligns database access with the `owner`, `admin`, `cashier`, and `staff` application roles. The legacy `manager` value remains temporarily recognized for existing records, but new accounts should use `owner`.
+
+`AMACAR_ADMIN_ACCESS_RECOVERY.sql` is an emergency repair script for databases where a recursive `public.users` policy prevents the application from resolving the signed-in role. It is not a substitute for the complete alignment migration, and the older recursive policy script must not be reapplied afterward.
+
 ## Roles and access
 
 | Role | Main access |
 | --- | --- |
-| `owner` | Full business operations, user management, activity history, inventory, reports, receipt scanning, and POS; technical scanner configuration is hidden and server-blocked |
-| `admin` | Full business and technical administration, including receipt-scanner credentials, model, and endpoint configuration |
+| `owner` | Full business operations, product archive/restore, user activation/deactivation, activity history, inventory, reports, receipt scanning, and POS; technical scanner configuration is hidden and server-blocked |
+| `admin` | Full business and technical administration, including archive/restore and receipt-scanner credentials, model, and endpoint configuration |
 | `cashier` | Dashboard, POS, and cashier-focused sales reports |
-| `staff` | Dashboard, reports, VLM extraction, reorder lists, routine stock adjustments and removals, and product creation/editing; existing pricing, deletion, backup/restore, and technical scanner settings remain restricted |
+| `staff` | Dashboard, reports, VLM extraction, reorder lists, routine stock adjustments and removals, and product creation/editing; existing pricing, archive/restore, backup/restore, and technical scanner settings remain restricted |
 
 The UI hides unauthorized navigation, while sensitive server endpoints validate the Supabase access token and role. Supabase Row Level Security should still be configured for every exposed table.
 
@@ -179,9 +196,21 @@ The UI hides unauthorized navigation, while sensitive server endpoints validate 
 | Active-account check | Only profiles with `users.is_active = true` can claim or retain the application session lock. |
 | Role-based access | Navigation and actions are limited by `owner`, `admin`, `cashier`, and `staff` roles. The `owner` role replaces the former `manager` role. Sensitive Express routes separately validate the JWT and required role. Scanner configuration remains exclusive to `admin`. |
 | Auditability | Supported login, logout, inventory, and management actions write user-linked audit data; stock changes produce traceable movement records. |
+| Archiving | Products are archived by setting `is_active = false`; archive time and actor are recorded while inventory, movements, sales, VLM matches, and audit history remain intact. Staff accounts are deactivated rather than deleted. |
+| Durable history | Authenticated browser clients cannot hard-delete products, users, stock movements, audit logs, or finalized POS records. Stock movements and audit logs are append-only. |
 | Secret separation | Service-role, SMTP, payment, and VLM secrets remain server-side in `.env`. The browser's public Supabase anonymous key must be constrained by RLS. |
 
-The first-login-wins mechanism is application-level enforcement backed by database RPC functions. It prevents concurrent use through the normal interface, but it does not replace Row Level Security. Every Data API table still needs suitable RLS policies because a valid JWT may otherwise access exposed tables outside the interface. The browser failed-login counter is also a usability safeguard; production deployments should retain server/provider rate limits and Supabase attack-protection controls.
+The first-login-wins mechanism is application-level enforcement backed by database RPC functions. It prevents concurrent use through the normal interface, but it does not replace Row Level Security. `AMACAR_RLS_FLOW_ALIGNMENT.sql` supplies the role-aware policies required by the browser and protected server workflows. The browser failed-login counter is also a usability safeguard; production deployments should retain server/provider rate limits and Supabase attack-protection controls.
+
+## Archive and retention behavior
+
+- Active products are shown by default. Management can select **Archived Products** under Inventory filters and restore a product.
+- Archiving a product never deletes its stock row, movement history, POS references, extraction matches, or audit records.
+- Archived products are excluded from Sales Checkout, receipt matching, outbound selection, and reorder generation.
+- Staff accounts use Activate/Deactivate. Deactivation preserves historical attribution and blocks the account through the active-account checks.
+- Finalized sales use the existing Void workflow and are never deleted. Only an empty POS draft may be removed automatically when line-item creation fails.
+- Inventory and staff-account backup restoration supports Merge and Add Only. Destructive replacement is disabled.
+- Database retention is governed by the organization's documented retention schedule. Archive is an operational state, not indefinite retention or a replacement for authorized secure disposal.
 
 ## Current API routes
 
@@ -253,6 +282,8 @@ The session-security migration adds `users.active_session_id`, `users.active_ses
 - Stock changes should create corresponding `stock_movements` rows for traceability.
 - Keep the Supabase service-role key, SMTP password, DeepSeek key, and PayMongo secret out of browser code and version control.
 - Apply `supabase/migrations/20260903_first_login_wins.sql` before testing authentication, including when replacing the earlier latest-login-wins draft.
+- Back up the database before applying `AMACAR_RLS_FLOW_ALIGNMENT.sql`; sign out of all application tabs and sign in again after policy changes.
+- Do not reapply the superseded RLS script that queries `public.users` from a policy on the same table; it causes recursive role lookup and access denial.
 
 ## Known limitation
 
@@ -275,6 +306,14 @@ Verify the project URL/keys and relevant RLS policies. Browser operations use th
 ### Login says session security is not configured
 
 Run `supabase/migrations/20260903_first_login_wins.sql` in the Supabase SQL Editor. Confirm that `public.users` contains the three `active_session_*` fields and that `claim_current_session`, `is_current_session`, and `release_current_session` appear under Database Functions. Refresh the browser after the migration completes.
+
+### Admin navigation appears but the page says Access Denied
+
+Inspect the browser console for an infinite-recursion error on `public.users`. Run `AMACAR_ADMIN_ACCESS_RECOVERY.sql`, sign out, close all application tabs, and sign in again. Then apply `AMACAR_RLS_FLOW_ALIGNMENT.sql` for the complete policy set. Do not rerun the superseded recursive RLS script.
+
+### Archived product is still visible in operational screens
+
+Hard-refresh the browser to load the current frontend. Confirm `products.is_active = false`, then verify that Inventory is using the Active Products filter and that Sales Checkout, outbound selection, receipt matching, and reorder queries filter for active products.
 
 ### A user is incorrectly reported as already signed in
 
