@@ -12,7 +12,9 @@ supabaseClient.auth.onAuthStateChange((event) => {
     const isPublicAuthPage = window.location.pathname.includes('/pages/auth.html')
         || window.location.pathname.includes('/pages/forgot-password.html');
     if (!isPublicAuthPage) {
-        const reason = sessionReplacementInProgress ? '&reason=session_replaced' : '';
+        const logoutReason = window.__amacarLogoutReason
+            || (sessionReplacementInProgress ? 'session_replaced' : '');
+        const reason = logoutReason ? `&reason=${encodeURIComponent(logoutReason)}` : '';
         window.location.replace(`/pages/auth.html?logged_out=true${reason}`);
     }
 });
