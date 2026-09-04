@@ -20,12 +20,18 @@ The current development focus is interface refinement, data consistency, product
 - Admin reorder-list generation for low, critical, and out-of-stock products, with editable suggested quantities and a printable purchase document
 - Inventory, valuation, low-stock, stock-movement, and cashier sales reports
 - Audit logs and stock-movement history with export options
-- User viewing, editing, activation, backup/restore, and role assignment for `owner`, `admin`, `manager`, `cashier`, and `staff`
-- Supabase authentication, OTP password reset, first-login-wins session control, inactivity logout, failed-login throttling, role-based navigation, responsive desktop/mobile layouts, and dark mode
+- User viewing, editing, activation, backup/restore, and role assignment for `owner`, `admin`, `cashier`, and `staff`
+- Supabase authentication, OTP password reset, first-login-wins session control, five-minute inactivity logout, failed-login throttling, role-based navigation, responsive desktop/mobile layouts, and dark mode
 - Inventory and user backup/restore tools
 
 ## Recent progress and interface changes
 
+- Replaced the former `manager` role with the new `owner` role across navigation, inventory, POS, reports, receipt scanning, user management, and activity history. Owners receive full business access, while technical receipt-scanner configuration remains exclusive to `admin`.
+- Reduced the inactivity timeout from 15 minutes to 5 minutes and improved automatic logout reason handling, session cleanup, and cross-tab activity tracking.
+- Added Receipt Scanner extraction history for reviewed items that were successfully saved to inventory, including the save date, operator, quantity, cost, category, and whether each item created a product or updated stock.
+- Made voided POS transactions immediately recognizable in transaction history and on displayed or printed receipts, including the void date and reason.
+- Improved product-unit handling during inventory entry and receipt imports, with clearer success, partial-success, and failure notifications after saving extracted items.
+- Reduced the vision-model response-token limit to improve receipt-processing efficiency.
 - Replaced technical navigation terminology with clearer task-based names, including `Sales Checkout`, `Receipt Scanner`, `Staff Accounts`, and `Activity History`.
 - Added product categories throughout inventory creation and editing, plus category filters on Inventory and Sales Checkout.
 - Added client-side pagination to Inventory while keeping the Sales Checkout catalog continuously available for faster cashier use.
@@ -154,7 +160,6 @@ The migration adds active-session fields to `public.users` and creates authentic
 | --- | --- |
 | `owner` | Full business operations, user management, activity history, inventory, reports, receipt scanning, and POS; technical scanner configuration is hidden and server-blocked |
 | `admin` | Full business and technical administration, including receipt-scanner credentials, model, and endpoint configuration |
-| `manager` | Dashboard, inventory management, POS, reports, and receipt scanning |
 | `cashier` | Dashboard, POS, and cashier-focused sales reports |
 | `staff` | Dashboard, inventory, reports, and VLM extraction workflows |
 
@@ -168,11 +173,11 @@ The UI hides unauthorized navigation, while sensitive server endpoints validate 
 | First login wins | The first active browser claims the account lock. A later browser using the same account is rejected and locally signed out instead of interrupting the original user. |
 | Session heartbeat | Protected pages validate the session approximately every 10 seconds and whenever a hidden tab becomes visible. Successful validation refreshes `active_session_last_seen`. |
 | Abandoned-session recovery | A lock without a heartbeat for 15 minutes becomes stale, allowing a legitimate new login when the original browser closed without signing out. |
-| Inactivity timeout | Activity is shared across tabs in the same browser. After 15 minutes without user activity, the browser signs out and releases its lock; a warning appears during the final two minutes. |
+| Inactivity timeout | Activity is shared across tabs in the same browser. After 5 minutes without user activity, the browser signs out and releases its lock; a warning appears during the final two minutes. |
 | Logout isolation | Rejected and automatic logouts use local scope so a stale browser cannot revoke another browser's valid Supabase session. Normal logout releases the database lock. |
 | Failed-login throttling | Password failures are tracked in browser storage. Groups of three failures trigger progressively longer local lockouts of 5, 10, and 15 minutes. |
 | Active-account check | Only profiles with `users.is_active = true` can claim or retain the application session lock. |
-| Role-based access | Navigation and actions are limited by `owner`, `admin`, `manager`, `cashier`, and `staff` roles. Sensitive Express routes separately validate the JWT and required role. Scanner configuration remains exclusive to `admin`. |
+| Role-based access | Navigation and actions are limited by `owner`, `admin`, `cashier`, and `staff` roles. The `owner` role replaces the former `manager` role. Sensitive Express routes separately validate the JWT and required role. Scanner configuration remains exclusive to `admin`. |
 | Auditability | Supported login, logout, inventory, and management actions write user-linked audit data; stock changes produce traceable movement records. |
 | Secret separation | Service-role, SMTP, payment, and VLM secrets remain server-side in `.env`. The browser's public Supabase anonymous key must be constrained by RLS. |
 
@@ -188,6 +193,7 @@ All routes are mounted under `/api`.
 | `POST` | `/verify-otp` | Verify a password-reset OTP |
 | `POST` | `/reset-password` | Reset a user password |
 | `POST` | `/vlm-scan` | Process a receipt image |
+| `POST` | `/vlm-scan-supplier` | Process a supplier receipt image with the supplier-focused extraction workflow |
 | `GET` | `/vlm-extraction-history` | List reviewed extractions successfully saved to inventory |
 | `GET` | `/categories` | Read active categories available to receipt extraction |
 | `GET` | `/vlm-config` | Read the active VLM configuration |
