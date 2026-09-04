@@ -696,6 +696,27 @@
   background: #f9fafb;
 }
 
+.transaction-row-voided {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  opacity: 0.82;
+}
+
+.transaction-row-voided .transaction-amount { text-decoration: line-through; }
+
+.transaction-voided-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+}
+
 .transaction-time,
 .transaction-items,
 .transaction-amount,
@@ -840,6 +861,24 @@
 .receipt-header p {
   margin: 0;
   color: #4b5563;
+}
+
+.receipt-void-notice {
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 3px double #b91c1c;
+  border-radius: 8px;
+  color: #b91c1c;
+  text-align: center;
+}
+
+.receipt-void-notice strong,
+.receipt-void-notice span { display: block; }
+
+.receipt-void-notice strong {
+  margin-bottom: 4px;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
 }
 
 .receipt-details {

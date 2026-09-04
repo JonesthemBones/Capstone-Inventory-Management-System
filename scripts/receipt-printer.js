@@ -1,11 +1,22 @@
 const ReceiptPrinter = {
     generateHTML(transaction) {
+        const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        })[character]);
         const fmt = window.POSCalculations
             ? window.POSCalculations.formatCurrency
             : (n) => `₱${parseFloat(n || 0).toFixed(2)}`;
         const paymentLabel = transaction.payment_method === 'bank_transfer'
             ? 'QR / E-wallet (PayMongo)'
             : transaction.payment_method;
+        const isVoided = transaction.is_voided === true || transaction.is_active === false;
+        const voidedAt = transaction.void_datetime ? new Date(transaction.void_datetime).toLocaleString() : '';
+        const voidNotice = isVoided ? `
+            <div class="receipt-void-notice">
+                <strong>VOIDED TRANSACTION</strong>
+                ${voidedAt ? `<span>Voided: ${escapeHTML(voidedAt)}</span>` : ''}
+                ${transaction.void_reason ? `<span>Reason: ${escapeHTML(transaction.void_reason)}</span>` : ''}
+            </div>` : '';
 
         const itemsHTML = transaction.pos_transaction_items
             ? transaction.pos_transaction_items.map(item => {
@@ -34,6 +45,8 @@ const ReceiptPrinter = {
                 <p>Inventory Management System</p>
                 <p>Receipt #${transaction.transaction_number || transaction.transaction_id}</p>
             </div>
+
+            ${voidNotice}
 
             <div class="receipt-details">
                 <p><strong>Date:</strong> ${new Date(transaction.transaction_datetime).toLocaleString()}</p>
@@ -71,8 +84,9 @@ const ReceiptPrinter = {
             </div>
 
             <div class="receipt-footer">
-                <p>Thank you for your purchase!</p>
-                <p>Please keep this receipt for warranty purposes.</p>
+                ${isVoided
+                    ? '<p><strong>This receipt has been voided and is not valid as proof of purchase.</strong></p>'
+                    : '<p>Thank you for your purchase!</p><p>Please keep this receipt for warranty purposes.</p>'}
             </div>
         `;
     },
@@ -107,6 +121,9 @@ const ReceiptPrinter = {
             font-size: 0.85rem;
         }
         .receipt-details p { margin: 3px 0; }
+        .receipt-void-notice { border: 3px double #b91c1c; color: #b91c1c; margin: 10px 0; padding: 8px; text-align: center; }
+        .receipt-void-notice strong, .receipt-void-notice span { display: block; }
+        .receipt-void-notice strong { font-size: 1.15rem; margin-bottom: 4px; }
         .receipt-items { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 0.82rem; }
         .receipt-items th, .receipt-items td { padding: 4px 2px; text-align: left; }
         .receipt-items th { border-bottom: 1px solid #333; text-transform: uppercase; font-size: 0.7rem; }
