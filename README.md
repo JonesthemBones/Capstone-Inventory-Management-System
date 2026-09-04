@@ -20,7 +20,7 @@ The current development focus is interface refinement, data consistency, product
 - Admin reorder-list generation for low, critical, and out-of-stock products, with editable suggested quantities and a printable purchase document
 - Inventory, valuation, low-stock, stock-movement, and cashier sales reports
 - Audit logs and stock-movement history with export options
-- User viewing, editing, activation, backup/restore, and role assignment for `admin`, `cashier`, and `staff`
+- User viewing, editing, activation, backup/restore, and role assignment for `owner`, `admin`, `manager`, `cashier`, and `staff`
 - Supabase authentication, OTP password reset, first-login-wins session control, inactivity logout, failed-login throttling, role-based navigation, responsive desktop/mobile layouts, and dark mode
 - Inventory and user backup/restore tools
 
@@ -152,7 +152,9 @@ The migration adds active-session fields to `public.users` and creates authentic
 
 | Role | Main access |
 | --- | --- |
-| `admin` | Full navigation, user management, audit logs, inventory, reports, VLM, and POS |
+| `owner` | Full business operations, user management, activity history, inventory, reports, receipt scanning, and POS; technical scanner configuration is hidden and server-blocked |
+| `admin` | Full business and technical administration, including receipt-scanner credentials, model, and endpoint configuration |
+| `manager` | Dashboard, inventory management, POS, reports, and receipt scanning |
 | `cashier` | Dashboard, POS, and cashier-focused sales reports |
 | `staff` | Dashboard, inventory, reports, and VLM extraction workflows |
 
@@ -170,7 +172,7 @@ The UI hides unauthorized navigation, while sensitive server endpoints validate 
 | Logout isolation | Rejected and automatic logouts use local scope so a stale browser cannot revoke another browser's valid Supabase session. Normal logout releases the database lock. |
 | Failed-login throttling | Password failures are tracked in browser storage. Groups of three failures trigger progressively longer local lockouts of 5, 10, and 15 minutes. |
 | Active-account check | Only profiles with `users.is_active = true` can claim or retain the application session lock. |
-| Role-based access | Navigation and actions are limited by `admin`, `cashier`, and `staff` roles. Sensitive Express routes separately validate the JWT and required role. |
+| Role-based access | Navigation and actions are limited by `owner`, `admin`, `manager`, `cashier`, and `staff` roles. Sensitive Express routes separately validate the JWT and required role. Scanner configuration remains exclusive to `admin`. |
 | Auditability | Supported login, logout, inventory, and management actions write user-linked audit data; stock changes produce traceable movement records. |
 | Secret separation | Service-role, SMTP, payment, and VLM secrets remain server-side in `.env`. The browser's public Supabase anonymous key must be constrained by RLS. |
 

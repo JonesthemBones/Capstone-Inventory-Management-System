@@ -397,7 +397,7 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
 }
 
 router.post('/vlm-scan', async (req, res) => {
-    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'VLM extraction access required.');
+    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'VLM extraction access required.');
     if (!operator) return;
 
     try {
@@ -433,7 +433,7 @@ router.post('/vlm-scan', async (req, res) => {
 });
 
 router.get('/categories', async (req, res) => {
-    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Category access required.');
+    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Category access required.');
     if (!operator) return;
 
     try {
@@ -476,7 +476,7 @@ router.post('/vlm-config', async (req, res) => {
 });
 
 router.post('/vlm-scan-supplier', async (req, res) => {
-    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Supplier VLM extraction access required.');
+    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Supplier VLM extraction access required.');
     if (!operator) return;
 
     try {
@@ -511,7 +511,7 @@ router.post('/vlm-scan-supplier', async (req, res) => {
 });
 
 router.get('/vlm-extraction-history', async (req, res) => {
-    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Extraction history access required.');
+    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Extraction history access required.');
     if (!operator) return;
 
     try {
@@ -555,7 +555,7 @@ router.get('/vlm-extraction-history', async (req, res) => {
 });
 
 router.post('/save-items-to-inventory', async (req, res) => {
-    const operator = await requireRoles(req, res, ['admin', 'manager', 'staff'], 'Inventory import access required.');
+    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Inventory import access required.');
     if (!operator) return;
 
     try {

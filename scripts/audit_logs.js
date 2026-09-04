@@ -908,8 +908,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const session = await requireAuth();
     if (!session) return;
     
-    // Check role access - only admin and manager can access audit logs
-    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager']);
+    // Owners and technical admins can review system activity.
+    const hasAccess = await window.authHelpers.requireRole(['owner', 'admin']);
     if (!hasAccess) return;
     window.authHelpers.revealProtectedContent();
     
