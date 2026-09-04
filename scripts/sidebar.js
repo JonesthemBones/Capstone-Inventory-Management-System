@@ -259,10 +259,10 @@ async function getUserRole() {
 
         if (dbError) {
             console.warn('⚠️  Could not fetch user role:', dbError.message);
-            return 'staff';
+            return 'guest';
         }
         
-        const role = (userData?.role || 'staff').toLowerCase();
+        const role = (userData?.role || 'guest').toLowerCase();
         console.log(`✅ User role: ${role}`);
         return role;
 

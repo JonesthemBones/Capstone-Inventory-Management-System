@@ -161,7 +161,7 @@ The migration adds active-session fields to `public.users` and creates authentic
 | `owner` | Full business operations, user management, activity history, inventory, reports, receipt scanning, and POS; technical scanner configuration is hidden and server-blocked |
 | `admin` | Full business and technical administration, including receipt-scanner credentials, model, and endpoint configuration |
 | `cashier` | Dashboard, POS, and cashier-focused sales reports |
-| `staff` | Dashboard, inventory, reports, and VLM extraction workflows |
+| `staff` | Dashboard, reports, VLM extraction, reorder lists, routine stock adjustments and removals, and product creation/editing; existing pricing, deletion, backup/restore, and technical scanner settings remain restricted |
 
 The UI hides unauthorized navigation, while sensitive server endpoints validate the Supabase access token and role. Supabase Row Level Security should still be configured for every exposed table.
 
