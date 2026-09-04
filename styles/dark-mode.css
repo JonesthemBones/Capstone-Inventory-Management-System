@@ -777,6 +777,11 @@
     border-color: var(--border-color);
 }
 
+.dark-mode .transaction-row-voided {
+    background: rgba(127, 29, 29, 0.22);
+    border-color: #991b1b;
+}
+
 .dark-mode .product-card-image-placeholder,
 .dark-mode .product-empty-state i,
 .dark-mode .empty-cart i,

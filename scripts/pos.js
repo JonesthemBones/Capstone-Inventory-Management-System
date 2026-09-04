@@ -889,22 +889,26 @@ function displayRecentTransactions(transactions) {
         return;
     }
     
-    container.innerHTML = transactions.map(transaction => `
-        <div class="transaction-row">
+    container.innerHTML = transactions.map(transaction => {
+        const isVoided = transaction.is_voided === true || transaction.is_active === false;
+        const voidDetails = `Voided${transaction.void_datetime ? ` ${new Date(transaction.void_datetime).toLocaleString()}` : ''}${transaction.void_reason ? ` — ${transaction.void_reason}` : ''}`;
+        return `
+        <div class="transaction-row${isVoided ? ' transaction-row-voided' : ''}">
             <div class="transaction-time">${new Date(transaction.transaction_datetime).toLocaleTimeString()}</div>
-            <div class="transaction-items">${transaction.pos_transaction_items.length} items</div>
+            <div class="transaction-items">${transaction.pos_transaction_items.length} items${isVoided ? `<span class="transaction-voided-badge" title="${escapeHTML(voidDetails)}">VOIDED</span>` : ''}</div>
             <div class="transaction-amount">₱${parseFloat(transaction.total_amount).toFixed(2)}</div>
             <div class="transaction-payment">${transaction.payment_method === 'bank_transfer' ? 'QR / E-wallet' : transaction.payment_method}</div>
             <div class="transaction-actions">
                 <button class="btn-icon" onclick="showReceiptModal('${transaction.transaction_id}')" title="View Receipt">
                     <i class="fas fa-receipt"></i>
                 </button>
-                <button class="btn-icon" onclick="openVoidModal('${transaction.transaction_id}')" title="Void Transaction">
+                ${isVoided ? '' : `<button class="btn-icon" onclick="openVoidModal('${transaction.transaction_id}')" title="Void Transaction">
                     <i class="fas fa-ban"></i>
-                </button>
+                </button>`}
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // ============================================================
@@ -959,9 +963,10 @@ async function confirmVoidTransaction() {
             .from('pos_transactions')
             .update({
                 is_active: false,
+                is_voided: true,
                 void_reason: reason,
                 voided_by: currentUserId,
-                voided_at: new Date().toISOString()
+                void_datetime: new Date().toISOString()
             })
             .eq('transaction_id', voidingTransactionId);
         
