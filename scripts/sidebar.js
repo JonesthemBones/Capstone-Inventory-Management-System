@@ -1,6 +1,6 @@
 // Increment whenever shared sidebar markup changes so stale cached branding
 // and navigation are not restored after the loading skeleton disappears.
-const SIDEBAR_CACHE_VERSION = 'v5';
+const SIDEBAR_CACHE_VERSION = 'v6';
 
 const sidebarConfig = [
     {
@@ -8,42 +8,42 @@ const sidebarConfig = [
         title: 'Dashboard',
         icon: 'fas fa-tachometer-alt',
         path: 'pages/dashboard.html',
-        permission: ['admin', 'manager', 'cashier', 'staff']
+        permission: ['owner', 'admin', 'manager', 'cashier', 'staff']
     },
     {
         id: 'inventory',
         title: 'Inventory',
         icon: 'fas fa-box',
         path: 'pages/inventory.html',
-        permission: ['admin', 'manager', 'cashier', 'staff']
+        permission: ['owner', 'admin', 'manager', 'cashier', 'staff']
     },
     {
         id: 'pos',
         title: 'Sales Checkout',
         icon: 'fas fa-cash-register',
         path: 'pages/pos.html',
-        permission: ['admin', 'manager', 'cashier']
+        permission: ['owner', 'admin', 'manager', 'cashier']
     },
     {
         id: 'reports',
         title: 'Reports',
         icon: 'fas fa-file-alt',
         path: 'pages/reports.html',
-        permission: ['admin', 'manager', 'cashier', 'staff']
+        permission: ['owner', 'admin', 'manager', 'cashier', 'staff']
     },
     {
         id: 'users',
         title: 'Staff Accounts',
         icon: 'fas fa-users',
         path: 'pages/users.html',
-        permission: ['admin']
+        permission: ['owner', 'admin']
     },
     {
         id: 'audit-logs',
         title: 'Activity History',
         icon: 'fas fa-clipboard-list',
         path: 'pages/audit_logs.html',
-        permission: ['admin']
+        permission: ['owner', 'admin']
     }
 ];
 
@@ -607,14 +607,10 @@ function setupSignOutButtons() {
                 const { error } = await window.supabaseClient.auth.signOut({ scope: 'local' });
                 if (error) throw error;
                 localStorage.removeItem('amacar:last-activity');
-                
-                if (window.utils?.showToast) {
-                    window.utils.showToast('Signed out successfully', 'success');
-                }
-                
-                setTimeout(() => {
-                    window.location.href = '../pages/auth.html?logged_out=true';
-                }, 500);
+
+                // auth.html owns the logout confirmation. Showing a toast here
+                // would carry it across navigation and duplicate that message.
+                window.location.replace('../pages/auth.html?logged_out=true');
                 
             } catch (error) {
                 console.error('❌ Sign out error:', error);

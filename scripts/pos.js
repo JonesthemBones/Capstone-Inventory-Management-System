@@ -5,7 +5,7 @@ let currentTransaction = null;
 let posCategories = [];
 
 // Roles allowed to use the POS terminal
-const POS_ALLOWED_ROLES = ['cashier', 'admin', 'manager'];
+const POS_ALLOWED_ROLES = ['owner', 'cashier', 'admin', 'manager'];
 
 document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();

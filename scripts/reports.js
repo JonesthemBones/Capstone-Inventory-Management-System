@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Require authentication and role check
     await window.authHelpers.requireAuth();
-    const hasAccess = await window.authHelpers.requireRole(['admin', 'cashier', 'staff']);
+    const hasAccess = await window.authHelpers.requireRole(['owner', 'admin', 'manager', 'cashier', 'staff']);
     if (!hasAccess) return;
     reportsRole = await window.authHelpers.getUserRole();
     reportsUserId = (await window.authHelpers.getCurrentUser())?.id || null;
@@ -378,7 +378,7 @@ function configureReportsForRole() {
             ['outbound-activity', 'fa-truck-ramp-box', 'Stock Removal Activity', 'Removed stock, reasons, products, and quantities']
         ]);
     } else {
-        if (title) title.innerHTML = '<i class="fas fa-file-alt"></i> Admin Reports';
+        if (title) title.innerHTML = `<i class="fas fa-file-alt"></i> ${reportsRole === 'owner' ? 'Owner' : (reportsRole === 'manager' ? 'Manager' : 'Admin')} Reports`;
         if (subtitle) subtitle.textContent = 'Generate system-wide inventory, POS, cashier, and operational reports';
         renderRoleQuickReports([
             ['complete', 'fa-boxes-stacked', 'Current Inventory', 'Complete product and stock status listing'],

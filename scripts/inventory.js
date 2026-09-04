@@ -937,8 +937,8 @@ function renderReorderList() {
 }
 
 function openReorderModal() {
-    if (!['admin', 'manager'].includes(String(currentUserRole).toLowerCase())) {
-        alert('Only an admin or manager can create a restock list.');
+    if (!['owner', 'admin', 'manager'].includes(String(currentUserRole).toLowerCase())) {
+        alert('Only an owner, admin, or manager can create a restock list.');
         return;
     }
     generatedReorderItems = buildReorderItems();

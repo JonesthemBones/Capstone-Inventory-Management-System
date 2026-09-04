@@ -8,8 +8,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Require authentication
     await window.authHelpers.requireAuth();
     
-    // Check role access - only admin and manager can access user management
-    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager']);
+    // Owners and technical admins can manage user accounts.
+    const hasAccess = await window.authHelpers.requireRole(['owner', 'admin']);
     if (!hasAccess) return;
     window.authHelpers.revealProtectedContent();
     
@@ -647,7 +647,7 @@ async function restoreBackup() {
                 const phoneNumber = user.phone_number || user.phoneNumber || null;
                 let role = (user.role || '').trim().toLowerCase();
                 
-                if (!['admin', 'manager', 'cashier', 'staff'].includes(role)) {
+                if (!['owner', 'admin', 'manager', 'cashier', 'staff'].includes(role)) {
                     role = 'staff';
                 }
                 

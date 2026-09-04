@@ -61,6 +61,11 @@
     color: #991b1b;
 }
 
+.role-owner {
+    background-color: #ede9fe;
+    color: #5b21b6;
+}
+
 .role-manager {
     background-color: #dbeafe;
     color: #1e40af;

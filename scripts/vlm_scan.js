@@ -1481,7 +1481,7 @@ async function saveAcceptedItemsToInventory() {
 async function initReceiptScanner() {
     const session = await window.authHelpers?.requireAuth?.();
     if (!session) return;
-    const hasAccess = await window.authHelpers.requireRole(['admin', 'manager', 'staff']);
+    const hasAccess = await window.authHelpers.requireRole(['owner', 'admin', 'manager', 'staff']);
     if (!hasAccess) return;
 
     const imageInput = document.getElementById('receipt-image-input');

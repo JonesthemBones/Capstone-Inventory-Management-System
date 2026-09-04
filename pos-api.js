@@ -29,7 +29,7 @@ async function requirePOSUser(req, res) {
     .single();
 
   const role = String(profile?.role || '').toLowerCase();
-  if (profileError || !profile?.is_active || !['cashier', 'admin', 'manager'].includes(role)) {
+  if (profileError || !profile?.is_active || !['owner', 'cashier', 'admin', 'manager'].includes(role)) {
     res.status(403).json({ error: 'You are not allowed to finalize POS sales.' });
     return null;
   }
