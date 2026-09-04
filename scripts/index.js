@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const activityKey = 'amacar:last-activity';
             const lastActivity = Number(localStorage.getItem(activityKey));
             const sessionTimedOut = Number.isFinite(lastActivity) && lastActivity > 0
-                && Date.now() - lastActivity >= 15 * 60 * 1000;
+                && Date.now() - lastActivity >= 5 * 60 * 1000;
 
             if (sessionTimedOut) {
                 await supabase.rpc('release_current_session');
