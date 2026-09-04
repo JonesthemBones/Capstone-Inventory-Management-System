@@ -55,7 +55,7 @@ if (SMTP_HOST && SMTP_PORT && EMAIL_USER && EMAIL_PASSWORD) {
   console.log('SMTP_SECURE:', SMTP_SECURE);
 
   transporter = nodemailer.createTransport({
-    host: SMTP_ADDRESS,
+    host: SMTP_HOST,
     port: Number(SMTP_PORT),
     secure: SMTP_SECURE === 'true',
     family: SMTP_FAMILY,
