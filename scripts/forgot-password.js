@@ -1,9 +1,3 @@
-const isLocalDevelopment = window.location.hostname === 'localhost'
-    || window.location.hostname === '127.0.0.1';
-const API_URL = isLocalDevelopment && window.location.port !== '3001'
-    ? `${window.location.protocol}//${window.location.hostname}:3001/api`
-    : '/api';
-
 document.addEventListener('DOMContentLoaded', () => {
     const forgotPasswordPage = document.getElementById('forgot-password-page');
     const otpVerificationPage = document.getElementById('otp-verification-page');
@@ -15,6 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const otpVerificationForm = document.getElementById('otp-verification-form');
     const resetPasswordForm = document.getElementById('reset-password-form');
     
+    // Keep recovery credentials in memory, separate from normal login sessions.
+    const recoveryClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+            storageKey: 'amacar-password-recovery',
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+        }
+    });
+    let recoveryUserId = null;
     let userEmail = '';
     let countdownInterval = null;
 
@@ -35,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle forgot password form submission - Send OTP
     forgotPasswordForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const email = document.getElementById('forgot-email').value.trim();
+        const email = document.getElementById('forgot-email').value.trim().toLowerCase();
         const submitBtn = e.target.querySelector('button[type="submit"]');
         
         if (!email) {
@@ -48,19 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.textContent = 'Sending...';
 
         try {
-            const response = await fetch(`${API_URL}/send-otp`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to send OTP');
-            }
+            const { error } = await recoveryClient.auth.resetPasswordForEmail(email);
+            if (error) throw error;
+            recoveryUserId = null;
 
             userEmail = email;
             document.getElementById('user-email').textContent = email;
@@ -77,9 +71,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelector('.otp-input').focus();
 
             if (window.utils && window.utils.showToast) {
-                window.utils.showToast('OTP sent to your email', 'success');
+                window.utils.showToast('If this email is registered, a recovery code has been sent.', 'success');
             } else {
-                alert('✅ OTP sent to your email! Check your inbox.');
+                alert('✅ If this email is registered, check your inbox for a recovery code.');
             }
 
         } catch (error) {
@@ -128,11 +122,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Countdown timer
     function startCountdown() {
-        let seconds = 59;
+        let seconds = 60;
         clearCountdown(); // Clear any existing countdown
 
         const resendText = document.querySelector('.resend-text');
-        resendText.innerHTML = 'Resend code in <span id="countdown">59s</span>';
+        resendText.innerHTML = 'Resend code in <span id="countdown">60s</span>';
         
         countdownInterval = setInterval(() => {
             const countdownElement = document.getElementById('countdown');
@@ -141,10 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            countdownElement.textContent = `${seconds}s`;
             seconds--;
+            countdownElement.textContent = `${seconds}s`;
             
-            if (seconds < 0) {
+            if (seconds <= 0) {
                 clearCountdown();
                 resendText.innerHTML = '<a href="#" class="link" id="resend-code">Resend code</a>';
             }
@@ -171,19 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Resend OTP
     async function resendOTP() {
         try {
-            const response = await fetch(`${API_URL}/send-otp`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email: userEmail })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to resend OTP');
-            }
+            const { error } = await recoveryClient.auth.resetPasswordForEmail(userEmail);
+            if (error) throw error;
 
             // Reset countdown
             startCountdown();
@@ -223,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const otp = Array.from(otpInputs).map(input => input.value).join('');
         const submitBtn = e.target.querySelector('button[type="submit"]');
         
-        if (otp.length !== 6) {
+        if (!/^\d{6}$/.test(otp)) {
             alert('Please enter the complete 6-digit OTP');
             return;
         }
@@ -232,22 +215,17 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.textContent = 'Verifying...';
 
         try {
-            const response = await fetch(`${API_URL}/verify-otp`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    email: userEmail,
-                    otp: otp
-                })
+            const { data, error } = await recoveryClient.auth.verifyOtp({
+                email: userEmail,
+                token: otp,
+                type: 'recovery'
             });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Invalid OTP');
+            if (error) throw error;
+            if (!data.session || !data.user ||
+                data.user.email?.toLowerCase() !== userEmail.toLowerCase()) {
+                throw new Error('Unable to verify this recovery session. Request a new code.');
             }
+            recoveryUserId = data.user.id;
 
             // OTP verified, show reset password page
             clearCountdown();
@@ -294,21 +272,22 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBtn.textContent = 'Resetting...';
 
             try {
-                const response = await fetch(`${API_URL}/reset-password`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        email: userEmail,
-                        newPassword: newPassword
-                    })
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to reset password');
+                if (!recoveryUserId) {
+                    throw new Error('Please verify your recovery code first.');
+                }
+                const { data: sessionData, error: sessionError } = await recoveryClient.auth.getSession();
+                if (sessionError) throw sessionError;
+                if (!sessionData.session || sessionData.session.user.id !== recoveryUserId) {
+                    throw new Error('Recovery session expired. Please request a new code.');
+                }
+                const { error } = await recoveryClient.auth.updateUser({ password: newPassword });
+                if (error) throw error;
+                recoveryUserId = null;
+                // A failed cleanup must not report an already changed password as failed.
+                try {
+                    await recoveryClient.auth.signOut({ scope: 'local' });
+                } catch (cleanupError) {
+                    console.warn('Recovery session cleanup failed.');
                 }
 
                 alert('✅ Password reset successfully!\n\nYou can now login with your new password.');
