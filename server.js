@@ -1,7 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const passwordResetRoutes = require('./password-reset');
+// Legacy Nodemailer implementation remains in password-reset.js for reference.
+// Password recovery now uses Supabase Auth directly from the reset page.
 const openRouterRoutes = require('./openrouter');
 const paymongoRoutes = require('./paymongo');
 const posRoutes = require('./pos-api');
@@ -46,7 +47,10 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 // Serve static files
 app.use(express.static(__dirname));
 
-app.use('/api', passwordResetRoutes);
+// Do not expose the legacy admin password-reset flow alongside Supabase recovery.
+app.post(['/api/send-otp', '/api/verify-otp', '/api/reset-password'], (req, res) => {
+  res.status(410).json({ error: 'Please reload the password-reset page to use Supabase recovery.' });
+});
 app.use('/api', openRouterRoutes);
 app.use('/api', paymongoRoutes);
 app.use('/api', posRoutes);
@@ -75,9 +79,6 @@ app.listen(PORT, () => {
   console.log(`🗄️  Database: ${process.env.SUPABASE_URL}`);
   console.log(`🌐 CORS enabled for development`);
   console.log(`\nEndpoints:`);
-  console.log(`  POST /api/send-otp`);
-  console.log(`  POST /api/verify-otp`);
-  console.log(`  POST /api/reset-password`);
   console.log(`  POST /api/vlm-scan`);
   console.log(`  GET  /api/vlm-extraction-history`);
   console.log(`  POST /api/save-items-to-inventory`);
