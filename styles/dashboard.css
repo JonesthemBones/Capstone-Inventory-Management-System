@@ -238,3 +238,16 @@
         padding: 16px;
     }
 }
+#overall-dashboard { margin-bottom:24px; }
+#overall-dashboard[hidden] { display:none; }
+#overall-dashboard h2 { font-size:20px; margin:0 0 8px; }
+#overall-dashboard .stats-grid { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin-top:16px; }
+#overall-dashboard .chart-card { min-width:0; }
+#overall-dashboard .overall-chart { position:relative; height:260px; }
+#overall-dashboard .overall-activity { max-height:280px; overflow:auto; }
+#overall-error { color:var(--text-secondary); font-size:13px; }
+@media(max-width:600px) {
+    #overall-dashboard .stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    #overall-dashboard .charts-grid { grid-template-columns:1fr; }
+    #overall-dashboard .stat-value { font-size:22px; overflow-wrap:anywhere; }
+}

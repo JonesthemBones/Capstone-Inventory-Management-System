@@ -35,6 +35,23 @@
                     </div>
                 </div>
 
+                <section id="overall-dashboard" hidden aria-label="Store-wide overview">
+                    <h2>Store-wide overview</h2>
+                    <p class="chart-subtitle">Sales totals for today across all cashiers. Inventory reflects current stock.</p>
+                    <p id="overall-error" role="status"></p>
+                    <div class="stats-grid">
+<div class="stat-card"><div class="stat-title">Today's Sales</div><div class="stat-value" id="overall-sales">?</div><p class="chart-subtitle">Completed sales today</p></div>
+<div class="stat-card"><div class="stat-title">Transactions</div><div class="stat-value" id="overall-transactions">?</div><p class="chart-subtitle">Completed transactions today</p></div>
+<div class="stat-card"><div class="stat-title">Items Sold</div><div class="stat-value" id="overall-units">?</div><p class="chart-subtitle">Units sold today</p></div>
+<div class="stat-card"><div class="stat-title">Average Sale</div><div class="stat-value" id="overall-average">?</div><p class="chart-subtitle">Average transaction value today</p></div>
+<div class="stat-card"><div class="stat-title">Out of Stock</div><div class="stat-value" id="overall-out">?</div><p class="chart-subtitle">Active products with no stock</p></div>
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card"><h3>Payment Methods</h3><p class="chart-subtitle">Completed transaction counts across all cashiers, last 7 days</p><p id="overall-payments-empty" hidden>No completed sales in this period.</p><div class="overall-chart"><canvas id="overallPaymentsChart"></canvas></div></div>
+                        <div class="chart-card"><h3>Stock Change Activity</h3><p class="chart-subtitle">Units received and released, including sales, last 7 days</p><div class="overall-chart"><canvas id="overallMovementsChart"></canvas></div></div>
+                    </div>
+                    <div class="chart-card"><h3>Recent Stock Changes</h3><p class="chart-subtitle">Latest receiving and stock adjustments</p><div id="overall-stock-activity" class="overall-activity"></div></div>
+                </section>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-header">
@@ -219,6 +236,7 @@
         </div>
     </div>
 
+    <script src="../scripts/dashboard-overview.js"></script>
     <script src="../scripts/dashboard.js"></script>
     <script>
         (async () => {
