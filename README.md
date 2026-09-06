@@ -10,7 +10,7 @@ The current development focus is interface refinement, data consistency, product
 
 ## Current features
 
-- Dashboard metrics for inventory, sales, recent transactions, stock movements, and top products by value
+- Dashboard metrics for inventory, sales, recent transactions, stock movements, top products by value, supplier receipt frequency, and an owner/admin overview
 - Product inventory management with categories, images, pricing, stock thresholds, audited adjustments, inbound batch history, reversible archive/restore, filtering, and pagination
 - Inbound inventory through VLM-assisted receipt extraction and product matching
 - Manual outbound transactions for sales, returns, damage/disposal, transfers, and other stock-outs
@@ -21,11 +21,20 @@ The current development focus is interface refinement, data consistency, product
 - Inventory, valuation, low-stock, stock-movement, and cashier sales reports
 - Audit logs and stock-movement history with export options
 - User viewing, editing, activation/deactivation, non-destructive backup/restore, and role assignment for `owner`, `admin`, `cashier`, and `staff`
-- Supabase authentication, OTP password reset, first-login-wins session control, five-minute inactivity logout, failed-login throttling, role-based navigation, responsive desktop/mobile layouts, and dark mode
+- Supabase authentication and recovery-code password reset, first-login-wins session control, five-minute inactivity logout, failed-login throttling, role-based navigation, responsive desktop/mobile layouts, and dark mode
+- Optional POS delivery details with required customer name and address, optional contact number and instructions, and delivery information on displayed and printed receipts
 - Inventory and user backup/restore tools
 
 ## Recent progress and interface changes
 
+- Added an owner/admin overview with today's sales, transaction count, units sold, average sale, active out-of-stock products, seven-day payment-method counts, stock-movement trends, and recent stock activity. Sales metrics refresh on transaction changes and every two minutes.
+- Added a supplier-frequency chart showing the top five suppliers by distinct successfully extracted receipts in the current year, grouping supplier names without regard to capitalization.
+- Redesigned Remove Stock with product-name/code search, category filtering, a selected-product summary, and a remaining-stock preview. Submission rejects empty, non-positive, fractional, and excessive quantities and prevents duplicate submissions while processing.
+- Added delivery checkout fields, preserved delivery details through pending QR/e-wallet checkout, and included escaped delivery information in receipt previews and printing.
+- Grouped less-used inventory controls under **More Filters**, with an active-filter badge and **Clear Filters**. The default **Active Products** availability selection counts as one active advanced filter.
+- Migrated password recovery to Supabase Auth using an isolated, in-memory recovery session. The former Express OTP/reset endpoints now return HTTP `410 Gone`.
+- Changed missing or unresolved role fallbacks to `guest` instead of assuming an operational role; `guest` is not a staff role to assign.
+- Added automated checks for dashboard summary calculations, outbound search and quantity validation, and delivery validation and receipt escaping.
 - Replaced the former `manager` role with the new `owner` role across navigation, inventory, POS, reports, receipt scanning, user management, and activity history. Owners receive full business access, while technical receipt-scanner configuration remains exclusive to `admin`.
 - Reduced the inactivity timeout from 15 minutes to 5 minutes and improved automatic logout reason handling, session cleanup, and cross-tab activity tracking.
 - Added Receipt Scanner extraction history for reviewed items that were successfully saved to inventory, including the save date, operator, quantity, cost, category, and whether each item created a product or updated stock.
@@ -81,7 +90,7 @@ Mobile layouts are primarily applied at widths of `768px` and below, with additi
 - Database/authentication/storage: Supabase (PostgreSQL, Auth, Realtime, and Storage)
 - Receipt extraction: DeepSeek vision model with a Python VLM helper
 - Payments: PayMongo test checkout for QR/e-wallet payments
-- Email: Nodemailer/SMTP for OTP password reset
+- Password-recovery email: Supabase Auth; the legacy Nodemailer implementation is retained but is not mounted by the server
 
 ## Project structure
 
@@ -89,7 +98,7 @@ Mobile layouts are primarily applied at widths of `768px` and below, with additi
 Capstone-Inventory-Management-System/
 |-- index.html                 # Login-aware application entry point
 |-- server.js                  # Express server and static hosting
-|-- password-reset.js          # OTP and password-reset API routes
+|-- password-reset.js          # Legacy OTP/reset implementation (not mounted)
 |-- openrouter.js              # VLM extraction and inventory-import API routes
 |-- paymongo.js                # PayMongo checkout API routes
 |-- pos-api.js                 # Authenticated POS stock finalization
@@ -101,6 +110,7 @@ Capstone-Inventory-Management-System/
 |-- scripts/                   # Page logic and shared browser helpers
 |-- styles/                    # Shared and page-specific styles
 |-- supabase/migrations/       # SQL migrations required by hosted Supabase features
+|-- tests/                     # Node tests for dashboard, stock removal, and delivery
 `-- components/sidebar.html    # Shared desktop/mobile navigation
 ```
 
@@ -110,7 +120,8 @@ Capstone-Inventory-Management-System/
 - npm
 - A configured Supabase project
 - Python available as `python`, or configured through `PYTHON_BINARY`, for receipt-image processing
-- DeepSeek, SMTP, and PayMongo test credentials for their respective optional workflows
+- DeepSeek and PayMongo test credentials for their respective optional workflows
+- Supabase Auth recovery email configured for the six-digit code entry flow
 
 ## Installation and startup
 
@@ -121,7 +132,7 @@ npm start
 
 Open `http://localhost:3001`.
 
-Use the Express server rather than a frontend-only static server. Password reset, VLM extraction, PayMongo, user creation, and protected POS inventory finalization depend on `/api` routes.
+Use the Express server rather than a frontend-only static server. VLM extraction, PayMongo, and protected POS inventory finalization depend on `/api` routes. Password recovery uses Supabase Auth directly; user creation still has the [known API limitation](#known-limitation).
 
 ## Configuration
 
@@ -138,16 +149,16 @@ VLM_MODEL=deepseek-v4-flash-vision-exp
 DEEPSEEK_API_ENDPOINT=https://api.deepseek.com/chat/completions
 PYTHON_BINARY=python
 
-EMAIL_USER=your-email@example.com
-EMAIL_PASSWORD=your-email-app-password
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-
 PAYMONGO_SECRET_KEY=sk_test_your_test_key
 ```
 
 The browser Supabase URL and anonymous key are currently configured in `scripts/config.js`. The service-role key belongs only in `.env` and is used by protected server operations.
+
+### Password recovery
+
+The recovery page requests an email through Supabase Auth, verifies a six-digit code with recovery type, and updates the password using the verified recovery session. Configure the hosted Supabase recovery email to include the code expected by this form. Email delivery settings belong to the Supabase project; the root `EMAIL_USER`, `EMAIL_PASSWORD`, and `SMTP_*` variables are no longer used by the active recovery flow.
+
+Recovery credentials remain in memory and are separate from normal login sessions. After a successful reset, the page clears the local recovery session and returns to login. The previously added `email-templates/supabase-reset-password.html` file is no longer included in the repository.
 
 ### Required session-security migration
 
@@ -218,9 +229,9 @@ All routes are mounted under `/api`.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/send-otp` | Send a password-reset OTP |
-| `POST` | `/verify-otp` | Verify a password-reset OTP |
-| `POST` | `/reset-password` | Reset a user password |
+| `POST` | `/send-otp` | Retired; returns `410 Gone` directing clients to Supabase recovery |
+| `POST` | `/verify-otp` | Retired; returns `410 Gone` |
+| `POST` | `/reset-password` | Retired; returns `410 Gone` |
 | `POST` | `/vlm-scan` | Process a receipt image |
 | `POST` | `/vlm-scan-supplier` | Process a supplier receipt image with the supplier-focused extraction workflow |
 | `GET` | `/vlm-extraction-history` | List reviewed extractions successfully saved to inventory |
@@ -319,13 +330,23 @@ Hard-refresh the browser to load the current frontend. Confirm `products.is_acti
 
 Ask the user to sign out from the original browser. If that browser was closed or lost connectivity, leave the account inactive for 15 minutes so its heartbeat expires. Administrators can inspect the three `active_session_*` fields, but should not clear a live lock without confirming the original user is no longer working.
 
-### Password-reset email is not sent
+### Password-reset email is not sent or contains only a link
 
-Check the SMTP variables and use an app password when required by the email provider.
+Check the Supabase project's Auth email delivery configuration, recovery email template, and provider limits. The current form expects a six-digit recovery code. Changing the local SMTP variables does not affect this flow. If an old browser tab calls `/api/send-otp`, `/api/verify-otp`, or `/api/reset-password` and receives `410 Gone`, reload the recovery page.
 
 ### Receipt extraction fails
 
 Check `DEEPSEEK_API_KEY`, `VLM_MODEL`, `PYTHON_BINARY`, and the server console. The VLM configuration can also be inspected through `/api/vlm-config`.
+
+## Automated checks
+
+Run the current tests with Node's built-in test runner:
+
+```bash
+node --test tests/dashboard-overview.test.js tests/outbound.test.js tests/pos-delivery.test.js
+```
+
+These checks cover dashboard aggregation and empty states, outbound search/category matching and quantity validation, delivery field validation/restoration, and escaping delivery details in receipts. They do not exercise live Supabase, email delivery, or PayMongo integrations. The earlier password-recovery test file has been removed.
 
 ## License
 

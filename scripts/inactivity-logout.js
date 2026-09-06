@@ -2,8 +2,8 @@
 class InactivityLogout {
     constructor(options = {}) {
         // Configuration (all times in milliseconds)
-        this.inactivityTimeout = options.timeout || 15 * 60 * 1000;
-        this.warningTime = options.warningTime || 2 * 60 * 1000; 
+        this.inactivityTimeout = options.timeout || 30 * 1000;
+        this.warningTime = options.warningTime || 10 * 1000;
         this.checkInterval = options.checkInterval || 1000; 
         
         // State
@@ -146,26 +146,22 @@ class InactivityLogout {
         modal.id = 'inactivity-warning-modal';
         modal.className = 'inactivity-modal';
         modal.innerHTML = `
-            <div class="inactivity-modal-content">
+            <div class="inactivity-modal-content" role="dialog" aria-labelledby="inactivity-title" aria-describedby="inactivity-description">
                 <div class="inactivity-modal-header">
-                    <i class="fas fa-clock"></i>
-                    <h3>Session Timeout Warning</h3>
+                    <span class="inactivity-eyebrow">AMACAR HARDWARE <span aria-hidden="true">/</span> SESSION</span>
+                    <h3 id="inactivity-title">Still working?</h3>
                 </div>
                 <div class="inactivity-modal-body">
-                    <p>You've been inactive for a while.</p>
-                    <p>You will be automatically logged out in:</p>
-                    <div class="inactivity-countdown" id="inactivity-countdown">
+                    <p id="inactivity-description">Your session will end soon because there hasn't been any activity.</p>
+                    <div class="inactivity-countdown" id="inactivity-countdown" role="timer" aria-label="Time until automatic sign out">
+                        <span class="inactivity-countdown-label"><i class="far fa-clock" aria-hidden="true"></i> Signing out in</span>
                         <span class="countdown-time">${minutes}:${seconds.toString().padStart(2, '0')}</span>
                     </div>
-                    <p class="inactivity-hint">Move your mouse or press any key to stay logged in.</p>
+                    <p class="inactivity-hint">Moving your mouse or typing also keeps you signed in.</p>
                 </div>
                 <div class="inactivity-modal-footer">
-                    <button class="btn btn-primary" id="stay-logged-in-btn">
-                        <i class="fas fa-check"></i> Stay Logged In
-                    </button>
-                    <button class="btn btn-secondary" id="logout-now-btn">
-                        <i class="fas fa-sign-out-alt"></i> Logout Now
-                    </button>
+                    <button type="button" class="btn btn-secondary" id="logout-now-btn">Sign out</button>
+                    <button type="button" class="btn btn-primary" id="stay-logged-in-btn">Stay signed in</button>
                 </div>
             </div>
         `;
@@ -300,136 +296,122 @@ class InactivityLogout {
         styles.textContent = `
             .inactivity-modal {
                 position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.7);
+                inset: 0;
+                padding: 20px;
+                box-sizing: border-box;
+                background: rgba(7, 15, 26, 0.48);
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 z-index: 10000;
                 opacity: 0;
-                transition: opacity 0.3s ease;
+                transition: opacity 0.18s ease;
             }
-            
-            .inactivity-modal.show {
-                opacity: 1;
-            }
-            
+            .inactivity-modal.show { opacity: 1; }
             .inactivity-modal-content {
+                text-align: center;
+                width: 100%;
+                max-width: 420px;
+                max-height: calc(100dvh - 40px);
+                overflow: auto;
                 background: var(--bg-primary, #ffffff);
-                border-radius: 12px;
-                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-                max-width: 450px;
-                width: 90%;
-                overflow: hidden;
-                transform: scale(0.9);
-                transition: transform 0.3s ease;
+                color: var(--text-primary, #172033);
+                border: 1px solid var(--border-color, #dce2e9);
+                border-radius: 10px;
+                box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+                transform: translateY(8px);
+                transition: transform 0.18s ease;
             }
-            
-            .inactivity-modal.show .inactivity-modal-content {
-                transform: scale(1);
-            }
-            
-            .inactivity-modal-header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                padding: 24px;
-                text-align: center;
-            }
-            
-            .inactivity-modal-header i {
-                font-size: 48px;
-                margin-bottom: 12px;
-                animation: pulse 2s infinite;
-            }
-            
-            @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.6; }
-            }
-            
-            .inactivity-modal-header h3 {
-                margin: 0;
-                font-size: 22px;
+            .inactivity-modal.show .inactivity-modal-content { transform: translateY(0); }
+            .inactivity-modal-header { padding: 26px 26px 0; }
+            .inactivity-eyebrow {
+                display: block;
+                color: var(--text-secondary, #64748b);
+                font-size: 10px;
                 font-weight: 600;
+                letter-spacing: 0.1em;
             }
-            
-            .inactivity-modal-body {
-                padding: 32px 24px;
-                text-align: center;
-                color: var(--text-primary, #333);
+            .inactivity-eyebrow span { margin: 0 6px; opacity: 0.5; }
+            .inactivity-modal-header h3 {
+                margin: 14px 0 0;
+                font-size: 23px;
+                line-height: 1.3;
+                font-weight: 600;
+                letter-spacing: -0.025em;
             }
-            
+            .inactivity-modal-body { padding: 10px 26px 22px; }
             .inactivity-modal-body p {
-                margin: 8px 0;
-                font-size: 15px;
+                margin: 0;
+                color: var(--text-secondary, #64748b);
+                font-size: 14px;
+                line-height: 1.65;
             }
-            
             .inactivity-countdown {
-                margin: 24px 0;
-                padding: 20px;
-                background: var(--bg-secondary, #f5f5f5);
-                border-radius: 8px;
-            }
-            
-            .countdown-time {
-                font-size: 48px;
-                font-weight: bold;
-                color: #dc2626;
-                font-family: 'Courier New', monospace;
-            }
-            
-            .inactivity-hint {
-                font-size: 13px;
-                color: var(--text-secondary, #666);
-                margin-top: 16px;
-                font-style: italic;
-            }
-            
-            .inactivity-modal-footer {
-                padding: 20px 24px;
-                background: var(--bg-secondary, #f9fafb);
                 display: flex;
-                gap: 12px;
+                flex-direction: column;
+                align-items: center;
                 justify-content: center;
+                gap: 10px;
+                margin: 20px 0 12px;
+                padding: 14px 16px;
+                background: var(--bg-secondary, #f5f7fa);
+                border: 1px solid var(--border-color, #dce2e9);
+                border-radius: 6px;
             }
-            
-            .inactivity-modal-footer .btn {
-                padding: 12px 24px;
-                border: none;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: 500;
-                cursor: pointer;
+            .inactivity-countdown-label {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                transition: all 0.2s;
+                gap: 9px;
+                font-size: 13px;
             }
-            
-            .inactivity-modal-footer .btn-primary {
-                background: #2563eb;
-                color: white;
+            .inactivity-countdown-label i { color: var(--text-secondary, #64748b); }
+            .inactivity-countdown .countdown-time {
+                font-family: inherit;
+                font-variant-numeric: tabular-nums;
+                font-size: 26px;
+                font-weight: 600;
+                line-height: 1;
+                letter-spacing: -0.03em;
+                color: var(--text-primary, #172033);
             }
-            
-            .inactivity-modal-footer .btn-primary:hover {
-                background: #1d4ed8;
-                transform: translateY(-1px);
+            .inactivity-modal-body .inactivity-hint { font-size: 12px; }
+            .inactivity-modal-footer {
+                padding: 16px 26px;
+                border-top: 1px solid var(--border-color, #dce2e9);
+                display: flex;
+                justify-content: center;
+                gap: 10px;
             }
-            
+            .inactivity-modal-footer .btn {
+                min-height: 42px;
+                padding: 10px 16px;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                font: inherit;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            .inactivity-modal-footer .btn-primary { background: #2563eb; color: #ffffff; }
+            .inactivity-modal-footer .btn-primary:hover { background: #1d4ed8; }
             .inactivity-modal-footer .btn-secondary {
-                background: #6b7280;
-                color: white;
+                background: transparent;
+                border-color: var(--border-color, #dce2e9);
+                color: var(--text-primary, #172033);
             }
-            
-            .inactivity-modal-footer .btn-secondary:hover {
-                background: #4b5563;
-                transform: translateY(-1px);
+            .inactivity-modal-footer .btn-secondary:hover { background: var(--bg-secondary, #f5f7fa); }
+            .inactivity-modal-footer .btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 3px; }
+            @media (max-width: 380px) {
+                .inactivity-modal-header { padding: 22px 20px 0; }
+                .inactivity-modal-body { padding: 10px 20px 20px; }
+                .inactivity-modal-footer { padding: 14px 20px; }
+                .inactivity-modal-footer .btn { flex: 1; padding: 10px; }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .inactivity-modal, .inactivity-modal-content { transition: none; transform: none; }
             }
         `;
-        
+
         document.head.appendChild(styles);
     }
     
@@ -477,8 +459,8 @@ class InactivityLogout {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {    
     window.inactivityLogout = new InactivityLogout({
-        timeout: 5 * 60 * 1000,
-        warningTime: 1 * 60 * 1000,
+        timeout: 30 * 1000, // Temporary timeout for testing automatic logout.
+        warningTime: 10 * 1000,
         checkInterval: 1000             
     });
 });
