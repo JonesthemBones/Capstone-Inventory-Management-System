@@ -53,6 +53,15 @@ const ReceiptPrinter = {
                 <p><strong>Payment Method:</strong> ${paymentLabel}</p>
             </div>
 
+            ${transaction.is_delivery ? `
+            <div class="receipt-details receipt-delivery" style="white-space:pre-line;overflow-wrap:anywhere">
+                <strong>FOR DELIVERY</strong>
+                <p><strong>Customer:</strong> ${escapeHTML(transaction.customer_name)}</p>
+                ${transaction.customer_phone ? `<p><strong>Contact:</strong> ${escapeHTML(transaction.customer_phone)}</p>` : ''}
+                <p><strong>Address:</strong> ${escapeHTML(transaction.delivery_address)}</p>
+                ${transaction.notes ? `<p><strong>Instructions:</strong> ${escapeHTML(transaction.notes)}</p>` : ''}
+            </div>` : ''}
+
             <table class="receipt-items">
                 <thead>
                     <tr>

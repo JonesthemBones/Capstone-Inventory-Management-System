@@ -311,99 +311,63 @@
 
     <!-- Outbound Modal -->
    <!-- Outbound Modal - UPDATED WITH THUMBNAIL GRID -->
-    <div id="outbound-modal" class="modal">
+    <div id="outbound-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="outbound-title">
         <div class="modal-content outbound-modal-content">
             <div class="modal-header">
-                <h2>Remove Stock</h2>
-                <button class="modal-close" id="close-outbound-modal">
+                <h2 id="outbound-title">Remove Stock</h2>
+                <button class="modal-close" id="close-outbound-modal" aria-label="Close Remove Stock">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <form id="outbound-form">
-                <!-- Product Selection Grid -->
-                <div class="outbound-modal-section">
-                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
-                        <i class="fas fa-box" style="margin-right: 8px;"></i>Select Product
-                    </h3>
-                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Choose the product you are removing from inventory.</p>
-                    
-                    <!-- Product Grid -->
-                    <div id="outbound-product-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px;">
-                        <!-- Products will be loaded here -->
-                    </div>
-                </div>
-
-                <!-- Selected Product Display -->
-                <div class="outbound-modal-section">
-                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Selected Product</h3>
-                    <div id="outbound-product-display">
-                        <div style="padding: 24px; text-align: center; background-color: var(--bg-light); border-radius: 8px; border: 2px dashed var(--border-color);">
-                            <i class="fas fa-inbox" style="font-size: 32px; color: var(--text-secondary); margin-bottom: 8px; display: block;"></i>
-                            <p style="margin: 0; color: var(--text-secondary);">Select a product from the grid above</p>
+                <div class="outbound-form-body">
+                    <p class="outbound-description">Record damaged goods, supplier returns, or internal use.</p>
+                    <div id="outbound-product-picker">
+                        <div class="outbound-details-grid">
+                            <div class="form-group">
+                                <label for="outbound-search">Product</label>
+                                <input type="search" id="outbound-search" placeholder="Search name or product code..." autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label for="outbound-category">Category</label>
+                                <select id="outbound-category"><option value="">All Categories</option></select>
+                            </div>
                         </div>
+                        <p id="outbound-results-status" role="status"></p>
+                        <div id="outbound-product-results" aria-label="Products with available stock"></div>
                     </div>
-                    
-                    <div class="outbound-details-grid outbound-product-meta">
-                        <div class="form-group">
-                            <label for="available-quantity">Available Quantity</label>
-                            <input type="text" id="available-quantity" disabled>
-                        </div>
-                        <div class="form-group">
-                            <label for="unit-price">Selling Price per Unit</label>
-                            <input type="text" id="unit-price" disabled>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Outbound Details -->
-                <div class="outbound-modal-section">
-                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
-                        <i class="fas fa-truck" style="margin-right: 8px;"></i>Removal Details
-                    </h3>
+                    <div id="outbound-product-display" hidden></div>
                     <div class="outbound-details-grid">
                         <div class="form-group">
                             <label for="outbound-quantity">Quantity to Remove *</label>
-                            <input type="number" id="outbound-quantity" min="1" required placeholder="Enter quantity">
+                            <input type="number" id="outbound-quantity" min="1" step="1" required placeholder="Enter quantity" disabled aria-describedby="outbound-remaining">
                         </div>
                         <div class="form-group">
                             <label for="outbound-type">Reason for Removal *</label>
                             <select id="outbound-type" required>
-                                <option value="">Select Type</option>
-                                <option value="sales">Sales</option>
-                                <option value="return">Return</option>
-                                <option value="damage">Damage/Disposal</option>
+                                <option value="">Select reason</option>
+                                <option value="damage">Damaged / Disposal</option>
+                                <option value="return">Supplier Return</option>
+                                <option value="internal_use">Internal Use</option>
+                                <option value="correction">Stock Correction</option>
                                 <option value="transfer">Transfer to Branch</option>
                                 <option value="other">Other</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="outbound-reference">Document or Order Number *</label>
-                            <input type="text" id="outbound-reference" required placeholder="For example: SO-001 or RMA-001">
-                        </div>
-                        <div class="form-group">
-                            <label for="outbound-total">Total Amount</label>
-                            <input type="text" id="outbound-total" disabled>
-                        </div>
                     </div>
-                </div>
-
-                <!-- Additional Notes -->
-                <div class="outbound-modal-section outbound-modal-section-last">
-                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
-                        <i class="fas fa-sticky-note" style="margin-right: 8px;"></i>Additional Information
-                    </h3>
+                    <p id="outbound-remaining" role="status">Select a product to see available stock.</p>
                     <div class="form-group">
-                        <label for="outbound-notes">Notes (Optional)</label>
-                        <textarea id="outbound-notes" rows="3" placeholder="Add any notes about why this stock was removed..."></textarea>
+                        <label for="outbound-reference">Reference Number (optional)</label>
+                        <input type="text" id="outbound-reference" placeholder="For example: RMA-001">
+                    </div>
+                    <div class="form-group">
+                        <label for="outbound-notes">Notes (optional)</label>
+                        <textarea id="outbound-notes" rows="2" placeholder="Additional details about this removal"></textarea>
                     </div>
                 </div>
-
                 <div class="modal-actions">
                     <button type="button" class="btn" id="cancel-outbound-btn">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-shipping-fast"></i>
-                        Confirm Stock Removal
-                    </button>
+                    <button type="submit" class="btn btn-primary" id="outbound-submit" disabled>Remove Stock</button>
                 </div>
             </form>
         </div>

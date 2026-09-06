@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     dashboardUserId = session.user?.id || (await window.authHelpers.getCurrentUser())?.id;
     configureDashboardForRole(dashboardRole);
     initializeCharts();
+    initializeOverallDashboard();
     window.authHelpers.revealProtectedContent();
 
     if (dashboardRole === 'cashier') {
@@ -227,6 +228,7 @@ async function loadDashboardStats() {
             ]);
         } else {
             await updateAllCharts();
+            await loadOverallDashboard();
         }
         
     } catch (error) {
@@ -306,8 +308,8 @@ async function loadRecentActivity() {
     }
 }
 
-async function loadRecentStockMovements() {
-    const activityContainer = document.getElementById('recent-activity');
+async function loadRecentStockMovements(targetId = 'recent-activity') {
+    const activityContainer = document.getElementById(targetId);
     try {
         const { data, error } = await supabaseClient
             .from('stock_movements')
@@ -654,7 +656,7 @@ async function updateCashierAnalytics() {
     }
 }
 
-async function updateStaffMovementTrend() {
+async function updateStaffMovementTrend(chart = salesTrendChart) {
     try {
         const days = getLastSevenDays();
         const rangeStart = days[0].toISOString();
@@ -676,13 +678,13 @@ async function updateStaffMovementTrend() {
             if (change < 0 && key in released) released[key] += Math.abs(change);
         });
 
-        if (salesTrendChart) {
-            salesTrendChart.data.labels = days.map(day => day.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }));
-            salesTrendChart.data.datasets = [
+        if (chart) {
+            chart.data.labels = days.map(day => day.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }));
+            chart.data.datasets = [
                 { label: 'Received', data: Object.values(received), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.12)', tension: 0.3, fill: false },
                 { label: 'Released', data: Object.values(released), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.12)', tension: 0.3, fill: false }
             ];
-            salesTrendChart.update();
+            chart.update();
         }
     } catch (error) {
         console.error('Error loading staff movement analytics:', error);

@@ -1,179 +1,123 @@
-// outbound.js - Updated with thumbnail support and product grid
-
+// Product selection and non-sale stock removal.
 let selectedOutboundProduct = null;
-let selectedOutboundItems = [];
+let outboundProducts = [];
+let outboundSubmitting = false;
 
-// Initialize outbound functionality
-function initializeOutbound() {
-    setupOutboundEventListeners();
-}
+function initializeOutbound() { setupOutboundEventListeners(); }
 
-// Load products with available stock (for thumbnail grid)
 async function loadProductsForOutbound() {
+    outboundProducts = [];
+    document.getElementById('outbound-product-results').replaceChildren();
+    const status = document.getElementById('outbound-results-status');
+    status.textContent = 'Loading products...';
     try {
-        const { data: products, error } = await supabaseClient
-            .from('products')
-            .select(`
-                product_id,
-                product_name,
-                product_code,
-                unit_of_measure,
-                selling_price,
-                unit_price,
-                is_active,
-                image_url,
-                image_path,
-                inventory_stock!inventory_stock_product_id_fkey(
-                    stock_id,
-                    quantity
-                )
-            `)
-            .eq('is_active', true)
-            .order('product_name');
-
-        if (error) {
-            console.error('Error loading products:', error);
-            throw error;
+        const { data, error } = await supabaseClient.from('products')
+            .select('product_id, product_name, product_code, unit_of_measure, image_url, image_path, category_id, inventory_stock!inventory_stock_product_id_fkey(stock_id, quantity)')
+            .eq('is_active', true).order('product_name');
+        if (error) throw error;
+        const { data: categories, error: categoryError } = await supabaseClient.from('categories')
+            .select('category_id, category_name').order('category_name');
+        if (categoryError) throw categoryError;
+        const categorySelect = document.getElementById('outbound-category');
+        categorySelect.replaceChildren(new Option('All Categories', ''));
+        for (const category of categories || []) {
+            categorySelect.add(new Option(category.category_name, category.category_id));
         }
-
-        console.log('Loaded products for outbound:', products);
-
-        const productGrid = document.getElementById('outbound-product-grid');
-        if (!productGrid) return;
-
-        productGrid.innerHTML = '';
-        
-        products?.forEach(product => {
-            const inventory = product.inventory_stock?.[0] || product.inventory_stock || {};
-            const quantity = inventory.quantity || 0;
-            
-            // Only show products with available stock
-            if (quantity > 0) {
-                const productCard = createProductCard(product, quantity);
-                productGrid.appendChild(productCard);
-            }
-        });
-
-        console.log('Products loaded into grid');
+        outboundProducts = (data || []).map(product => ({ ...product,
+            quantity: Number((Array.isArray(product.inventory_stock) ? product.inventory_stock[0] : product.inventory_stock)?.quantity || 0)
+        })).filter(product => product.quantity > 0);
+        renderOutboundProducts();
     } catch (error) {
-        console.error('Error loading products:', error);
-        alert('Error loading products: ' + error.message);
+        status.textContent = 'Could not load products. Close and reopen this window to retry.';
+        console.error('Error loading removal products:', error);
     }
 }
 
-// Resolve product image URL from Supabase storage or fallback
-function getProductImageUrl(imagePath) {
-    if (!imagePath) return null;
-    if (imagePath.startsWith('http')) return imagePath;
-
-    const storageBaseUrl = 'https://wxhkhxsxftundtrahpst.supabase.co/storage/v1/object/public/product-images';
-    const relativePath = imagePath.replace(/^product-images\//, '');
-    return `${storageBaseUrl}/${relativePath}`;
+function filterOutboundProducts(products, search, category) {
+    const query = search.trim().toLowerCase();
+    return products.filter(product => (!category || product.category_id === category)
+        && `${product.product_name} ${product.product_code || ''}`.toLowerCase().includes(query));
 }
 
-// Create product card with thumbnail
-function createProductCard(product, quantity) {
-    const card = document.createElement('div');
-    card.className = 'product-card';
-    
-    const imageUrl = product.image_url || getProductImageUrl(product.image_path);
-    const imageHtml = imageUrl
-        ? `<img src="${imageUrl}" alt="${product.product_name}" onerror="this.onerror=null; this.src='https://via.placeholder.com/120?text=No+Image';">`
-        : `<div class="product-card-image-placeholder"><i class="fas fa-image"></i></div>`;
-
-    card.innerHTML = `
-        <div class="product-card-image ${imageUrl ? '' : 'placeholder'}">
-            ${imageHtml}
-            <div class="stock-badge ${quantity <= 5 ? 'low-stock' : ''}">${quantity} ${product.unit_of_measure}</div>
-        </div>
-        <div class="product-card-info">
-            <h4 class="product-card-name" title="${product.product_name}">${product.product_name}</h4>
-            <p class="product-card-code">${product.product_code || 'N/A'}</p>
-            <p class="product-card-price">${formatCurrency(product.selling_price)}</p>
-        </div>
-    `;
-    
-    card.addEventListener('click', () => selectOutboundProduct(product, quantity));
-    
-    return card;
-}
-
-// Select product from grid
-function selectOutboundProduct(product, quantity) {
-    selectedOutboundProduct = {
-        product_id: product.product_id,
-        product_name: product.product_name,
-        product_code: product.product_code,
-        unit_of_measure: product.unit_of_measure || 'pcs',
-        quantity: quantity,
-        selling_price: product.selling_price || 0,
-        unit_price: product.unit_price || 0,
-        image_url: product.image_url,
-        image_path: product.image_path
-    };
-
-    // Update UI to show selected product
-    updateOutboundProductDisplay();
-    
-    console.log('Product selected:', selectedOutboundProduct);
-}
-
-// Update product display in form
-function updateOutboundProductDisplay() {
-    if (!selectedOutboundProduct) return;
-
-    const productDisplay = document.getElementById('outbound-product-display');
-    const availableQty = document.getElementById('available-quantity');
-    const unitPrice = document.getElementById('unit-price');
-    const outboundQty = document.getElementById('outbound-quantity');
-
-    if (productDisplay) {
-        const imageUrl = selectedOutboundProduct.image_url || getProductImageUrl(selectedOutboundProduct.image_path);
-        const imageHtml = imageUrl
-            ? `<img src="${imageUrl}" alt="${selectedOutboundProduct.product_name}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px;" onerror="this.onerror=null; this.src='https://via.placeholder.com/80?text=No+Image';">`
-            : `<div style="width: 80px; height: 80px; border: 2px dashed var(--border-color); border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); color: var(--text-secondary);"><i class="fas fa-image"></i></div>`;
-
-        productDisplay.innerHTML = `
-            <div style="display: flex; gap: 16px; align-items: center; padding: 16px; background-color: var(--bg-light); border-radius: 8px;">
-                ${imageHtml}
-                <div style="flex: 1;">
-                    <h4 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">${selectedOutboundProduct.product_name}</h4>
-                    <p style="margin: 0 0 4px 0; font-size: 13px; color: var(--text-secondary);">${selectedOutboundProduct.product_code}</p>
-                    <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Unit: ${selectedOutboundProduct.unit_of_measure}</p>
-                </div>
-                <button type="button" class="btn" onclick="clearSelectedProduct()" style="white-space: nowrap;">
-                    <i class="fas fa-times"></i> Change
-                </button>
-            </div>
-        `;
-    }
-
-    if (availableQty) availableQty.value = selectedOutboundProduct.quantity;
-    if (unitPrice) unitPrice.value = formatCurrency(selectedOutboundProduct.selling_price);
-    
-    // Clear quantity input
-    if (outboundQty) {
-        outboundQty.value = '';
-        outboundQty.focus();
+function renderOutboundProducts() {
+    const matches = filterOutboundProducts(outboundProducts,
+        document.getElementById('outbound-search').value,
+        document.getElementById('outbound-category').value);
+    const results = document.getElementById('outbound-product-results');
+    results.replaceChildren();
+    document.getElementById('outbound-results-status').textContent = matches.length
+        ? `${matches.length} products available. Select a product below.`
+        : 'No products match. Try another name, code, or category.';
+    for (const product of matches) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'outbound-product-row';
+        appendOutboundProduct(row, product);
+        row.addEventListener('click', () => selectOutboundProduct(product));
+        results.appendChild(row);
     }
 }
 
-// Clear selected product
+function appendOutboundProduct(container, product) {
+    const thumbnail = document.createElement('span');
+    thumbnail.className = 'outbound-thumbnail';
+    thumbnail.innerHTML = '<i class="fas fa-box" aria-hidden="true"></i>';
+    let imageUrl = product.image_url;
+    if (!imageUrl && product.image_path) {
+        imageUrl = /^https?:\/\//i.test(product.image_path) ? product.image_path
+            : supabaseClient.storage.from('product-images').getPublicUrl(product.image_path.replace(/^product-images\//, '')).data.publicUrl;
+    }
+    if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+        const image = document.createElement('img');
+        image.src = imageUrl;
+        image.alt = '';
+        image.loading = 'lazy';
+        image.addEventListener('error', () => image.remove());
+        thumbnail.appendChild(image);
+    }
+    const details = document.createElement('span');
+    details.className = 'outbound-product-info';
+    const name = document.createElement('strong');
+    name.textContent = product.product_name;
+    const code = document.createElement('small');
+    code.textContent = product.product_code || 'No product code';
+    const stock = document.createElement('small');
+    stock.textContent = `Available: ${product.quantity} ${product.unit_of_measure || 'PCS'}`;
+    details.append(name, code, stock);
+    container.append(thumbnail, details);
+}
+
+function selectOutboundProduct(product) {
+    selectedOutboundProduct = product;
+    const display = document.getElementById('outbound-product-display');
+    display.replaceChildren();
+    appendOutboundProduct(display, product);
+    const change = document.createElement('button');
+    change.type = 'button';
+    change.className = 'btn';
+    change.textContent = 'Change';
+    change.addEventListener('click', clearSelectedProduct);
+    display.appendChild(change);
+    display.hidden = false;
+    document.getElementById('outbound-product-picker').hidden = true;
+    const quantity = document.getElementById('outbound-quantity');
+    quantity.disabled = false;
+    quantity.max = product.quantity;
+    quantity.value = '';
+    calculateOutboundTotal();
+    quantity.focus();
+}
+
 function clearSelectedProduct() {
     selectedOutboundProduct = null;
-    const productDisplay = document.getElementById('outbound-product-display');
-    if (productDisplay) {
-        productDisplay.innerHTML = `
-            <div style="padding: 24px; text-align: center; background-color: var(--bg-light); border-radius: 8px; border: 2px dashed var(--border-color);">
-                <i class="fas fa-inbox" style="font-size: 32px; color: var(--text-secondary); margin-bottom: 8px;"></i>
-                <p style="margin: 0; color: var(--text-secondary);">Select a product from the grid above</p>
-            </div>
-        `;
-    }
-    const availableQty = document.getElementById('available-quantity');
-    const unitPrice = document.getElementById('unit-price');
-    if (availableQty) availableQty.value = '';
-    if (unitPrice) unitPrice.value = '';
+    document.getElementById('outbound-product-display').hidden = true;
+    document.getElementById('outbound-product-picker').hidden = false;
+    const quantity = document.getElementById('outbound-quantity');
+    quantity.value = '';
+    quantity.disabled = true;
+    quantity.removeAttribute('max');
+    calculateOutboundTotal();
+    document.getElementById('outbound-search').focus();
 }
 
 // Setup event listeners
@@ -198,8 +142,11 @@ function setupOutboundEventListeners() {
     // Quantity input change
     const quantityInput = document.getElementById('outbound-quantity');
     if (quantityInput) {
-        quantityInput.addEventListener('change', calculateOutboundTotal);
+        quantityInput.addEventListener('input', calculateOutboundTotal);
     }
+
+    document.getElementById('outbound-search').addEventListener('input', renderOutboundProducts);
+    document.getElementById('outbound-category').addEventListener('change', renderOutboundProducts);
 
     // Form submit
     const outboundForm = document.getElementById('outbound-form');
@@ -226,11 +173,13 @@ function openOutboundModal() {
     const modal = document.getElementById('outbound-modal');
     if (modal) {
         modal.classList.add('active');
+        document.getElementById('outbound-search').focus();
     }
 }
 
 // Close outbound modal
 function closeOutboundModal() {
+    if (outboundSubmitting) return;
     const modal = document.getElementById('outbound-modal');
     if (modal) {
         modal.classList.remove('active');
@@ -238,37 +187,25 @@ function closeOutboundModal() {
     selectedOutboundProduct = null;
 }
 
-// Calculate outbound total
+// Preview the stock remaining without changing inventory.
 function calculateOutboundTotal() {
-    if (!selectedOutboundProduct) {
-        alert('Please select a product first');
-        return;
-    }
-
-    const quantityInput = document.getElementById('outbound-quantity');
-    const totalInput = document.getElementById('outbound-total');
-    
-    const quantity = parseInt(quantityInput.value) || 0;
-    
-    if (quantity <= 0) {
-        if (totalInput) totalInput.value = formatCurrency(0);
-        return;
-    }
-
-    if (quantity > selectedOutboundProduct.quantity) {
-        alert(`Not enough stock available.\nAvailable: ${selectedOutboundProduct.quantity}\nRequested: ${quantity}`);
-        quantityInput.value = '';
-        if (totalInput) totalInput.value = formatCurrency(0);
-        return;
-    }
-
-    const total = quantity * selectedOutboundProduct.selling_price;
-    if (totalInput) totalInput.value = formatCurrency(total);
+    const input = document.getElementById('outbound-quantity');
+    const preview = document.getElementById('outbound-remaining');
+    const quantity = Number(input.value);
+    const valid = selectedOutboundProduct && Number.isInteger(quantity)
+        && quantity > 0 && quantity <= selectedOutboundProduct.quantity;
+    input.setCustomValidity(input.value && !valid ? 'Enter a whole quantity within the available stock.' : '');
+    document.getElementById('outbound-submit').disabled = !valid || outboundSubmitting;
+    preview.textContent = !selectedOutboundProduct ? 'Select a product to see available stock.'
+        : !input.value ? `Available: ${selectedOutboundProduct.quantity} ${selectedOutboundProduct.unit_of_measure || 'PCS'}`
+        : valid ? `Available: ${selectedOutboundProduct.quantity} → Remaining: ${selectedOutboundProduct.quantity - quantity} ${selectedOutboundProduct.unit_of_measure || 'PCS'}`
+        : 'Enter a whole quantity within the available stock.';
 }
 
 // Submit outbound order
 async function submitOutboundOrder(e) {
     e.preventDefault();
+    if (outboundSubmitting) return;
     
     console.log('Submitting outbound order...');
     
@@ -279,17 +216,17 @@ async function submitOutboundOrder(e) {
 
     const quantityInput = document.getElementById('outbound-quantity');
     const outboundType = document.getElementById('outbound-type').value;
-    const outboundReference = document.getElementById('outbound-reference').value;
+    const outboundReference = document.getElementById('outbound-reference').value.trim() || `REM-${crypto.randomUUID()}`;
     const outboundNotes = document.getElementById('outbound-notes').value;
 
-    const dispatchQty = parseInt(quantityInput.value);
+    const dispatchQty = Number(quantityInput.value);
 
-    if (!dispatchQty || dispatchQty <= 0) {
+    if (!Number.isInteger(dispatchQty) || dispatchQty <= 0 || dispatchQty > selectedOutboundProduct.quantity) {
         alert('Please enter a valid quantity (greater than 0)');
         return;
     }
 
-    if (!outboundType || !outboundReference) {
+    if (!outboundType) {
         alert('Please fill in all required fields');
         return;
     }
@@ -302,6 +239,10 @@ async function submitOutboundOrder(e) {
         notes: outboundNotes
     });
 
+    outboundSubmitting = true;
+    document.getElementById('outbound-submit').disabled = true;
+    const controls = [...document.querySelectorAll('#outbound-form input, #outbound-form select, #outbound-form textarea, #outbound-form button, #close-outbound-modal')];
+    controls.forEach(control => control.disabled = true);
     try {
         // Get current user session
         const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
@@ -346,7 +287,6 @@ async function submitOutboundOrder(e) {
             .from('inventory_stock')
             .update({
                 quantity: newQuantity,
-                last_sale_date: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             })
             .eq('product_id', selectedOutboundProduct.product_id)
@@ -370,6 +310,7 @@ async function submitOutboundOrder(e) {
             reference_type: 'outbound_order',
             reference_id: outboundReference,
             quantity_change: -dispatchQty,
+            quantity_before: currentStock.quantity,
             quantity_after: newQuantity,
             notes: movementNotes,
             movement_date: new Date().toISOString(),
@@ -395,6 +336,7 @@ async function submitOutboundOrder(e) {
         
         alert(`✓ Stock removed successfully!\n\nProduct: ${selectedOutboundProduct.product_name}\nDocument number: ${outboundReference}\nReason: ${outboundType}\nQuantity removed: ${dispatchQty}`);
         
+        outboundSubmitting = false;
         closeOutboundModal();
         
         // Reload inventory to show updated quantities
@@ -406,6 +348,11 @@ async function submitOutboundOrder(e) {
     } catch (error) {
         console.error('Error processing outbound transaction:', error);
         alert('✖ Stock could not be removed:\n\n' + error.message);
+    } finally {
+        outboundSubmitting = false;
+        controls.forEach(control => control.disabled = false);
+        quantityInput.disabled = !selectedOutboundProduct;
+        calculateOutboundTotal();
     }
 }
 

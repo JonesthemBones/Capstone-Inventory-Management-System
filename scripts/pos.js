@@ -118,6 +118,7 @@ function setupEventListeners() {
     
     // Payment method change
     document.getElementById('payment-method').addEventListener('change', handlePaymentMethodChange);
+    document.getElementById('is-delivery').addEventListener('change', updateDeliveryFields);
     
     // Discount and tender inputs
     document.getElementById('discount-input').addEventListener('change', updateCartSummary);
@@ -539,6 +540,7 @@ async function clearCart(force = false) {
         variant: 'danger'
     })) {
         currentCart = [];
+        restoreDeliveryDetails();
         document.getElementById('discount-input').value = '';
         document.getElementById('tender-amount').value = '';
         updateCartDisplay();
@@ -547,6 +549,45 @@ async function clearCart(force = false) {
     }
 }
 
+
+function updateDeliveryFields() {
+    const enabled = document.getElementById('is-delivery').checked;
+    document.getElementById('is-delivery').setAttribute('aria-expanded', String(enabled));
+    document.getElementById('delivery-fields').hidden = !enabled;
+    for (const id of ['delivery-customer-name', 'delivery-address']) {
+        document.getElementById(id).required = enabled;
+    }
+}
+
+function getDeliveryDetails() {
+    const enabled = document.getElementById('is-delivery').checked;
+    const value = id => enabled ? document.getElementById(id).value.trim() || null : null;
+    const details = {
+        is_delivery: enabled,
+        customer_name: value('delivery-customer-name'),
+        customer_phone: value('delivery-customer-phone'),
+        delivery_address: value('delivery-address'),
+        notes: value('delivery-notes')
+    };
+    if (enabled && (!details.customer_name || !details.delivery_address)) {
+        document.getElementById(!details.customer_name ? 'delivery-customer-name' : 'delivery-address').focus();
+        throw new Error('Enter the customer name and delivery address before completing the sale.');
+    }
+    return details;
+}
+
+function restoreDeliveryDetails(details = {}) {
+    document.getElementById('is-delivery').checked = details.is_delivery === true;
+    for (const [id, key] of Object.entries({
+        'delivery-customer-name': 'customer_name',
+        'delivery-customer-phone': 'customer_phone',
+        'delivery-address': 'delivery_address',
+        'delivery-notes': 'notes'
+    })) {
+        document.getElementById(id).value = details[key] || '';
+    }
+    updateDeliveryFields();
+}
 
 function handlePaymentMethodChange(e) {
     const paymentMethod = e.target.value;
@@ -586,6 +627,7 @@ async function startPayMongoCheckout(discountAmount) {
     checkoutBtn.disabled = true;
 
     try {
+        const delivery = getDeliveryDetails();
         const response = await fetch('/api/paymongo/checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -602,7 +644,8 @@ async function startPayMongoCheckout(discountAmount) {
             referenceNumber,
             cart: currentCart,
             discountAmount,
-            discountType: document.getElementById('discount-input').value
+            discountType: document.getElementById('discount-input').value,
+            delivery
         }));
         window.location.assign(result.checkoutUrl);
     } catch (error) {
@@ -626,6 +669,7 @@ async function handlePayMongoReturn() {
     }
 
     currentCart = pending.cart || [];
+    restoreDeliveryDetails(pending.delivery);
     document.getElementById('discount-input').value = pending.discountType || '';
     document.getElementById('payment-method').value = 'bank_transfer';
     handlePaymentMethodChange({ target: document.getElementById('payment-method') });
@@ -669,6 +713,13 @@ async function handlePayMongoReturn() {
 async function handleCheckout() {
     if (currentCart.length === 0) {
         alert('Cart is empty. Add items to proceed.');
+        return;
+    }
+
+    try {
+        getDeliveryDetails();
+    } catch (error) {
+        alert(error.message);
         return;
     }
 
@@ -723,6 +774,7 @@ async function handleCheckout() {
 
 async function createPOSTransaction(options = {}) {
     try {
+        const delivery = getDeliveryDetails();
         const discountAmount = getDiscountAmount();
         const { subtotal, tax, total } = POSCalculations.calculateTotals(currentCart, discountAmount);
         const paymentMethod = options.paymentMethod || document.getElementById('payment-method').value;
@@ -733,6 +785,7 @@ async function createPOSTransaction(options = {}) {
         const { data: transaction, error: transError } = await supabaseClient
             .from('pos_transactions')
             .insert({
+                ...delivery,
                 cashier_id: currentUserId,
                 transaction_datetime: new Date().toISOString(),
                 transaction_number: options.transactionNumber || `TXN-${Date.now()}`,

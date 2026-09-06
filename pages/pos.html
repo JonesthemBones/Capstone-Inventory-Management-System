@@ -133,6 +133,23 @@
                                 </select>
                             </div>
 
+                            <div class="delivery-section">
+                                <label class="delivery-toggle" for="is-delivery">
+                                    <input type="checkbox" id="is-delivery" aria-controls="delivery-fields" aria-expanded="false">
+                                    For Delivery
+                                </label>
+                                <div id="delivery-fields" hidden>
+                                    <label for="delivery-customer-name">Customer Name (required)</label>
+                                    <input id="delivery-customer-name" type="text" autocomplete="name">
+                                    <label for="delivery-customer-phone">Contact Number (optional)</label>
+                                    <input id="delivery-customer-phone" type="tel" autocomplete="tel">
+                                    <label for="delivery-address">Delivery Address (required)</label>
+                                    <textarea id="delivery-address" rows="3" autocomplete="street-address"></textarea>
+                                    <label for="delivery-notes">Delivery Instructions (optional)</label>
+                                    <textarea id="delivery-notes" rows="2"></textarea>
+                                </div>
+                            </div>
+
                             <!-- Payment Method -->
                             <div class="payment-section">
                                 <label for="payment-method">Payment Method</label>
