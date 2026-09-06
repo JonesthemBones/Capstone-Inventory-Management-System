@@ -2,7 +2,7 @@
 class InactivityLogout {
     constructor(options = {}) {
         // Configuration (all times in milliseconds)
-        this.inactivityTimeout = options.timeout || 30 * 1000;
+        this.inactivityTimeout = options.timeout || 10 * 60 * 1000;
         this.warningTime = options.warningTime || 10 * 1000;
         this.checkInterval = options.checkInterval || 1000; 
         
@@ -459,7 +459,7 @@ class InactivityLogout {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {    
     window.inactivityLogout = new InactivityLogout({
-        timeout: 30 * 1000, // Temporary timeout for testing automatic logout.
+        timeout: 10 * 60 * 1000, // Sign out after 10 minutes of inactivity.
         warningTime: 10 * 1000,
         checkInterval: 1000             
     });
