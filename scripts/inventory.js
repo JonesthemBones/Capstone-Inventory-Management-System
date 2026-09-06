@@ -844,7 +844,7 @@ function getFilters() {
 function getAdvancedFilterCount() {
     const hasValue = id => Boolean(document.getElementById(id)?.value);
     return Number(hasValue('unit-filter'))
-        + Number(hasValue('active-filter'))
+        + Number(document.getElementById('active-filter').value !== 'active')
         + Number(hasValue('min-quantity-filter') || hasValue('max-quantity-filter'))
         + Number(hasValue('min-price-filter') || hasValue('max-price-filter'));
 }
