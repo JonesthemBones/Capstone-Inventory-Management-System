@@ -1,6 +1,32 @@
 let currentEditingProductId = null;
 let currentAdjustingProductId = null;
 let currentUserRole = null;
+const INVENTORY_LOW_STOCK_PERCENTAGE = 0.25;
+const INVENTORY_CRITICAL_STOCK_PERCENTAGE = 0.10;
+let lastGeneratedProductCode = '';
+
+function updateAutomaticProductCode() {
+    if (currentEditingProductId) return;
+    const name = document.getElementById('product-name').value.trim();
+    const code = document.getElementById('product-code');
+    if (name && (!code.value.trim() || code.value === lastGeneratedProductCode)) {
+        lastGeneratedProductCode = generateSKU(name);
+        code.value = lastGeneratedProductCode;
+    }
+}
+
+function updateProductStockThresholds() {
+    const maximum = Number(document.getElementById('maximum-stock').value);
+    if (!Number.isInteger(maximum) || maximum <= 0) {
+        document.getElementById('product-stock-thresholds').textContent =
+            'Enter maximum stock to calculate alerts: low stock at 25% and critical at 10%, rounded up to whole units.';
+        return;
+    }
+    const low = Math.ceil(maximum * INVENTORY_LOW_STOCK_PERCENTAGE);
+    const critical = Math.ceil(maximum * INVENTORY_CRITICAL_STOCK_PERCENTAGE);
+    document.getElementById('product-stock-thresholds').textContent =
+        `Automatic alerts (25% / 10% of maximum): low stock at ${low} units or fewer; critical at ${critical} units or fewer. Zero stock is out of stock.`;
+}
 let inventoryProducts = [];
 let generatedReorderItems = [];
 let inventoryCategories = [];
@@ -109,9 +135,9 @@ function getProductStockStatus(product) {
     const quantity = getInventoryQuantity(product);
     const maximumStock = Number(product.maximum_stock || 0);
     const reorderLevel = Math.max(0, Number(product.reorder_level ?? 10));
-    const lowThreshold = maximumStock > 0 ? Math.ceil(maximumStock * 0.25) : reorderLevel;
+    const lowThreshold = maximumStock > 0 ? Math.ceil(maximumStock * INVENTORY_LOW_STOCK_PERCENTAGE) : reorderLevel;
     const criticalThreshold = maximumStock > 0
-        ? Math.ceil(maximumStock * 0.10)
+        ? Math.ceil(maximumStock * INVENTORY_CRITICAL_STOCK_PERCENTAGE)
         : (reorderLevel > 0 ? Math.max(1, Math.ceil(reorderLevel * 0.40)) : 0);
 
     if (quantity <= 0) return 'out_of_stock';
@@ -770,12 +796,17 @@ function setupEventListeners() {
     document.getElementById('reorder-table-body')?.addEventListener('change', updateReorderQuantity);
 
     document.getElementById('product-form').addEventListener('submit', saveProduct);
+    document.getElementById('product-name').addEventListener('change', updateAutomaticProductCode);
+    document.getElementById('maximum-stock').addEventListener('input', updateProductStockThresholds);
     document.getElementById('new-product-thumbnail-input')?.addEventListener('change', handleNewProductThumbnailSelect);
 
     document.getElementById('add-item-btn').addEventListener('click', () => {
         currentEditingProductId = null;
         document.getElementById('modal-title').textContent = 'Add New Product';
         document.getElementById('product-form').reset();
+        lastGeneratedProductCode = '';
+        document.getElementById('product-additional-details').open = false;
+        updateProductStockThresholds();
         document.getElementById('product-price').disabled = false;
         document.getElementById('selling-price').disabled = false;
         pendingNewProductImageFile = null;
@@ -1201,9 +1232,9 @@ async function saveStockAdjustment(e) {
                 quantity_change: quantityChange,
                 quantity_before: previousQuantity,
                 quantity_after: quantity,
-                reference_type: `manual_${reason}`,
+                reference_type: 'manual_adjustment',
                 performed_by: user.id,
-                notes: notes || `Manual stock adjustment: ${reason.replaceAll('_', ' ')}`
+                notes: `Manual stock adjustment: ${reason.replaceAll('_', ' ')}${notes ? `. ${notes}` : ''}`
             }]);
         if (movementError) {
             // Avoid an untraceable stock change if the audit movement cannot be recorded.
@@ -1245,6 +1276,12 @@ async function saveProduct(e) {
         return;
     }
     
+    const maximumStock = Number(document.getElementById('maximum-stock').value);
+    if (!Number.isInteger(maximumStock) || maximumStock <= 0) {
+        alert('Enter a positive whole number for maximum stock to calculate automatic stock alerts.');
+        return;
+    }
+
     const productData = {
         product_name: document.getElementById('product-name').value.trim().toUpperCase(),
         product_code: document.getElementById('product-code').value.trim(),
@@ -1252,8 +1289,8 @@ async function saveProduct(e) {
         unit_of_measure: normalizeUnit(document.getElementById('product-unit').value),
         unit_price: parseFloat(document.getElementById('product-price').value),
         selling_price: parseFloat(document.getElementById('selling-price').value),
-        reorder_level: parseInt(document.getElementById('reorder-level').value),
-        maximum_stock: parseInt(document.getElementById('maximum-stock').value) || null,
+        reorder_level: Math.ceil(maximumStock * INVENTORY_LOW_STOCK_PERCENTAGE),
+        maximum_stock: maximumStock,
         description: document.getElementById('product-description').value || null
     };
 
@@ -1354,8 +1391,9 @@ async function editProduct(productId) {
         document.getElementById('selling-price').value = product.selling_price || 0;
         document.getElementById('product-price').disabled = currentUserRole === 'staff';
         document.getElementById('selling-price').disabled = currentUserRole === 'staff';
-        document.getElementById('reorder-level').value = product.reorder_level || 10;
         document.getElementById('maximum-stock').value = product.maximum_stock || '';
+        updateProductStockThresholds();
+        document.getElementById('product-additional-details').open = false;
         document.getElementById('product-description').value = product.description || '';
         toggleProductThumbnailSection(true);
         updateProductThumbnailPreview(product);

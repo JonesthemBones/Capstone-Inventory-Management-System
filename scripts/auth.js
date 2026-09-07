@@ -342,6 +342,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             }
             
             console.log('User profile created successfully via fallback');
+        } else if (userData?.is_active === false) {
+            const inactiveError = new Error('Your account has been inactivated. Please contact an administrator.');
+            inactiveError.code = 'ACCOUNT_INACTIVE';
+            throw inactiveError;
         } else if (userData) {
             await supabaseClient
                 .from('users')
@@ -387,10 +391,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
         submitBtn.style.opacity = '1';
+        submitBtn.style.backgroundColor = originalBg;
+        submitBtn.style.cursor = '';
 
         const sessionLockError = error.message.includes('Session security is not configured yet')
             || error.message.includes('already signed in on another browser');
-        if (sessionLockError) {
+        if (error.code === 'ACCOUNT_INACTIVE' || sessionLockError) {
             await supabaseClient.auth.signOut({ scope: 'local' });
             if (window.utils?.showToast) {
                 window.utils.showToast(error.message, 'error');
