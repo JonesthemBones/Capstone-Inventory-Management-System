@@ -1,6 +1,6 @@
 // Increment whenever shared sidebar markup changes so stale cached branding
 // and navigation are not restored after the loading skeleton disappears.
-const SIDEBAR_CACHE_VERSION = 'v6';
+const SIDEBAR_CACHE_VERSION = 'v7';
 
 const sidebarConfig = [
     {
@@ -8,42 +8,42 @@ const sidebarConfig = [
         title: 'Dashboard',
         icon: 'fas fa-tachometer-alt',
         path: 'pages/dashboard.html',
-        permission: ['owner', 'admin', 'manager', 'cashier', 'staff']
+        permission: ['admin', 'cashier', 'staff']
     },
     {
         id: 'inventory',
         title: 'Inventory',
         icon: 'fas fa-box',
         path: 'pages/inventory.html',
-        permission: ['owner', 'admin', 'manager', 'cashier', 'staff']
+        permission: ['admin', 'cashier', 'staff']
     },
     {
         id: 'pos',
         title: 'Sales Checkout',
         icon: 'fas fa-cash-register',
         path: 'pages/pos.html',
-        permission: ['owner', 'admin', 'manager', 'cashier']
+        permission: ['admin', 'cashier']
     },
     {
         id: 'reports',
         title: 'Reports',
         icon: 'fas fa-file-alt',
         path: 'pages/reports.html',
-        permission: ['owner', 'admin', 'manager', 'cashier', 'staff']
+        permission: ['admin', 'cashier', 'staff']
     },
     {
         id: 'users',
         title: 'Staff Accounts',
         icon: 'fas fa-users',
         path: 'pages/users.html',
-        permission: ['owner', 'admin']
+        permission: ['admin']
     },
     {
         id: 'audit-logs',
         title: 'Activity History',
         icon: 'fas fa-clipboard-list',
         path: 'pages/audit_logs.html',
-        permission: ['owner', 'admin']
+        permission: ['admin']
     }
 ];
 

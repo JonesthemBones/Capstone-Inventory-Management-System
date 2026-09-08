@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         last_name: metadata.last_name || '',
                         email: data.user.email,
                         phone_number: metadata.phone_number || null,
-                        role: metadata.role || 'staff',
+                        role: ['cashier', 'staff'].includes(metadata.role) ? metadata.role : 'staff',
                         is_active: true
                     }]);
                 
@@ -322,7 +322,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                     last_name: metadata.last_name || '',
                     email: data.user.email,
                     phone_number: metadata.phone_number || null,
-                    role: metadata.role || 'staff',
+                    role: ['cashier', 'staff'].includes(metadata.role) ? metadata.role : 'staff',
                     is_active: true
                 }]);
             
@@ -453,6 +453,10 @@ document.getElementById('signup-form').addEventListener('submit', async (e) => {
     const lastName = document.getElementById('signup-last-name').value.trim();
     const phone_number = document.getElementById('signup-phone-number').value.trim();
     const role = document.getElementById('signup-role').value;
+    if (!['cashier', 'staff'].includes(role)) {
+        alert('Please select Cashier or Staff.');
+        return;
+    }
     const email = document.getElementById('signup-email').value.trim();
     const password = document.getElementById('signup-password').value;
     const confirmPassword = document.getElementById('signup-confirm-password').value;

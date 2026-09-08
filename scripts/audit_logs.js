@@ -908,8 +908,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const session = await requireAuth();
     if (!session) return;
     
-    // Owners and technical admins can review system activity.
-    const hasAccess = await window.authHelpers.requireRole(['owner', 'admin']);
+    // Admins can review system activity.
+    const hasAccess = await window.authHelpers.requireRole(['admin']);
     if (!hasAccess) return;
     window.authHelpers.revealProtectedContent();
     

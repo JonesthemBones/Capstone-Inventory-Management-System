@@ -10,7 +10,7 @@ The current development focus is interface refinement, data consistency, product
 
 ## Current features
 
-- Dashboard metrics for inventory, sales, recent transactions, stock movements, top products by value, supplier receipt frequency, and an owner/admin overview
+- Dashboard metrics for inventory, sales, recent transactions, stock movements, top products by value, supplier receipt frequency, and an admin overview
 - Product inventory management with categories, images, pricing, stock thresholds, audited adjustments, inbound batch history, reversible archive/restore, filtering, and pagination
 - Inbound inventory through VLM-assisted receipt extraction and product matching
 - Manual outbound transactions for sales, returns, damage/disposal, transfers, and other stock-outs
@@ -20,14 +20,14 @@ The current development focus is interface refinement, data consistency, product
 - Staff and management reorder-list generation for low, critical, and out-of-stock products, with editable suggested quantities and a printable purchase document
 - Inventory, valuation, low-stock, stock-movement, and cashier sales reports
 - Audit logs and stock-movement history with export options
-- User viewing, editing, activation/deactivation, non-destructive backup/restore, and role assignment for `owner`, `admin`, `cashier`, and `staff`
+- User viewing, editing, activation/deactivation, non-destructive backup/restore, and role assignment for `admin`, `cashier`, and `staff`
 - Supabase authentication and recovery-code password reset, first-login-wins session control, five-minute inactivity logout, failed-login throttling, role-based navigation, responsive desktop/mobile layouts, and dark mode
 - Optional POS delivery details with required customer name and address, optional contact number and instructions, and delivery information on displayed and printed receipts
 - Inventory and user backup/restore tools
 
 ## Recent progress and interface changes
 
-- Added an owner/admin overview with today's sales, transaction count, units sold, average sale, active out-of-stock products, seven-day payment-method counts, stock-movement trends, and recent stock activity. Sales metrics refresh on transaction changes and every two minutes.
+- Added an admin overview with today's sales, transaction count, units sold, average sale, active out-of-stock products, seven-day payment-method counts, stock-movement trends, and recent stock activity. Sales metrics refresh on transaction changes and every two minutes.
 - Added a supplier-frequency chart showing the top five suppliers by distinct successfully extracted receipts in the current year, grouping supplier names without regard to capitalization.
 - Redesigned Remove Stock with product-name/code search, category filtering, a selected-product summary, and a remaining-stock preview. Submission rejects empty, non-positive, fractional, and excessive quantities and prevents duplicate submissions while processing.
 - Added delivery checkout fields, preserved delivery details through pending QR/e-wallet checkout, and included escaped delivery information in receipt previews and printing.
@@ -35,7 +35,7 @@ The current development focus is interface refinement, data consistency, product
 - Migrated password recovery to Supabase Auth using an isolated, in-memory recovery session. The former Express OTP/reset endpoints now return HTTP `410 Gone`.
 - Changed missing or unresolved role fallbacks to `guest` instead of assuming an operational role; `guest` is not a staff role to assign.
 - Added automated checks for dashboard summary calculations, outbound search and quantity validation, and delivery validation and receipt escaping.
-- Replaced the former `manager` role with the new `owner` role across navigation, inventory, POS, reports, receipt scanning, user management, and activity history. Owners receive full business access, while technical receipt-scanner configuration remains exclusive to `admin`.
+- Consolidated application access into `admin`, `cashier`, and `staff`. Receipt-scanner credentials, model, and endpoint now come only from server environment variables.
 - Reduced the inactivity timeout from 15 minutes to 5 minutes and improved automatic logout reason handling, session cleanup, and cross-tab activity tracking.
 - Added Receipt Scanner extraction history for reviewed items that were successfully saved to inventory, including the save date, operator, quantity, cost, category, and whether each item created a product or updated stock.
 - Made voided POS transactions immediately recognizable in transaction history and on displayed or printed receipts, including the void date and reason.
@@ -103,7 +103,6 @@ Capstone-Inventory-Management-System/
 |-- paymongo.js                # PayMongo checkout API routes
 |-- pos-api.js                 # Authenticated POS stock finalization
 |-- python_vlm.py              # Python receipt-image helper
-|-- vlm_settings.json          # Selected vision model configuration
 |-- AMACAR_RLS_FLOW_ALIGNMENT.sql       # Archive schema and role-aligned RLS policies
 |-- AMACAR_ADMIN_ACCESS_RECOVERY.sql    # Recovery for recursive users-table RLS
 |-- pages/                     # Application HTML pages
@@ -178,18 +177,29 @@ After applying the session-security migration, back up the hosted database and r
 AMACAR_RLS_FLOW_ALIGNMENT.sql
 ```
 
-The migration adds archive metadata to products, categories, and user profiles; replaces conflicting permissive policies; enables RLS on exposed operational tables; and aligns database access with the `owner`, `admin`, `cashier`, and `staff` application roles. The legacy `manager` value remains temporarily recognized for existing records, but new accounts should use `owner`.
+The migration adds archive metadata to products, categories, and user profiles; replaces conflicting permissive policies; enables RLS on exposed operational tables; and aligns database access with the `admin`, `cashier`, and `staff` application roles. Apply the role simplification migration below after any older migrations; the application no longer accepts owner or manager.
 
 `AMACAR_ADMIN_ACCESS_RECOVERY.sql` is an emergency repair script for databases where a recursive `public.users` policy prevents the application from resolving the signed-in role. It is not a substitute for the complete alignment migration, and the older recursive policy script must not be reapplied afterward.
+
+### Required role simplification migration
+
+Before deploying this version:
+
+1. Back up the database and run `supabase/role_cleanup_review.sql` in Supabase SQL Editor. It lists existing owner/manager accounts and database policies/functions needing review. Their definitions are not included in this repository, so the script does not guess replacements.
+2. Update the reported authorization checks to the three roles, preserving all other restrictions. Assign each manager to `admin`, `cashier`, or `staff` explicitly. Admin includes user management; choose it only when intended. Keep account creation restricted to cashier/staff when using untrusted signup metadata.
+3. Run all of `supabase/migrations/20260908_simplify_user_roles.sql`. It converts owners to admins, replaces role-only CHECK constraints, defaults new profiles to staff, and synchronizes existing Auth user metadata. It rolls back if managers, unexpected values, or legacy policy/function references remain. It supports the existing text/varchar column, not a native enum type. Historical audit records are preserved.
+4. Configure `DEEPSEEK_API_KEY` on the server before restarting. Optionally set `SUPPLIER_DEEPSEEK_API_KEY`, `VLM_MODEL`, and `DEEPSEEK_API_ENDPOINT`. The old `vlm_settings.json` is ignored and blocked from HTTP access; values saved there must be transferred to server environment configuration if still needed.
+5. Deploy/restart the app, sign out and back in, then verify admin user management, cashier checkout, and staff inventory/scanning. Verify restricted actions with each role against Supabase as well as the UI.
+
+The final constraint permits only `admin`, `cashier`, and `staff`. The SQL has not been run against the hosted database from this workspace. Database inspection uses PostgreSQL's [catalog information functions](https://www.postgresql.org/docs/16/functions-info.html).
 
 ## Roles and access
 
 | Role | Main access |
 | --- | --- |
-| `owner` | Full business operations, product archive/restore, user activation/deactivation, activity history, inventory, reports, receipt scanning, and POS; technical scanner configuration is hidden and server-blocked |
-| `admin` | Full business and technical administration, including archive/restore and receipt-scanner credentials, model, and endpoint configuration |
+| `admin` | Full business administration, including account management, audit logs, inventory archive/restore, reports, scanning, and POS |
 | `cashier` | Dashboard, POS, and cashier-focused sales reports |
-| `staff` | Dashboard, reports, VLM extraction, reorder lists, routine stock adjustments and removals, and product creation/editing; existing pricing, archive/restore, backup/restore, and technical scanner settings remain restricted |
+| `staff` | Dashboard, reports, VLM extraction, reorder lists, routine stock adjustments and removals, and product creation/editing; existing pricing, archive/restore, backup/restore remain restricted |
 
 The UI hides unauthorized navigation, while sensitive server endpoints validate the Supabase access token and role. Supabase Row Level Security should still be configured for every exposed table.
 
@@ -205,7 +215,7 @@ The UI hides unauthorized navigation, while sensitive server endpoints validate 
 | Logout isolation | Rejected and automatic logouts use local scope so a stale browser cannot revoke another browser's valid Supabase session. Normal logout releases the database lock. |
 | Failed-login throttling | Password failures are tracked in browser storage. Groups of three failures trigger progressively longer local lockouts of 5, 10, and 15 minutes. |
 | Active-account check | Only profiles with `users.is_active = true` can claim or retain the application session lock. |
-| Role-based access | Navigation and actions are limited by `owner`, `admin`, `cashier`, and `staff` roles. The `owner` role replaces the former `manager` role. Sensitive Express routes separately validate the JWT and required role. Scanner configuration remains exclusive to `admin`. |
+| Role-based access | Navigation and actions are limited by `admin`, `cashier`, and `staff` roles. Sensitive Express routes separately validate the JWT and required role. Scanner configuration is managed through server environment variables. |
 | Auditability | Supported login, logout, inventory, and management actions write user-linked audit data; stock changes produce traceable movement records. |
 | Archiving | Products are archived by setting `is_active = false`; archive time and actor are recorded while inventory, movements, sales, VLM matches, and audit history remain intact. Staff accounts are deactivated rather than deleted. |
 | Durable history | Authenticated browser clients cannot hard-delete products, users, stock movements, audit logs, or finalized POS records. Stock movements and audit logs are append-only. |
@@ -236,8 +246,6 @@ All routes are mounted under `/api`.
 | `POST` | `/vlm-scan-supplier` | Process a supplier receipt image with the supplier-focused extraction workflow |
 | `GET` | `/vlm-extraction-history` | List reviewed extractions successfully saved to inventory |
 | `GET` | `/categories` | Read active categories available to receipt extraction |
-| `GET` | `/vlm-config` | Read the active VLM configuration |
-| `POST` | `/vlm-config` | Update VLM configuration |
 | `POST` | `/save-items-to-inventory` | Save extracted receipt items into inventory |
 | `POST` | `/paymongo/checkout` | Create a PayMongo test checkout session |
 | `GET` | `/paymongo/checkout/:checkoutId` | Verify a PayMongo checkout session |
@@ -336,7 +344,7 @@ Check the Supabase project's Auth email delivery configuration, recovery email t
 
 ### Receipt extraction fails
 
-Check `DEEPSEEK_API_KEY`, `VLM_MODEL`, `PYTHON_BINARY`, and the server console. The VLM configuration can also be inspected through `/api/vlm-config`.
+Check `DEEPSEEK_API_KEY`, `VLM_MODEL`, `PYTHON_BINARY`, and the server console. Scanner configuration is server-only; the former `/api/vlm-config` endpoints have been removed.
 
 ## Automated checks
 

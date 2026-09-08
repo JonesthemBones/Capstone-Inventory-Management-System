@@ -363,7 +363,7 @@ function renderBatchMovementEditRow(movement) {
 }
 
 async function saveBatchMovementPrices(product, movement, row) {
-    if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+    if (!['admin'].includes(currentUserRole)) {
         throw new Error('Only management can edit historical batch prices.');
     }
     const unitPriceInput = row.querySelector('[data-field="unit_price"]');
@@ -414,7 +414,7 @@ function renderInboundBatchHistory(product, batchRow) {
                     <th>Cost per Unit</th>
                     <th>Selling Price</th>
                     <th>Notes</th>
-                    ${['owner', 'admin', 'manager'].includes(currentUserRole) ? '<th>Actions</th>' : ''}
+                    ${['admin'].includes(currentUserRole) ? '<th>Actions</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -433,7 +433,7 @@ function renderInboundBatchHistory(product, batchRow) {
                             <td class="${unitPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.unit_price || 0)}</td>
                             <td class="${sellingPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.selling_price || 0)}</td>
                             <td>${movement.notes || ''}</td>
-                            ${['owner', 'admin', 'manager'].includes(currentUserRole) ? '<td class="batch-actions-cell"><button type="button" class="icon-btn batch-edit-btn" title="Edit batch prices" aria-label="Edit batch prices"><i class="fas fa-pen"></i></button></td>' : ''}
+                            ${['admin'].includes(currentUserRole) ? '<td class="batch-actions-cell"><button type="button" class="icon-btn batch-edit-btn" title="Edit batch prices" aria-label="Edit batch prices"><i class="fas fa-pen"></i></button></td>' : ''}
                         </tr>
                     `;
                 }).join('')}
@@ -547,7 +547,7 @@ function displayInventory(products) {
         if (currentUserRole === 'cashier') {
             actionButtons = '<span style="color: var(--text-secondary); font-size: 12px;">View Only</span>';
         } else {
-            const archiveButton = ['owner', 'admin', 'manager'].includes(currentUserRole)
+            const archiveButton = ['admin'].includes(currentUserRole)
                 ? `<button class="icon-btn archive-btn" data-id="${product.product_id}" data-active="${product.is_active !== false}" title="${product.is_active === false ? 'Restore Product' : 'Archive Product'}"><i class="fas fa-${product.is_active === false ? 'undo' : 'archive'}"></i></button>`
                 : '';
             actionButtons = `
@@ -621,8 +621,8 @@ function displayInventory(products) {
         `;
     }).join('');
     
-    // Staff can maintain operational details and stock; deletion remains managerial.
-    if (['owner', 'admin', 'manager', 'staff'].includes(currentUserRole)) {
+    // Staff can maintain operational details and stock; deletion remains admin-only.
+    if (['admin', 'staff'].includes(currentUserRole)) {
         document.querySelectorAll('.adjust-btn').forEach(btn => {
             btn.addEventListener('click', () => openStockAdjustmentModal(btn.dataset.id));
         });
@@ -631,7 +631,7 @@ function displayInventory(products) {
             btn.addEventListener('click', () => editProduct(btn.dataset.id));
         });
         
-        if (['owner', 'admin', 'manager'].includes(currentUserRole)) {
+        if (['admin'].includes(currentUserRole)) {
             document.querySelectorAll('.archive-btn').forEach(btn => {
                 btn.addEventListener('click', () => setProductArchived(btn.dataset.id, btn.dataset.active === 'true'));
             });
@@ -673,8 +673,8 @@ function renderMobileInventoryCards(products) {
         return;
     }
 
-    const canManage = ['owner', 'admin', 'manager', 'staff'].includes(currentUserRole);
-    const canDelete = ['owner', 'admin', 'manager'].includes(currentUserRole);
+    const canManage = ['admin', 'staff'].includes(currentUserRole);
+    const canDelete = ['admin'].includes(currentUserRole);
     grid.innerHTML = products.map(product => {
         const quantity = getInventoryQuantity(product);
         const unitPrice = Number(product.unit_price || 0);
@@ -990,7 +990,7 @@ function renderReorderList() {
 }
 
 function openReorderModal() {
-    if (!['owner', 'admin', 'manager', 'staff'].includes(String(currentUserRole).toLowerCase())) {
+    if (!['admin', 'staff'].includes(String(currentUserRole).toLowerCase())) {
         alert('You do not have permission to create a restock list.');
         return;
     }
@@ -1149,7 +1149,7 @@ async function saveStockAdjustment(e) {
     const notes = stockElements.notes?.value.trim() || '';
     
     try {
-        if (!['owner', 'admin', 'manager', 'staff'].includes(currentUserRole)) {
+        if (!['admin', 'staff'].includes(currentUserRole)) {
             throw new Error('You do not have permission to adjust inventory.');
         }
         if (!['add', 'reduce', 'set'].includes(adjustmentType) || !reason || !Number.isInteger(enteredQuantity) || enteredQuantity < 0) {
@@ -1266,7 +1266,7 @@ async function saveProduct(e) {
     e.preventDefault();
     let thumbnailUploadError = null;
 
-    if (!['owner', 'admin', 'manager', 'staff'].includes(currentUserRole)) {
+    if (!['admin', 'staff'].includes(currentUserRole)) {
         alert('You do not have permission to save products.');
         return;
     }
@@ -1413,7 +1413,7 @@ async function editProduct(productId) {
 
 async function setProductArchived(productId, currentlyActive) {
     try {
-        if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+        if (!['admin'].includes(currentUserRole)) {
             alert('Only management can archive or restore products.');
             return;
         }
@@ -1580,7 +1580,7 @@ async function exportToCSV() {
 let selectedBackupData = null;
 
 async function exportBackup() {
-    if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+    if (!['admin'].includes(currentUserRole)) {
         alert('Only management can create inventory backups.');
         return;
     }
@@ -1775,7 +1775,7 @@ function resetRestoreModal() {
 }
 
 async function restoreBackup() {
-    if (!['owner', 'admin', 'manager'].includes(currentUserRole)) {
+    if (!['admin'].includes(currentUserRole)) {
         alert('Only management can restore inventory backups.');
         return;
     }

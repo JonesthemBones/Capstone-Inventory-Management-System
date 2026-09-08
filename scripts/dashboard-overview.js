@@ -3,7 +3,7 @@ let overallMovementsChart;
 let overallLoading = false;
 
 function initializeOverallDashboard() {
-    if (!['admin', 'owner'].includes(dashboardRole)) return;
+    if (!['admin'].includes(dashboardRole)) return;
     document.getElementById('overall-dashboard').hidden = false;
     overallPaymentsChart = new Chart(document.getElementById('overallPaymentsChart'), {
         type: 'doughnut', data: { labels: [], datasets: [{ data: [], backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6'] }] },
@@ -34,7 +34,7 @@ function summarizeOverallSales(transactions, startOfToday) {
 }
 
 async function loadOverallDashboard() {
-    if (!['admin', 'owner'].includes(dashboardRole) || overallLoading) return;
+    if (!['admin'].includes(dashboardRole) || overallLoading) return;
     overallLoading = true;
     const errorDisplay = document.getElementById('overall-error');
     errorDisplay.textContent = '';

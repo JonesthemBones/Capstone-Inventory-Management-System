@@ -1,5 +1,5 @@
 const TAX_RATE = 0.12; // 12% VAT for Philippines
-const MIN_DISCOUNT_APPROVAL_AMOUNT = 1000; // Discounts above this need manager approval
+const MIN_DISCOUNT_APPROVAL_AMOUNT = 1000; // Discounts above this need admin approval
 
 const POSCalculations = {
     TAX_RATE,
@@ -48,7 +48,7 @@ const POSCalculations = {
     },
 
     /**
-     * Discounts above MIN_DISCOUNT_APPROVAL_AMOUNT require a manager
+     * Discounts above MIN_DISCOUNT_APPROVAL_AMOUNT require an admin
      * sign-off before checkout can proceed.
      */
     requiresDiscountApproval(discountAmount) {
