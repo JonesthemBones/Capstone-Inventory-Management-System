@@ -1,6 +1,5 @@
 const VLM_API_ENDPOINT = '/api/vlm-scan';
 const SUPPLIER_VLM_API_ENDPOINT = '/api/vlm-scan-supplier';
-const VLM_CONFIG_ENDPOINT = '/api/vlm-config';
 const VLM_HISTORY_ENDPOINT = '/api/vlm-extraction-history';
 let currentReceiptImage = null;
 let currentItems = [];
@@ -883,140 +882,6 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
-async function getSupabaseAccessToken() {
-    const sessionResult = await window.supabaseClient?.auth?.getSession?.();
-    return sessionResult?.data?.session?.access_token || null;
-}
-
-function getVlmConfigStatusElement() {
-    return document.getElementById('vlm-config-status');
-}
-
-function setVlmConfigStatus(message, variant = 'neutral') {
-    const status = getVlmConfigStatusElement();
-    if (!status) return;
-    status.textContent = message;
-    status.style.color = variant === 'error' ? '#b91c1c' : variant === 'success' ? '#047857' : 'var(--text-secondary)';
-}
-
-async function fetchAdminVLMConfig() {
-    const token = await getSupabaseAccessToken();
-    if (!token) {
-        throw new Error('User is not authenticated.');
-    }
-
-    const response = await fetch(VLM_CONFIG_ENDPOINT, {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        }
-    });
-
-    const result = await response.json();
-    if (!response.ok) {
-        throw new Error(result?.error || 'Failed to load VLM config.');
-    }
-
-    return result.config;
-}
-
-async function saveAdminVLMConfig() {
-    const token = await getSupabaseAccessToken();
-    if (!token) {
-        alert('Please sign in before changing the receipt scanner settings.');
-        return;
-    }
-
-    const apiKeyInput = document.getElementById('vlm-api-key-input');
-    const supplierApiKeyInput = document.getElementById('vlm-supplier-api-key-input');
-    const modelInput = document.getElementById('vlm-model-input');
-    const endpointInput = document.getElementById('vlm-endpoint-input');
-    const saveButton = document.getElementById('save-vlm-config-btn');
-
-    if (!apiKeyInput || !modelInput || !endpointInput || !saveButton) return;
-
-    const apiKey = apiKeyInput.value.trim();
-    const supplierApiKey = supplierApiKeyInput ? supplierApiKeyInput.value.trim() : '';
-    const model = modelInput.value.trim();
-    const endpoint = endpointInput.value.trim();
-    if (!apiKey || !model || !endpoint) {
-        setVlmConfigStatus('Product API key, model name, and endpoint are all required.', 'error');
-        return;
-    }
-
-    saveButton.disabled = true;
-    saveButton.textContent = 'Saving...';
-
-    try {
-        const response = await fetch(VLM_CONFIG_ENDPOINT, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ apiKey, model, endpoint, supplierApiKey: supplierApiKey || apiKey })
-        });
-
-        const result = await response.json();
-        if (!response.ok) {
-            throw new Error(result?.error || 'Unable to save the receipt scanner settings.');
-        }
-
-        setVlmConfigStatus('Receipt scanner settings saved.', 'success');
-        apiKeyInput.value = result.config?.apiKey || apiKey;
-        if (supplierApiKeyInput) {
-            supplierApiKeyInput.value = result.config?.supplierApiKey || supplierApiKey || apiKey;
-        }
-        modelInput.value = result.config?.model || model;
-        endpointInput.value = result.config?.endpoint || endpoint;
-    } catch (error) {
-        console.error('VLM config save failed:', error);
-        setVlmConfigStatus(error.message || 'The receipt scanner settings could not be saved.', 'error');
-    } finally {
-        saveButton.disabled = false;
-        saveButton.innerHTML = '<i class="fas fa-save"></i> Save Scanner Settings';
-    }
-}
-
-async function initAdminVLMSettings() {
-    const adminSettings = document.getElementById('vlm-admin-settings');
-    if (!adminSettings) return;
-
-    const role = await window.authHelpers.getUserRole?.();
-    if (role !== 'admin') {
-        adminSettings.classList.add('hidden');
-        return;
-    }
-
-    adminSettings.classList.remove('hidden');
-    setVlmConfigStatus('Loading receipt scanner settings...', 'neutral');
-
-    const saveButton = document.getElementById('save-vlm-config-btn');
-    if (saveButton) {
-        saveButton.addEventListener('click', (event) => {
-            event.preventDefault();
-            saveAdminVLMConfig();
-        });
-    }
-
-    try {
-        const config = await fetchAdminVLMConfig();
-        const apiKeyInput = document.getElementById('vlm-api-key-input');
-        const supplierApiKeyInput = document.getElementById('vlm-supplier-api-key-input');
-        const modelInput = document.getElementById('vlm-model-input');
-        const endpointInput = document.getElementById('vlm-endpoint-input');
-        if (apiKeyInput) apiKeyInput.value = config?.apiKey || '';
-        if (supplierApiKeyInput) supplierApiKeyInput.value = config?.supplierApiKey || config?.apiKey || '';
-        if (modelInput) modelInput.value = config?.model || '';
-        if (endpointInput) endpointInput.value = config?.endpoint || 'https://api.deepseek.com/chat/completions';
-        setVlmConfigStatus('Receipt scanner settings loaded.', 'success');
-    } catch (error) {
-        console.error('Unable to load admin VLM settings:', error);
-        setVlmConfigStatus('Unable to load admin settings.', 'error');
-    }
-}
-
 function handleVlmItemGridInput(event) {
     const target = event.target;
     if (!target) return;
@@ -1481,7 +1346,7 @@ async function saveAcceptedItemsToInventory() {
 async function initReceiptScanner() {
     const session = await window.authHelpers?.requireAuth?.();
     if (!session) return;
-    const hasAccess = await window.authHelpers.requireRole(['owner', 'admin', 'manager', 'staff']);
+    const hasAccess = await window.authHelpers.requireRole(['admin', 'staff']);
     if (!hasAccess) return;
 
     const imageInput = document.getElementById('receipt-image-input');
@@ -1637,7 +1502,6 @@ async function initReceiptScanner() {
         supplierContent.addEventListener('input', handleSupplierFieldInput);
     }
 
-    await initAdminVLMSettings();
     await loadExtractionHistory();
     window.authHelpers.revealProtectedContent();
     clearReceiptSelection();

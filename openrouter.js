@@ -19,7 +19,6 @@ router.use((req, res, next) => {
     next();
 });
 
-const VLM_CONFIG_FILE = path.resolve(__dirname, './vlm_settings.json');
 const PYTHON_BINARY = resolvePythonBinary();
 const PYTHON_SCRIPT = path.resolve(__dirname, './python_vlm.py');
 const DEFAULT_VLM_MODEL = 'deepseek-v4-flash-vision-exp';
@@ -116,46 +115,7 @@ function loadVLMConfig() {
         endpoint: process.env.DEEPSEEK_API_ENDPOINT || DEFAULT_VLM_ENDPOINT
     };
 
-    try {
-        if (fs.existsSync(VLM_CONFIG_FILE)) {
-            const raw = fs.readFileSync(VLM_CONFIG_FILE, 'utf8');
-            const parsed = JSON.parse(raw);
-            if (parsed?.apiKey) {
-                defaults.apiKey = parsed.apiKey;
-            }
-            if (parsed?.supplierApiKey) {
-                defaults.supplierApiKey = parsed.supplierApiKey;
-            } else if (parsed?.apiKey) {
-                defaults.supplierApiKey = parsed.apiKey;
-            }
-            if (parsed?.model) {
-                defaults.model = normalizeVLMModel(parsed.model);
-            }
-            if (parsed?.endpoint) {
-                defaults.endpoint = parsed.endpoint;
-            }
-        }
-    } catch (error) {
-        console.error('Unable to load VLM settings file:', error);
-    }
-
     return defaults;
-}
-
-function persistVLMConfig({ apiKey, model, endpoint, supplierApiKey }) {
-    const payload = {
-        apiKey: String(apiKey || '').trim(),
-        supplierApiKey: String(supplierApiKey || apiKey || '').trim(),
-        model: normalizeVLMModel(model),
-        endpoint: String(endpoint || DEFAULT_VLM_ENDPOINT).trim() || DEFAULT_VLM_ENDPOINT
-    };
-
-    if (!payload.apiKey || !payload.model) {
-        throw new Error('Both apiKey and model are required to persist VLM settings.');
-    }
-
-    fs.writeFileSync(VLM_CONFIG_FILE, JSON.stringify(payload, null, 2), 'utf8');
-    return payload;
 }
 
 function generateProductCode(productName) {
@@ -249,10 +209,6 @@ async function requireRoles(req, res, allowedRoles, errorMessage = 'Access denie
     }
 
     return { user: data.user, role: normalizedRole };
-}
-
-async function requireAdmin(req, res) {
-    return requireRoles(req, res, ['admin'], 'Admin access required.');
 }
 
 async function logReceiptAuditEvent({ userId, actionType, tableAffected = 'receipt_scan', recordId = null, oldValues = {}, newValues = {} }) {
@@ -397,7 +353,7 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
 }
 
 router.post('/vlm-scan', async (req, res) => {
-    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'VLM extraction access required.');
+    const operator = await requireRoles(req, res, ['admin', 'staff'], 'VLM extraction access required.');
     if (!operator) return;
 
     try {
@@ -433,7 +389,7 @@ router.post('/vlm-scan', async (req, res) => {
 });
 
 router.get('/categories', async (req, res) => {
-    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Category access required.');
+    const operator = await requireRoles(req, res, ['admin', 'staff'], 'Category access required.');
     if (!operator) return;
 
     try {
@@ -443,40 +399,8 @@ router.get('/categories', async (req, res) => {
     }
 });
 
-router.get('/vlm-config', async (req, res) => {
-    const admin = await requireAdmin(req, res);
-    if (!admin) return;
-
-    const config = loadVLMConfig();
-    res.json({
-        success: true,
-        config
-    });
-});
-
-router.post('/vlm-config', async (req, res) => {
-    const admin = await requireAdmin(req, res);
-    if (!admin) return;
-
-    const { apiKey, model, endpoint, supplierApiKey } = req.body;
-    if (!apiKey || !model || !endpoint) {
-        return res.status(400).json({ error: 'apiKey, model, and endpoint are required.' });
-    }
-
-    try {
-        const saved = persistVLMConfig({ apiKey, model, endpoint, supplierApiKey });
-        return res.json({
-            success: true,
-            config: saved
-        });
-    } catch (err) {
-        console.error('Unable to save VLM config:', err);
-        return res.status(500).json({ error: 'Unable to save VLM settings.' });
-    }
-});
-
 router.post('/vlm-scan-supplier', async (req, res) => {
-    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Supplier VLM extraction access required.');
+    const operator = await requireRoles(req, res, ['admin', 'staff'], 'Supplier VLM extraction access required.');
     if (!operator) return;
 
     try {
@@ -511,7 +435,7 @@ router.post('/vlm-scan-supplier', async (req, res) => {
 });
 
 router.get('/vlm-extraction-history', async (req, res) => {
-    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Extraction history access required.');
+    const operator = await requireRoles(req, res, ['admin', 'staff'], 'Extraction history access required.');
     if (!operator) return;
 
     try {
@@ -555,7 +479,7 @@ router.get('/vlm-extraction-history', async (req, res) => {
 });
 
 router.post('/save-items-to-inventory', async (req, res) => {
-    const operator = await requireRoles(req, res, ['owner', 'admin', 'manager', 'staff'], 'Inventory import access required.');
+    const operator = await requireRoles(req, res, ['admin', 'staff'], 'Inventory import access required.');
     if (!operator) return;
 
     try {

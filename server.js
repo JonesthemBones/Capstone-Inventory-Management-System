@@ -44,6 +44,20 @@ app.use(cors({
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
+// Retired scanner configuration may contain credentials; never serve it.
+app.use((req, res, next) => {
+  let requestPath;
+  try {
+    requestPath = decodeURIComponent(req.path);
+  } catch {
+    return res.sendStatus(400);
+  }
+  if (/(?:^|[/\\])vlm_settings\.json[. ]*(?:[/\\]|$)/i.test(requestPath)) {
+    return res.sendStatus(404);
+  }
+  next();
+});
+
 // Serve static files
 app.use(express.static(__dirname));
 

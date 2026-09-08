@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();
     if (!session) return;
     
-    const hasAccess = await window.authHelpers.requireRole(['owner', 'admin', 'manager', 'cashier', 'staff']);
+    const hasAccess = await window.authHelpers.requireRole(['admin', 'cashier', 'staff']);
     if (!hasAccess) return;
 
     dashboardRole = await window.authHelpers.getUserRole();
@@ -128,7 +128,7 @@ function configureDashboardForRole(role) {
         distributionTitle.textContent = 'Stock Health';
         distributionSubtitle.textContent = 'Active products compared with their reorder levels';
     } else {
-        title.textContent = role === 'owner' ? 'Owner Dashboard' : (role === 'manager' ? 'Manager Dashboard' : 'Admin Dashboard');
+        title.textContent = 'Admin Dashboard';
         subtitle.textContent = 'System-wide sales, inventory, and operational overview';
         setPanelVisibility(['sales-trend', 'stock-distribution', 'product-value', 'recent-activity', 'supplier-frequency']);
         trendTitle.textContent = 'Sales Trends';

@@ -373,7 +373,7 @@ router.post('/create-user-with-auth', async (req, res) => {
     }
 
     // Validate role
-    const validRoles = ['owner', 'admin', 'manager', 'cashier', 'staff'];
+    const validRoles = ['admin', 'cashier', 'staff'];
     if (!validRoles.includes(role)) {
       console.warn(`⚠️ Invalid role "${role}" for ${email}, defaulting to "staff"`);
       role = 'staff';
