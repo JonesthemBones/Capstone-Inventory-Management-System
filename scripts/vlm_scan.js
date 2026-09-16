@@ -80,11 +80,17 @@ async function loadExtractionHistory() {
         const { data: { session } } = await window.supabaseClient.auth.getSession();
         if (!session?.access_token) throw new Error('Your session has expired.');
         const response = await fetch(`${VLM_HISTORY_ENDPOINT}?${params}`, {
+            cache: 'no-store',
             headers: { Authorization: `Bearer ${session.access_token}` }
         });
         const result = await response.json();
         if (request !== historyRequest) return;
         if (!response.ok) throw new Error(result?.error || 'Unable to load extraction history.');
+        if (!result.pagination) {
+            renderExtractionHistory(result.history);
+            info.textContent = 'The server returned limited history without pagination. Restart the Node server, then click Refresh to enable all history and filters.';
+            return;
+        }
         const { page, limit, total, totalPages } = result.pagination;
         if (page > Math.max(1, totalPages)) {
             historyPage = Math.max(1, totalPages);
