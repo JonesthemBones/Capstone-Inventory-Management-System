@@ -1,6 +1,9 @@
 const VLM_API_ENDPOINT = '/api/vlm-scan';
 const SUPPLIER_VLM_API_ENDPOINT = '/api/vlm-scan-supplier';
 const VLM_HISTORY_ENDPOINT = '/api/vlm-extraction-history';
+let historyPage = 1;
+let historyFilters = new URLSearchParams({ limit: '20' });
+let historyRequest = 0;
 let currentReceiptImage = null;
 let currentItems = [];
 let currentSupplierDetails = {};
@@ -31,7 +34,7 @@ function renderExtractionHistory(history) {
     const list = document.getElementById('vlm-history-list');
     if (!list) return;
     if (!Array.isArray(history) || history.length === 0) {
-        list.innerHTML = '<div class="vlm-history-empty"><i class="fas fa-clock"></i> No saved extractions yet.</div>';
+        list.innerHTML = '<div class="vlm-history-empty"><i class="fas fa-clock"></i> No saved extractions match the current filters.</div>';
         return;
     }
 
@@ -64,21 +67,42 @@ function renderExtractionHistory(history) {
 async function loadExtractionHistory() {
     const list = document.getElementById('vlm-history-list');
     if (!list) return;
+    const request = ++historyRequest;
+    const previous = document.getElementById('vlm-history-prev');
+    const next = document.getElementById('vlm-history-next');
+    const info = document.getElementById('vlm-history-page-info');
+    previous.disabled = next.disabled = true;
+    info.textContent = 'Loading history…';
+    const params = new URLSearchParams(historyFilters);
+    params.set('page', historyPage);
     list.setAttribute('aria-busy', 'true');
     try {
         const { data: { session } } = await window.supabaseClient.auth.getSession();
         if (!session?.access_token) throw new Error('Your session has expired.');
-        const response = await fetch(`${VLM_HISTORY_ENDPOINT}?limit=20`, {
+        const response = await fetch(`${VLM_HISTORY_ENDPOINT}?${params}`, {
             headers: { Authorization: `Bearer ${session.access_token}` }
         });
         const result = await response.json();
+        if (request !== historyRequest) return;
         if (!response.ok) throw new Error(result?.error || 'Unable to load extraction history.');
+        const { page, limit, total, totalPages } = result.pagination;
+        if (page > Math.max(1, totalPages)) {
+            historyPage = Math.max(1, totalPages);
+            return await loadExtractionHistory();
+        }
         renderExtractionHistory(result.history);
+        info.textContent = total
+            ? `${(page - 1) * limit + 1}–${Math.min(page * limit, total)} of ${total} extractions · Page ${page} of ${totalPages}`
+            : '0 extractions';
+        previous.disabled = page <= 1;
+        next.disabled = page >= totalPages;
     } catch (error) {
+        if (request !== historyRequest) return;
+        info.textContent = 'History unavailable. Use Refresh to retry.';
         console.error('Extraction history load failed:', error);
         list.innerHTML = `<div class="vlm-history-empty vlm-history-error">${escapeHtml(error.message || 'Unable to load extraction history.')}</div>`;
     } finally {
-        list.removeAttribute('aria-busy');
+        if (request === historyRequest) list.removeAttribute('aria-busy');
     }
 }
 
@@ -1334,7 +1358,10 @@ async function saveAcceptedItemsToInventory() {
         } else {
             alert(notificationMessage);
         }
-        if (successCount > 0) await loadExtractionHistory();
+        if (successCount > 0) {
+            historyPage = 1;
+            await loadExtractionHistory();
+        }
     } catch (error) {
         console.error('Save to inventory error:', error);
         setStatus('Save failed. Check the backend server and try again.', 'danger');
@@ -1445,6 +1472,41 @@ async function initReceiptScanner() {
     }
 
     refreshHistoryBtn?.addEventListener('click', loadExtractionHistory);
+    const historyForm = document.getElementById('vlm-history-filters');
+    historyForm?.addEventListener('submit', event => {
+        event.preventDefault();
+        const params = new URLSearchParams(new FormData(historyForm));
+        const from = params.get('from');
+        const to = params.get('to');
+        historyForm.elements.to.setCustomValidity(from && to && from > to ? 'Choose an end date on or after the start date.' : '');
+        if (!historyForm.reportValidity()) return;
+        // Send local calendar-day boundaries, with an exclusive end date.
+        for (const key of ['from', 'to']) {
+            const value = params.get(key);
+            if (!value) { params.delete(key); continue; }
+            const date = new Date(`${value}T00:00:00`);
+            if (key === 'to') date.setDate(date.getDate() + 1);
+            params.set(key, date.toISOString());
+        }
+        historyFilters = params;
+        historyPage = 1;
+        loadExtractionHistory();
+    });
+    historyForm?.addEventListener('input', () => historyForm.elements.to.setCustomValidity(''));
+    historyForm?.addEventListener('reset', () => {
+        historyForm.elements.to.setCustomValidity('');
+        historyFilters = new URLSearchParams({ limit: '20' });
+        historyPage = 1;
+        loadExtractionHistory();
+    });
+    document.getElementById('vlm-history-prev')?.addEventListener('click', () => {
+        historyPage = Math.max(1, historyPage - 1);
+        loadExtractionHistory();
+    });
+    document.getElementById('vlm-history-next')?.addEventListener('click', () => {
+        historyPage += 1;
+        loadExtractionHistory();
+    });
 
     if (changeThumbnailBtn && thumbnailFileInput) {
         changeThumbnailBtn.addEventListener('click', () => thumbnailFileInput.click());

@@ -146,6 +146,12 @@
 }
 
 .vlm-history-card { grid-column: 1 / -1; }
+.vlm-history-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 18px 0 12px; }
+.vlm-history-filters label { display: grid; gap: 6px; flex: 1 1 140px; font-size: 13px; color: var(--text-secondary); }
+.vlm-history-filters input, .vlm-history-filters select { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-white); color: var(--text-primary); font: inherit; }
+.vlm-history-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; margin-top: 18px; }
+.vlm-history-pagination span { color: var(--text-secondary); text-align: center; }
+.vlm-history-pagination button:disabled { opacity: .5; cursor: not-allowed; }
 .vlm-history-list { display: grid; gap: 12px; margin-top: 18px; }
 .vlm-history-empty { padding: 28px; border: 1px dashed var(--border-color); border-radius: 12px; color: var(--text-secondary); text-align: center; }
 .vlm-history-empty i { margin-right: 8px; }
