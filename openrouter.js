@@ -441,12 +441,31 @@ router.get('/vlm-extraction-history', async (req, res) => {
     try {
         const requestedLimit = Number.parseInt(req.query.limit, 10);
         const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 20;
-        const { data, error } = await supabaseClient
+        const page = Number(req.query.page || 1);
+        const search = String(req.query.search || '').trim();
+        const result = String(req.query.result || '');
+        const sort = String(req.query.sort || 'newest');
+        const from = req.query.from ? new Date(req.query.from) : null;
+        const to = req.query.to ? new Date(req.query.to) : null;
+        if (!Number.isSafeInteger(page) || page < 1 || page > 1000000 ||
+            search.length > 200 || !['', 'created', 'updated'].includes(result) ||
+            !['newest', 'oldest'].includes(sort) ||
+            (from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime())) ||
+            (from && to && from >= to)) {
+            return res.status(400).json({ error: 'Invalid history filters or page.' });
+        }
+        let query = supabaseClient
             .from('audit_logs')
-            .select('log_id, user_id, new_values, action_timestamp')
-            .eq('action_type', 'receipt_scan_saved')
-            .order('action_timestamp', { ascending: false })
-            .limit(limit);
+            .select('log_id, user_id, new_values, action_timestamp', { count: 'exact' })
+            .eq('action_type', 'receipt_scan_saved');
+        if (search) query = query.ilike('new_values->>items', `%${search.replace(/[\\%_]/g, '\\$&')}%`);
+        if (result) query = query.contains('new_values', { items: [{ inventoryAction: result }] });
+        if (from) query = query.gte('action_timestamp', from.toISOString());
+        if (to) query = query.lt('action_timestamp', to.toISOString());
+        const { data, error, count } = await query
+            .order('action_timestamp', { ascending: sort === 'oldest' })
+            .order('log_id', { ascending: sort === 'oldest' })
+            .range((page - 1) * limit, page * limit - 1);
 
         if (error) throw error;
 
@@ -465,6 +484,7 @@ router.get('/vlm-extraction-history', async (req, res) => {
         }
 
         res.json({
+            pagination: { page, limit, total: count || 0, totalPages: Math.ceil((count || 0) / limit) },
             history: (data || []).map(entry => ({
                 id: entry.log_id,
                 savedAt: entry.action_timestamp,

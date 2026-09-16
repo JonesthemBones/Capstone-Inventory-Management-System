@@ -151,9 +151,25 @@
                                 <i class="fas fa-rotate"></i> Refresh
                             </button>
                         </div>
+                        <form id="vlm-history-filters" class="vlm-history-filters">
+                            <label>Search items or categories<input type="search" name="search" maxlength="200" placeholder="Item or category"></label>
+                            <label>From date<input type="date" name="from"></label>
+                            <label>To date<input type="date" name="to"></label>
+                            <label>Result<select name="result"><option value="">All results</option><option value="created">New product</option><option value="updated">Stock updated</option></select></label>
+                            <label>Sort<select name="sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
+                            <label>Per page<select name="limit"><option>10</option><option selected>20</option><option>50</option></select></label>
+                            <button type="submit" class="btn btn-primary">Apply filters</button>
+                            <button type="reset" class="btn btn-secondary">Clear</button>
+                        </form>
+                        <p class="vlm-card-subtitle">Filters match saved extractions; expand an entry to see all its items.</p>
                         <div id="vlm-history-list" class="vlm-history-list" aria-live="polite">
                             <div class="vlm-history-empty"><i class="fas fa-spinner fa-spin"></i> Loading extraction history…</div>
                         </div>
+                        <nav class="vlm-history-pagination" aria-label="Extraction history pages">
+                            <button type="button" class="btn btn-secondary" id="vlm-history-prev" disabled>Previous</button>
+                            <span id="vlm-history-page-info" role="status"></span>
+                            <button type="button" class="btn btn-secondary" id="vlm-history-next" disabled>Next</button>
+                        </nav>
                     </section>
                 </div>
             </div>
