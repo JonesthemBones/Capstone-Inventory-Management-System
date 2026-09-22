@@ -1003,3 +1003,65 @@
   .receipt-header { margin-bottom: 10px; }
   .receipt-header h2 { font-size: 1.4rem; }
 }
+
+/* Sales history */
+.recent-transactions-section { min-width: 0; gap: 20px; margin-bottom: 72px; }
+.sales-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sales-history-heading h3 { margin: 0 0 6px; }
+#sales-history-scope { margin: 0; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5; }
+.sales-history-heading > .btn { flex-shrink: 0; }
+.sales-history-filters {
+  display: grid;
+  grid-template-columns:
+    minmax(170px, 1.4fr)
+    repeat(2, minmax(135px, 1.1fr))
+    minmax(135px, 1.1fr)
+    minmax(145px, 1.2fr)
+    minmax(125px, 1fr)
+    minmax(125px, 1fr)
+    minmax(95px, 0.75fr)
+    auto;
+  align-items: end;
+  gap: 12px;
+  margin: 0;
+  padding: 20px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.sales-history-filters label { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; font-size: 0.875rem; font-weight: 500; }
+.sales-history-filters label[hidden] { display: none; }
+.sales-history-filters input, .sales-history-filters select {
+  box-sizing: border-box; width: 100%; min-width: 0; height: 44px; margin: 0; padding: 10px 12px;
+  border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--bg-white); color: var(--text-primary); font: inherit;
+}
+.sales-history-filters input:focus-visible, .sales-history-filters select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.sales-history-filter-actions { display: flex; flex: 0 0 auto; gap: 10px; flex-wrap: nowrap; }
+.sales-history-filter-actions .btn, .sales-history-heading .btn, .sales-history-pagination .btn { min-height: 42px; margin: 0; padding: 10px 16px; }
+.sales-history-pagination { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; }
+#sales-page-info { text-align: center; font-size: 0.875rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.sales-history-pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+.recent-transactions-section .empty-state { min-height: 96px; padding: 20px; box-sizing: border-box; }
+.recent-transactions-section .transaction-row { grid-template-columns: minmax(200px, 2fr) minmax(100px, 1fr) 110px 110px auto; }
+.transaction-time { overflow-wrap: anywhere; line-height: 1.6; }
+.transaction-completed-badge { display: block; font-size: 0.7rem; color: #15803d; font-weight: 700; }
+.dark-mode .sales-history-filters input[type="date"] { color-scheme: dark; }
+.dark-mode .transaction-completed-badge { color: #86efac; }
+@media (max-width: 1600px) {
+  .sales-history-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sales-history-filter-actions { grid-column: 1 / -1; justify-content: flex-end; }
+}
+@media (max-width: 1100px) {
+  .sales-history-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recent-transactions-section .transaction-row { grid-template-columns: 1fr 1fr; }
+  .recent-transactions-section .transaction-time { grid-column: 1 / -1; }
+}
+@media (max-width: 540px) {
+  .sales-history-heading { align-items: flex-start; }
+  .sales-history-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 16px 0; }
+  .sales-history-filters label { width: 100%; }
+  .sales-history-filter-actions { grid-column: 1; width: 100%; }
+  .sales-history-filter-actions .btn { flex: 1; }
+  .sales-history-pagination { grid-template-columns: 1fr 1fr; gap: 12px; }
+  #sales-page-info { grid-column: 1 / -1; grid-row: 1; }
+}

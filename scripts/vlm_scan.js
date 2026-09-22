@@ -1,6 +1,5 @@
 const VLM_API_ENDPOINT = '/api/vlm-scan';
 const SUPPLIER_VLM_API_ENDPOINT = '/api/vlm-scan-supplier';
-const VLM_HISTORY_ENDPOINT = '/api/vlm-extraction-history';
 let historyPage = 1;
 let historyFilters = new URLSearchParams({ limit: '20' });
 let historyRequest = 0;
@@ -77,20 +76,49 @@ async function loadExtractionHistory() {
     params.set('page', historyPage);
     list.setAttribute('aria-busy', 'true');
     try {
-        const { data: { session } } = await window.supabaseClient.auth.getSession();
-        if (!session?.access_token) throw new Error('Your session has expired.');
-        const response = await fetch(`${VLM_HISTORY_ENDPOINT}?${params}`, {
-            cache: 'no-store',
-            headers: { Authorization: `Bearer ${session.access_token}` }
-        });
-        const result = await response.json();
-        if (request !== historyRequest) return;
-        if (!response.ok) throw new Error(result?.error || 'Unable to load extraction history.');
-        if (!result.pagination) {
-            renderExtractionHistory(result.history);
-            info.textContent = 'The server returned limited history without pagination. Restart the Node server, then click Refresh to enable all history and filters.';
-            return;
+        const pageLimit = Number(params.get('limit') || 20);
+        const sort = params.get('sort') || 'newest';
+        const search = params.get('search')?.trim() || '';
+        const resultFilter = params.get('result') || '';
+        let query = window.supabaseClient
+            .from('audit_logs')
+            .select('log_id, user_id, new_values, action_timestamp', { count: 'exact' })
+            .eq('action_type', 'receipt_scan_saved');
+        if (search) query = query.ilike('new_values->>items', `%${search.replace(/[\\%_]/g, '\\$&')}%`);
+        if (resultFilter) query = query.contains('new_values', { items: [{ inventoryAction: resultFilter }] });
+        if (params.get('from')) query = query.gte('action_timestamp', params.get('from'));
+        if (params.get('to')) query = query.lt('action_timestamp', params.get('to'));
+        const { data, error, count } = await query
+            .order('action_timestamp', { ascending: sort === 'oldest' })
+            .order('log_id', { ascending: sort === 'oldest' })
+            .range((historyPage - 1) * pageLimit, historyPage * pageLimit - 1);
+        if (error) throw error;
+
+        const userIds = [...new Set((data || []).map(entry => entry.user_id).filter(Boolean))];
+        let usersById = {};
+        if (userIds.length) {
+            const { data: users, error: usersError } = await window.supabaseClient
+                .from('users')
+                .select('user_id, first_name, last_name')
+                .in('user_id', userIds);
+            if (usersError) throw usersError;
+            usersById = (users || []).reduce((map, user) => {
+                map[user.user_id] = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                return map;
+            }, {});
         }
+        const recordTotal = count || 0;
+        const pageCount = Math.ceil(recordTotal / pageLimit);
+        const result = {
+            pagination: { page: historyPage, limit: pageLimit, total: recordTotal, totalPages: pageCount },
+            history: (data || []).map(entry => ({
+                id: entry.log_id,
+                savedAt: entry.action_timestamp,
+                savedBy: usersById[entry.user_id] || 'Unknown user',
+                ...(entry.new_values || {})
+            }))
+        };
+        if (request !== historyRequest) return;
         const { page, limit, total, totalPages } = result.pagination;
         if (page > Math.max(1, totalPages)) {
             historyPage = Math.max(1, totalPages);

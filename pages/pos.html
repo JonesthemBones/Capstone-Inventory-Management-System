@@ -189,12 +189,37 @@
 
                 <!-- Recent Transactions -->
                 <div class="recent-transactions-section">
-                    <h3>Today's Transactions</h3>
-                    <div id="recent-transactions" class="transactions-list">
+                    <div class="sales-history-heading">
+                        <div>
+                            <h3>Sales History</h3>
+                            <p id="sales-history-scope">Browse sales. Clear the dates to view all dates.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary" id="sales-refresh"><i class="fas fa-rotate" aria-hidden="true"></i> Refresh</button>
+                    </div>
+                    <form id="sales-history-filters" class="sales-history-filters">
+                        <label>Transaction number<input type="search" name="search" maxlength="200" placeholder="Search transaction number"></label>
+                        <label>From date<input type="date" name="from"></label>
+                        <label>To date<input type="date" name="to"></label>
+                        <label id="sales-cashier-label" hidden>Cashier<select name="cashier"><option value="">All cashiers</option></select></label>
+                        <label>Payment method<select name="payment"><option value="">All methods</option><option value="cash">Cash</option><option value="bank_transfer">QR / E-wallet</option></select></label>
+                        <label>Status<select name="status"><option value="">All statuses</option><option value="completed">Completed</option><option value="voided">Voided</option></select></label>
+                        <label>Sort<select name="sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
+                        <label>Per page<select name="limit"><option>10</option><option selected>20</option><option>50</option></select></label>
+                        <div class="sales-history-filter-actions">
+                            <button type="submit" class="btn btn-primary">Apply filters</button>
+                            <button type="reset" class="btn btn-secondary">Clear</button>
+                        </div>
+                    </form>
+                    <div id="recent-transactions" class="transactions-list" aria-live="polite">
                         <div class="empty-state">
                             <p>No transactions yet</p>
                         </div>
                     </div>
+                    <nav class="sales-history-pagination" aria-label="Sales history pages">
+                        <button type="button" class="btn btn-secondary" id="sales-prev" disabled>Previous</button>
+                        <span id="sales-page-info" role="status"></span>
+                        <button type="button" class="btn btn-secondary" id="sales-next" disabled>Next</button>
+                    </nav>
                 </div>
             </div>
         </main>
@@ -261,7 +286,7 @@
                 <div class="help-section"><h3>How do I make a sale?</h3><ul><li>Search for a product, add it to the cart, check the quantity, then choose Checkout.</li></ul></div>
                 <div class="help-section"><h3>How do I find an item?</h3><ul><li>Search by product name or code, or use the Category filter to browse a product group.</li></ul></div>
                 <div class="help-section"><h3>What if an item cannot be added?</h3><ul><li>Check its available stock. Out-of-stock products cannot be added to the cart.</li></ul></div>
-                <div class="help-section"><h3>How do I correct a completed sale?</h3><ul><li>Open today's transactions, view the sale, and use Void Transaction with a clear reason.</li></ul></div>
+                <div class="help-section"><h3>How do I correct a completed sale?</h3><ul><li>Open Sales History, view the sale, and use Void Transaction with a clear reason.</li></ul></div>
             </div>
         </div>
     </div>

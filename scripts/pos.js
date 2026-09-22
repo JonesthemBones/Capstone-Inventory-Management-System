@@ -20,9 +20,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadPOSCategories();
     setupEventListeners();
+    setupSalesHistory();
     setupKeyboardShortcuts();
     handleProductSearch({ target: document.getElementById('product-search') });
-    loadTodaysTransactions();
+    loadSalesHistory();
     await handlePayMongoReturn();
 });
 
@@ -698,7 +699,7 @@ async function handlePayMongoReturn() {
         });
         currentTransaction = transaction;
         sessionStorage.removeItem(PAYMONGO_PENDING_KEY);
-        await loadTodaysTransactions();
+        await loadSalesHistory();
         displayReceipt(transaction);
         clearCart(true);
         await handleProductSearch({ target: document.getElementById('product-search') });
@@ -758,7 +759,7 @@ async function handleCheckout() {
         
         if (transaction) {
             currentTransaction = transaction;
-            await loadTodaysTransactions();
+            await loadSalesHistory();
             displayReceipt(transaction);
             clearCart(true);
             await handleProductSearch({ target: document.getElementById('product-search') });
@@ -908,29 +909,120 @@ async function createAuditLog(details) {
     }
 }
 
-async function loadTodaysTransactions() {
-    try {
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+let salesPage = 1;
+let salesFilters = new URLSearchParams({ limit: '20' });
+let salesRequest = 0;
+let salesCashiers = new Map();
 
-        const { data: transactions, error } = await supabaseClient
-            .from('pos_transactions')
-            .select(`
-                *,
-                pos_transaction_items(*)
-            `)
-            .gte('transaction_datetime', startOfDay)
-            .lt('transaction_datetime', endOfDay)
-            .order('transaction_datetime', { ascending: false })
-            .limit(10);
-        
-        if (error) throw error;
-        
-        displayRecentTransactions(transactions || []);
-        
+async function queryPOSSales(params) {
+    const page = Number(params.get('page') || 1);
+    const limit = Number(params.get('limit') || 20);
+    let query = supabaseClient.from('pos_transactions')
+        .select('*, pos_transaction_items(*)', { count: 'exact' });
+
+    if (currentUserRole === 'cashier') query = query.eq('cashier_id', currentUserId);
+    else if (params.get('cashier')) query = query.eq('cashier_id', params.get('cashier'));
+    if (params.get('search')?.trim()) {
+        query = query.ilike('transaction_number', `%${params.get('search').trim().replace(/[\\%_]/g, '\\$&')}%`);
+    }
+    if (params.get('from')) query = query.gte('transaction_datetime', params.get('from'));
+    if (params.get('to')) query = query.lt('transaction_datetime', params.get('to'));
+    if (params.get('payment')) query = query.eq('payment_method', params.get('payment'));
+    if (params.get('status') === 'voided') query = query.or('is_voided.eq.true,is_active.eq.false');
+    if (params.get('status') === 'completed') {
+        query = query.or('is_voided.eq.false,is_voided.is.null').or('is_active.eq.true,is_active.is.null');
+    }
+
+    const ascending = params.get('sort') === 'oldest';
+    const { data: transactions, count, error } = await query
+        .order('transaction_datetime', { ascending })
+        .order('transaction_id', { ascending })
+        .range((page - 1) * limit, page * limit - 1);
+    if (error) throw error;
+
+    let peopleQuery = supabaseClient.from('users').select('user_id, first_name, last_name');
+    if (currentUserRole !== 'admin') peopleQuery = peopleQuery.eq('user_id', currentUserId);
+    const { data: cashiers, error: peopleError } = await peopleQuery;
+    if (peopleError) throw peopleError;
+    return { transactions: transactions || [], total: count || 0, page, limit, cashiers: cashiers || [] };
+}
+
+function setupSalesHistory() {
+    const form = document.getElementById('sales-history-filters');
+    const today = new Date();
+    const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    form.elements.from.value = form.elements.to.value = date;
+    document.getElementById('sales-cashier-label').hidden = currentUserRole !== 'admin';
+    document.getElementById('sales-history-scope').textContent =
+        `${currentUserRole === 'admin' ? 'Sales across all cashiers.' : 'Your sales transactions.'} Clear the dates to view all dates.`;
+    function applyFilters() {
+        const params = new URLSearchParams(new FormData(form));
+        const from = params.get('from');
+        const to = params.get('to');
+        form.elements.to.setCustomValidity(from && to && from > to ? 'Choose an end date on or after the start date.' : '');
+        if (!form.reportValidity()) return false;
+        // Convert local calendar boundaries to UTC, including the entire end day.
+        if (from) params.set('from', new Date(`${from}T00:00:00`).toISOString());
+        if (to) {
+            const end = new Date(`${to}T00:00:00`);
+            end.setDate(end.getDate() + 1);
+            params.set('to', end.toISOString());
+        }
+        salesFilters = params;
+        salesPage = 1;
+        return true;
+    }
+    applyFilters();
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        if (applyFilters()) loadSalesHistory();
+    });
+    form.addEventListener('input', () => form.elements.to.setCustomValidity(''));
+    form.addEventListener('reset', () => {
+        form.elements.to.setCustomValidity('');
+        salesFilters = new URLSearchParams({ limit: '20' });
+        salesPage = 1;
+        loadSalesHistory();
+    });
+    document.getElementById('sales-refresh').addEventListener('click', loadSalesHistory);
+    document.getElementById('sales-prev').addEventListener('click', () => { salesPage = Math.max(1, salesPage - 1); loadSalesHistory(); });
+    document.getElementById('sales-next').addEventListener('click', () => { salesPage++; loadSalesHistory(); });
+}
+
+async function loadSalesHistory() {
+    const request = ++salesRequest;
+    const list = document.getElementById('recent-transactions');
+    const info = document.getElementById('sales-page-info');
+    const prev = document.getElementById('sales-prev');
+    const next = document.getElementById('sales-next');
+    prev.disabled = next.disabled = true;
+    list.setAttribute('aria-busy', 'true');
+    list.innerHTML = '<div class="empty-state">Loading sales?</div>';
+    info.textContent = 'Loading?';
+    try {
+        const params = new URLSearchParams(salesFilters);
+        params.set('page', salesPage);
+        const result = await queryPOSSales(params);
+        if (request !== salesRequest) return;
+        const pages = Math.max(1, Math.ceil(result.total / result.limit));
+        if (salesPage > pages) { salesPage = pages; return loadSalesHistory(); }
+        salesCashiers = new Map(result.cashiers.map(person => [person.user_id,
+            `${person.first_name || ''} ${person.last_name || ''}`.trim() || person.user_id]));
+        const select = document.querySelector('#sales-history-filters select[name="cashier"]');
+        const selected = select.value;
+        select.replaceChildren(new Option('All cashiers', ''));
+        for (const [id, name] of salesCashiers) select.add(new Option(name, id));
+        select.value = selected;
+        displayRecentTransactions(result.transactions);
+        info.textContent = `${result.total} transaction${result.total === 1 ? '' : 's'} ? Page ${salesPage} of ${pages}`;
+        prev.disabled = salesPage <= 1;
+        next.disabled = salesPage >= pages;
     } catch (error) {
-        console.error('Error loading transactions:', error);
+        if (request !== salesRequest) return;
+        list.innerHTML = `<div class="empty-state" role="alert">${escapeHTML(error.message || 'Unable to load sales.')} Use Refresh to retry.</div>`;
+        info.textContent = 'Sales could not be loaded.';
+    } finally {
+        if (request === salesRequest) list.removeAttribute('aria-busy');
     }
 }
 
@@ -938,7 +1030,7 @@ function displayRecentTransactions(transactions) {
     const container = document.getElementById('recent-transactions');
     
     if (transactions.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>No transactions yet</p></div>';
+        container.innerHTML = '<div class="empty-state"><p>No transactions match the current filters.</p></div>';
         return;
     }
     
@@ -947,10 +1039,10 @@ function displayRecentTransactions(transactions) {
         const voidDetails = `Voided${transaction.void_datetime ? ` ${new Date(transaction.void_datetime).toLocaleString()}` : ''}${transaction.void_reason ? ` — ${transaction.void_reason}` : ''}`;
         return `
         <div class="transaction-row${isVoided ? ' transaction-row-voided' : ''}">
-            <div class="transaction-time">${new Date(transaction.transaction_datetime).toLocaleTimeString()}</div>
-            <div class="transaction-items">${transaction.pos_transaction_items.length} items${isVoided ? `<span class="transaction-voided-badge" title="${escapeHTML(voidDetails)}">VOIDED</span>` : ''}</div>
+            <div class="transaction-time"><strong>${escapeHTML(transaction.transaction_number || 'No transaction number')}</strong><br>${escapeHTML(new Date(transaction.transaction_datetime).toLocaleString())}<br><span>Cashier: ${escapeHTML(salesCashiers.get(transaction.cashier_id) || transaction.cashier_id || 'Unknown')}</span></div>
+            <div class="transaction-items">${transaction.pos_transaction_items.length} items${isVoided ? `<span class="transaction-voided-badge" title="${escapeHTML(voidDetails)}">VOIDED</span>` : '<span class="transaction-completed-badge">COMPLETED</span>'}</div>
             <div class="transaction-amount">₱${parseFloat(transaction.total_amount).toFixed(2)}</div>
-            <div class="transaction-payment">${transaction.payment_method === 'bank_transfer' ? 'QR / E-wallet' : transaction.payment_method}</div>
+            <div class="transaction-payment">${transaction.payment_method === 'bank_transfer' ? 'QR / E-wallet' : escapeHTML(transaction.payment_method || '')}</div>
             <div class="transaction-actions">
                 <button class="btn-icon" onclick="showReceiptModal('${transaction.transaction_id}')" title="View Receipt">
                     <i class="fas fa-receipt"></i>
@@ -1060,7 +1152,7 @@ async function confirmVoidTransaction() {
         
         alert('Transaction voided successfully.');
         closeVoidModal();
-        await loadTodaysTransactions();
+        await loadSalesHistory();
         
     } catch (error) {
         console.error('Error voiding transaction:', error);
@@ -1094,14 +1186,13 @@ function emailReceipt() {
 
 async function showReceiptModal(transactionId) {
     try {
-        const { data: transaction, error } = await supabaseClient
-            .from('pos_transactions')
-            .select('*,pos_transaction_items(*)')
-            .eq('transaction_id', transactionId)
-            .single();
-        
+        let query = supabaseClient.from('pos_transactions')
+            .select('*, pos_transaction_items(*)')
+            .eq('transaction_id', transactionId);
+        if (currentUserRole === 'cashier') query = query.eq('cashier_id', currentUserId);
+        const { data: transaction, error } = await query.single();
         if (error) throw error;
-        
+
         displayReceipt(transaction);
     } catch (error) {
         console.error('Error loading receipt:', error);
