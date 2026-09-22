@@ -2,9 +2,11 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_KEY,
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
@@ -16,10 +18,39 @@ async function requirePOSUser(req, res) {
     return null;
   }
 
-  const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+  let { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+  // Some Supabase configurations can reject /auth/v1/user while PostgREST
+  // still accepts the same freshly issued JWT. In that case, validate the
+  // signature and expiry through PostgREST before trusting its subject.
   if (authError || !authData.user) {
-    res.status(401).json({ error: 'Your session is invalid or expired.' });
-    return null;
+    try {
+      const payloadPart = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(Buffer.from(payloadPart || '', 'base64').toString('utf8'));
+      if (!/^[0-9a-f-]{36}$/i.test(payload.sub || '')) throw new Error('Invalid token subject.');
+      const profileUrl = new URL('/rest/v1/users', SUPABASE_URL);
+      profileUrl.searchParams.set('select', 'user_id');
+      profileUrl.searchParams.set('user_id', `eq.${payload.sub}`);
+      const verificationResponse = await fetch(profileUrl, {
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.pgrst.object+json'
+        }
+      });
+      if (!verificationResponse.ok) {
+        const reason = await verificationResponse.text();
+        throw new Error(`PostgREST verification failed (${verificationResponse.status}): ${reason.slice(0, 200)}`);
+      }
+      const verifiedProfile = await verificationResponse.json();
+      if (!verifiedProfile?.user_id) throw new Error('User profile not found.');
+      authData = { user: { id: payload.sub } };
+      authError = null;
+    } catch (verificationError) {
+      console.warn('POS session verification failed:', authError?.message || verificationError.message);
+      res.status(401).json({ error: 'Your session is invalid or expired.' });
+      return null;
+    }
   }
 
   const { data: profile, error: profileError } = await supabaseAdmin

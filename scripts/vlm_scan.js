@@ -1047,14 +1047,10 @@ function downloadJsonFile() {
 
 async function fetchSupplierDetails(imageDataUrl) {
     try {
-        const { data: { session } } = await window.supabaseClient.auth.getSession();
-        if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
-
-        const response = await fetch(SUPPLIER_VLM_API_ENDPOINT, {
+        const response = await window.authHelpers.authenticatedFetch(SUPPLIER_VLM_API_ENDPOINT, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({ imageDataUrl })
         });
@@ -1095,17 +1091,11 @@ async function processReceiptImage() {
     document.getElementById('vlm-raw-output').hidden = true;
 
     try {
-        const { data: { session } } = await window.supabaseClient.auth.getSession();
-        if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
-
-        const authHeaders = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-        };
+        const authHeaders = { 'Content-Type': 'application/json' };
 
         setReceiptLoadingStage('read', 'Reading receipt…');
 
-        const productResponse = await fetch(VLM_API_ENDPOINT, {
+        const productResponse = await window.authHelpers.authenticatedFetch(VLM_API_ENDPOINT, {
             method: 'POST',
             headers: authHeaders,
             body: JSON.stringify({ imageDataUrl })
@@ -1249,13 +1239,10 @@ async function saveAcceptedItemsToInventory() {
     if (saveBtn) saveBtn.disabled = true;
 
     try {
-        const { data: { session } } = await window.supabaseClient.auth.getSession();
-        if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
-        const response = await fetch('/api/save-items-to-inventory', {
+        const response = await window.authHelpers.authenticatedFetch('/api/save-items-to-inventory', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({ items: currentItems })
         });

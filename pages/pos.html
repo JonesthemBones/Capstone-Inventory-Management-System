@@ -232,6 +232,14 @@
     </button>
     <div class="pos-cart-overlay" id="pos-cart-overlay" aria-hidden="true"></div>
 
+    <div class="pos-processing-overlay" id="pos-processing-overlay" hidden aria-hidden="true">
+        <div class="pos-processing-card" role="status" aria-live="polite" aria-atomic="true">
+            <span class="pos-processing-spinner" aria-hidden="true"></span>
+            <h2 id="pos-processing-title">Processing sale</h2>
+            <p id="pos-processing-message">Please wait while the transaction is completed.</p>
+        </div>
+    </div>
+
     <!-- Receipt Modal -->
     <div class="modal" id="receipt-modal">
         <div class="modal-content receipt-modal">
@@ -270,7 +278,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeVoidModal()">Cancel</button>
-                <button class="btn btn-danger" onclick="confirmVoidTransaction()">
+                <button class="btn btn-danger" id="confirm-void-btn" onclick="confirmVoidTransaction()">
                     <i class="fas fa-trash"></i> Void Transaction
                 </button>
             </div>

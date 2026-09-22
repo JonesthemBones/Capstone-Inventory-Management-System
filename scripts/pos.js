@@ -6,6 +6,27 @@ let posCategories = [];
 
 // Roles allowed to use the POS terminal
 const POS_ALLOWED_ROLES = ['cashier', 'admin'];
+let posProcessing = false;
+
+function setPOSProcessing(active, title = 'Processing sale', message = 'Please wait while the transaction is completed.') {
+    const overlay = document.getElementById('pos-processing-overlay');
+    if (!overlay) return;
+    document.getElementById('pos-processing-title').textContent = title;
+    document.getElementById('pos-processing-message').textContent = message;
+    overlay.hidden = !active;
+    overlay.setAttribute('aria-hidden', String(!active));
+    document.body.classList.toggle('pos-is-processing', active);
+    posProcessing = active;
+}
+
+function updatePOSProcessing(title, message) {
+    if (title) document.getElementById('pos-processing-title').textContent = title;
+    if (message) document.getElementById('pos-processing-message').textContent = message;
+}
+
+async function getValidPOSAccessToken(forceRefresh = false) {
+    return window.authHelpers.getValidAccessToken(forceRefresh);
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     const session = await window.authHelpers.requireAuth();
@@ -152,7 +173,7 @@ function setupKeyboardShortcuts() {
         // Ctrl+S or Cmd+S for checkout
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
-            if (currentCart.length > 0) {
+            if (currentCart.length > 0 && !posProcessing) {
                 handleCheckout();
             }
         }
@@ -626,6 +647,7 @@ async function startPayMongoCheckout(discountAmount) {
     const { total } = POSCalculations.calculateTotals(currentCart, discountAmount);
     const referenceNumber = `TXN-${Date.now()}`;
     checkoutBtn.disabled = true;
+    setPOSProcessing(true, 'Preparing QR payment', 'Connecting to PayMongo. Please do not close this page.');
 
     try {
         const delivery = getDeliveryDetails();
@@ -653,6 +675,7 @@ async function startPayMongoCheckout(discountAmount) {
         console.error('Error starting PayMongo checkout:', error);
         alert(error.message);
         checkoutBtn.disabled = false;
+        setPOSProcessing(false);
     }
 }
 
@@ -685,6 +708,7 @@ async function handlePayMongoReturn() {
 
     const checkoutBtn = document.getElementById('checkout-btn');
     checkoutBtn.disabled = true;
+    setPOSProcessing(true, 'Verifying payment', 'Confirming the QR payment before completing the sale.');
     try {
         const response = await fetch(`/api/paymongo/checkout/${encodeURIComponent(pending.checkoutId)}`);
         const result = await response.json();
@@ -708,10 +732,12 @@ async function handlePayMongoReturn() {
         alert(error.message);
     } finally {
         checkoutBtn.disabled = false;
+        setPOSProcessing(false);
     }
 }
 
 async function handleCheckout() {
+    if (posProcessing) return;
     if (currentCart.length === 0) {
         alert('Cart is empty. Add items to proceed.');
         return;
@@ -752,8 +778,10 @@ async function handleCheckout() {
     // Disable button to prevent double-click
     const checkoutBtn = document.getElementById('checkout-btn');
     checkoutBtn.disabled = true;
+    setPOSProcessing(true, 'Processing sale', 'Creating the transaction record.');
     
     try {
+        await getValidPOSAccessToken();
         // Create POS transaction
         const transaction = await createPOSTransaction();
         
@@ -770,6 +798,7 @@ async function handleCheckout() {
         alert(`Error processing transaction: ${error.message || 'Please try again.'}`);
     } finally {
         checkoutBtn.disabled = false;
+        setPOSProcessing(false);
     }
 }
 
@@ -782,6 +811,7 @@ async function createPOSTransaction(options = {}) {
         const tenderAmount = parseFloat(document.getElementById('tender-amount')?.value || 0) || 0;
         const changeAmount = POSCalculations.calculateChange(total, tenderAmount);
         
+        updatePOSProcessing('Processing sale', 'Creating the transaction record.');
         // Step 1: Create transaction record
         const { data: transaction, error: transError } = await supabaseClient
             .from('pos_transactions')
@@ -806,6 +836,7 @@ async function createPOSTransaction(options = {}) {
         
         console.log('Transaction created:', transaction);
         
+        updatePOSProcessing('Saving sale items', 'Recording each item in the transaction.');
         // Step 2: Store the complete line values required by the database.
         const items = currentCart.map(item => {
             const unitPrice = Number(item.price);
@@ -837,9 +868,11 @@ async function createPOSTransaction(options = {}) {
         
         console.log('Items added to transaction');
         
+        updatePOSProcessing('Updating inventory', 'Applying stock changes and checking availability.');
         // Step 3: Finalize transaction (update inventory and create movements)
         await finalizePOSTransaction(transaction.transaction_id);
         
+        updatePOSProcessing('Finishing sale', 'Saving the transaction audit record.');
         // Step 4: Create audit log
         await createAuditLog({
             action_type: 'pos_sale',
@@ -872,13 +905,11 @@ async function createPOSTransaction(options = {}) {
 
 async function finalizePOSTransaction(transactionId) {
     try {
-        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-        if (sessionError || !session) throw sessionError || new Error('Your session has expired.');
-
-        const response = await fetch(`/api/pos/transactions/${encodeURIComponent(transactionId)}/finalize`, {
+        const response = await window.authHelpers.authenticatedFetch(
+          `/api/pos/transactions/${encodeURIComponent(transactionId)}/finalize`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${session.access_token}` }
-        });
+          }
+        );
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Unable to update inventory.');
         
@@ -1093,7 +1124,7 @@ function closeVoidModal() {
 }
 
 async function confirmVoidTransaction() {
-    if (!voidingTransactionId) return;
+    if (!voidingTransactionId || posProcessing) return;
     
     const reason = document.getElementById('void-reason').value.trim();
     
@@ -1101,7 +1132,10 @@ async function confirmVoidTransaction() {
         alert('Please enter a reason for voiding.');
         return;
     }
-    
+
+    const confirmButton = document.getElementById('confirm-void-btn');
+    confirmButton.disabled = true;
+    setPOSProcessing(true, 'Voiding transaction', 'Reversing the sale and restoring inventory.');
     try {
         // Mark transaction as void
         const { error } = await supabaseClient
@@ -1157,6 +1191,9 @@ async function confirmVoidTransaction() {
     } catch (error) {
         console.error('Error voiding transaction:', error);
         alert('Error voiding transaction. Please try again.');
+    } finally {
+        confirmButton.disabled = false;
+        setPOSProcessing(false);
     }
 }
 
@@ -1185,6 +1222,8 @@ function emailReceipt() {
 }
 
 async function showReceiptModal(transactionId) {
+    if (posProcessing) return;
+    setPOSProcessing(true, 'Loading receipt', 'Retrieving the transaction details.');
     try {
         let query = supabaseClient.from('pos_transactions')
             .select('*, pos_transaction_items(*)')
@@ -1197,5 +1236,7 @@ async function showReceiptModal(transactionId) {
     } catch (error) {
         console.error('Error loading receipt:', error);
         alert('Error loading receipt.');
+    } finally {
+        setPOSProcessing(false);
     }
 }
