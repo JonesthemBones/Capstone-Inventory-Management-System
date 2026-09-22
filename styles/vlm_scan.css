@@ -874,3 +874,70 @@
 .dark-mode .vlm-item-remove-btn.btn-secondary { background:#334155; border-color:#64748b; color:#e2e8f0; }
 .dark-mode .vlm-item-remove-btn.btn-secondary:hover:not(:disabled) { background:#475569; border-color:#94a3b8; color:#fff; }
 .dark-mode .vlm-item-accept-btn:disabled { background:#334155; border-color:#475569; color:#64748b; opacity:1; }
+
+/* Match the scanner's status pills; labels keep the colors accessible. */
+.vlm-field-confidence {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  justify-self: start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--confidence-border, var(--border-color));
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.vlm-field-confidence::before {
+  content: '';
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.vlm-field-confidence span { min-width: 0; overflow-wrap: anywhere; }
+.vlm-field-confidence.confidence-high {
+  color: #047857;
+  background: rgba(16, 185, 129, .08);
+  --confidence-border: rgba(16, 185, 129, .22);
+}
+.vlm-field-confidence.confidence-medium {
+  color: #92400e;
+  background: rgba(245, 158, 11, .09);
+  --confidence-border: rgba(245, 158, 11, .25);
+}
+.vlm-field-confidence.confidence-low {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, .08);
+  --confidence-border: rgba(239, 68, 68, .22);
+}
+.vlm-field-confidence.confidence-unknown {
+  color: var(--text-secondary);
+  background: var(--bg-light);
+}
+.dark-mode .vlm-field-confidence.confidence-high {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, .12);
+  --confidence-border: rgba(52, 211, 153, .25);
+}
+.dark-mode .vlm-field-confidence.confidence-medium {
+  color: #fde68a;
+  background: rgba(245, 158, 11, .12);
+  --confidence-border: rgba(251, 191, 36, .25);
+}
+.dark-mode .vlm-field-confidence.confidence-low {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .12);
+  --confidence-border: rgba(248, 113, 113, .25);
+}
+.dark-mode .vlm-field-confidence.confidence-unknown {
+  color: var(--text-secondary);
+  background: rgba(148, 163, 184, .08);
+}

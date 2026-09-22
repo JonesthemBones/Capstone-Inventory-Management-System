@@ -2,9 +2,11 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_KEY,
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
@@ -16,10 +18,39 @@ async function requirePOSUser(req, res) {
     return null;
   }
 
-  const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+  let { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+  // Some Supabase configurations can reject /auth/v1/user while PostgREST
+  // still accepts the same freshly issued JWT. In that case, validate the
+  // signature and expiry through PostgREST before trusting its subject.
   if (authError || !authData.user) {
-    res.status(401).json({ error: 'Your session is invalid or expired.' });
-    return null;
+    try {
+      const payloadPart = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(Buffer.from(payloadPart || '', 'base64').toString('utf8'));
+      if (!/^[0-9a-f-]{36}$/i.test(payload.sub || '')) throw new Error('Invalid token subject.');
+      const profileUrl = new URL('/rest/v1/users', SUPABASE_URL);
+      profileUrl.searchParams.set('select', 'user_id');
+      profileUrl.searchParams.set('user_id', `eq.${payload.sub}`);
+      const verificationResponse = await fetch(profileUrl, {
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.pgrst.object+json'
+        }
+      });
+      if (!verificationResponse.ok) {
+        const reason = await verificationResponse.text();
+        throw new Error(`PostgREST verification failed (${verificationResponse.status}): ${reason.slice(0, 200)}`);
+      }
+      const verifiedProfile = await verificationResponse.json();
+      if (!verifiedProfile?.user_id) throw new Error('User profile not found.');
+      authData = { user: { id: payload.sub } };
+      authError = null;
+    } catch (verificationError) {
+      console.warn('POS session verification failed:', authError?.message || verificationError.message);
+      res.status(401).json({ error: 'Your session is invalid or expired.' });
+      return null;
+    }
   }
 
   const { data: profile, error: profileError } = await supabaseAdmin
@@ -30,12 +61,71 @@ async function requirePOSUser(req, res) {
 
   const role = String(profile?.role || '').toLowerCase();
   if (profileError || !profile?.is_active || !['cashier', 'admin'].includes(role)) {
-    res.status(403).json({ error: 'You are not allowed to finalize POS sales.' });
+    res.status(403).json({ error: 'You are not allowed to access POS sales.' });
     return null;
   }
 
   return { id: authData.user.id, role };
 }
+
+
+router.get('/pos/transactions', async (req, res, next) => {
+  try {
+    const user = await requirePOSUser(req, res);
+    if (!user) return;
+    const { search = '', from = '', to = '', cashier = '', payment = '', status = '', sort = 'newest' } = req.query;
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 20);
+    const validDate = value => typeof value === 'string' && (!value ||
+      (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+       Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value));
+    if (![search, cashier, payment, status, sort].every(value => typeof value === 'string') ||
+        search.length > 200 || !Number.isSafeInteger(page) || page < 1 ||
+        ![10, 20, 50].includes(limit) || !Number.isSafeInteger(page * limit) ||
+        !validDate(from) || !validDate(to) || (from && to && from >= to) ||
+        !['', 'cash', 'bank_transfer'].includes(payment) ||
+        !['', 'completed', 'voided'].includes(status) || !['newest', 'oldest'].includes(sort) ||
+        (cashier && !/^[0-9a-f-]{36}$/i.test(cashier))) {
+      return res.status(400).json({ error: 'Invalid sales history filters.' });
+    }
+    let query = supabaseAdmin.from('pos_transactions')
+      .select('*, pos_transaction_items(*)', { count: 'exact' });
+    if (user.role === 'cashier') query = query.eq('cashier_id', user.id);
+    else if (cashier) query = query.eq('cashier_id', cashier);
+    if (search.trim()) query = query.ilike('transaction_number', `%${search.trim().replace(/[\\%_]/g, '\\$&')}%`);
+    if (from) query = query.gte('transaction_datetime', from);
+    if (to) query = query.lt('transaction_datetime', to);
+    if (payment) query = query.eq('payment_method', payment);
+    if (status === 'voided') query = query.or('is_voided.eq.true,is_active.eq.false');
+    if (status === 'completed') query = query.or('is_voided.eq.false,is_voided.is.null').or('is_active.eq.true,is_active.is.null');
+    const { data, count, error } = await query
+      .order('transaction_datetime', { ascending: sort === 'oldest' })
+      .order('transaction_id', { ascending: sort === 'oldest' })
+      .range((page - 1) * limit, page * limit - 1);
+    if (error) throw error;
+    // Retain inactive and former cashiers for historical attribution.
+    let people = supabaseAdmin.from('users').select('user_id, first_name, last_name');
+    if (user.role !== 'admin') people = people.eq('user_id', user.id);
+    const { data: cashiers, error: peopleError } = await people;
+    if (peopleError) throw peopleError;
+    res.json({ transactions: data, total: count, page, limit, cashiers });
+  } catch (error) { next(error); }
+});
+
+router.get('/pos/transactions/:transactionId', async (req, res, next) => {
+  try {
+    const user = await requirePOSUser(req, res);
+    if (!user) return;
+    if (!/^[0-9a-f-]{36}$/i.test(req.params.transactionId)) return res.status(400).json({ error: 'Invalid transaction ID.' });
+    let query = supabaseAdmin.from('pos_transactions').select('*, pos_transaction_items(*)')
+      .eq('transaction_id', req.params.transactionId);
+    if (user.role === 'cashier') query = query.eq('cashier_id', user.id);
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Transaction not found.' });
+    res.json(data);
+  } catch (error) { next(error); }
+});
 
 router.post('/pos/transactions/:transactionId/finalize', async (req, res, next) => {
   try {

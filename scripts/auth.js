@@ -126,15 +126,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (session) {
         const activityKey = 'amacar:last-activity';
         const lastActivity = Number(localStorage.getItem(activityKey));
+        // Keep this consistent with inactivity-logout.js. A shorter value here
+        // can discard an otherwise valid Supabase session when auth.html loads.
         const sessionTimedOut = Number.isFinite(lastActivity) && lastActivity > 0
-            && Date.now() - lastActivity >= 30 * 1000;
+            && Date.now() - lastActivity >= 10 * 60 * 1000;
 
         if (sessionTimedOut) {
             await window.authHelpers.releaseCurrentSession();
             await supabaseClient.auth.signOut({ scope: 'local' });
             localStorage.removeItem(activityKey);
             if (window.utils?.showToast) {
-                window.utils.showToast('Your session expired after 30 seconds of inactivity. Please sign in again.', 'info');
+                window.utils.showToast('Your session expired after 10 minutes of inactivity. Please sign in again.', 'info');
             }
         } else if (await window.authHelpers.validateCurrentSession()) {
             if (!lastActivity) localStorage.setItem(activityKey, String(Date.now()));

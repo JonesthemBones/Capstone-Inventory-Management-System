@@ -1,3 +1,4 @@
+const receiptConfidence = require('./scripts/receipt-confidence');
 const express = require('express');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -25,9 +26,14 @@ const DEFAULT_VLM_MODEL = 'deepseek-v4-flash-vision-exp';
 const DEFAULT_VLM_ENDPOINT = 'https://api.deepseek.com/chat/completions';
 
 // Supabase client initialization
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wxhkhxsxftundtrahpst.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aGtoeHN4ZnR1bmR0cmFocHN0Iiwicm9zZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDU3ODc3NywiZXhwIjoyMDc2MTU0Nzc3fQ.R_J7gu9Z7T0CEp0t0Ky8XC0kHvHxDtpqX2t5Vz_K6lE';
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required.');
+}
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false }
+});
 
 function normalizeVLMModel(model) {
     const candidate = String(model || '').trim();
@@ -184,20 +190,53 @@ async function requireRoles(req, res, allowedRoles, errorMessage = 'Access denie
         return null;
     }
 
-    const { data, error } = await supabaseClient.auth.getUser(token);
-    if (error || !data?.user) {
-        res.status(401).json({ error: 'Invalid or expired authorization token.' });
-        return null;
+    let { data: authData, error: authError } = await supabaseClient.auth.getUser(token);
+    let userProfile = null;
+    let profileError = null;
+
+    if (authError || !authData?.user) {
+        try {
+            const payloadPart = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/');
+            const payload = JSON.parse(Buffer.from(payloadPart || '', 'base64').toString('utf8'));
+            if (!/^[0-9a-f-]{36}$/i.test(payload.sub || '')) throw new Error('Invalid token subject.');
+            const profileUrl = new URL('/rest/v1/users', SUPABASE_URL);
+            profileUrl.searchParams.set('select', 'user_id,role,is_active');
+            profileUrl.searchParams.set('user_id', `eq.${payload.sub}`);
+            const verificationResponse = await fetch(profileUrl, {
+                headers: {
+                    apikey: SUPABASE_SERVICE_KEY,
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.pgrst.object+json'
+                }
+            });
+            if (!verificationResponse.ok) {
+                const reason = await verificationResponse.text();
+                throw new Error(`PostgREST verification failed (${verificationResponse.status}): ${reason.slice(0, 200)}`);
+            }
+            const verifiedProfile = await verificationResponse.json();
+            if (!verifiedProfile?.user_id) throw new Error('User profile not found.');
+            authData = { user: { id: payload.sub } };
+            userProfile = verifiedProfile;
+            authError = null;
+        } catch (verificationError) {
+            console.warn('Receipt Scanner session verification failed:', authError?.message || verificationError.message);
+            res.status(401).json({ error: 'Invalid or expired authorization token.' });
+            return null;
+        }
     }
 
-    const userId = data.user.id;
-    const { data: userProfile, error: profileError } = await supabaseClient
-        .from('users')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
+    const userId = authData.user.id;
+    if (!userProfile) {
+        const profileResult = await supabaseClient
+            .from('users')
+            .select('role, is_active')
+            .eq('user_id', userId)
+            .single();
+        userProfile = profileResult.data;
+        profileError = profileResult.error;
+    }
 
-    if (profileError || !userProfile) {
+    if (profileError || !userProfile || !userProfile.is_active) {
         res.status(403).json({ error: 'Unable to verify user role.' });
         return null;
     }
@@ -208,7 +247,7 @@ async function requireRoles(req, res, allowedRoles, errorMessage = 'Access denie
         return null;
     }
 
-    return { user: data.user, role: normalizedRole };
+    return { user: authData.user, role: normalizedRole };
 }
 
 async function logReceiptAuditEvent({ userId, actionType, tableAffected = 'receipt_scan', recordId = null, oldValues = {}, newValues = {} }) {
@@ -518,6 +557,14 @@ router.post('/save-items-to-inventory', async (req, res) => {
         const acceptedItems = receiptItems.filter(item => item.accepted && !item.removed);
         const rejectedItems = receiptItems.filter(item => item.removed);
         const pendingItems = receiptItems.filter(item => !item.accepted && !item.removed);
+        const unresolved = acceptedItems.find(item => receiptConfidence.problems(item).length);
+        if (unresolved || pendingItems.length) {
+            return res.status(400).json({ error: 'Resolve pending items and enter valid required values before saving.' });
+        }
+        if (acceptedItems.some(item => receiptConfidence.number(item.selling_price) === null || Number(item.selling_price) < 0)) {
+            return res.status(400).json({ error: 'Enter a valid selling price for each accepted item.' });
+        }
+
         
         if (acceptedItems.length === 0) {
             await logReceiptAuditEvent({
@@ -577,7 +624,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
 
         const dedupedItems = acceptedItems.map(item => {
             const productName = (item.name || '').trim().toUpperCase();
-            const quantity = parseInt(item.real_quantity) || parseInt(item.receipt_quantity) || 1;
+            const quantity = Number(item.real_quantity);
             const price = parseFloat(item.price) || 0;
             const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
             const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
@@ -639,7 +686,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 const price = parseFloat(item.price) || 0;
                 const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
                 const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
-                const quantity = parseInt(item.quantity) || 1;
+                const quantity = Number(item.quantity);
                 const comment = (item.comment || '').trim();
 
                 if (!productName || productName.length < 2) {
@@ -773,6 +820,12 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             categoryName: existingProduct.category_id ? 'Existing product category' : item.category_name,
                             comment,
                             decision: 'accepted',
+                            fieldConfidence: item.field_confidence || {},
+                            originalFields: item.original_fields || {},
+                            finalFields: { name: productName, real_quantity: quantity, unit_price: unitPrice, unit_of_measure: item.unit_of_measure },
+                            extraction: item.extraction || {},
+                            reviewedBy: userId,
+                            reviewedAt: new Date().toISOString(),
                             previousQuantity,
                             newQuantity,
                             source: 'receipt_scan'
@@ -862,6 +915,12 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             categoryName: item.category_name,
                             comment,
                             decision: 'accepted',
+                            fieldConfidence: item.field_confidence || {},
+                            originalFields: item.original_fields || {},
+                            finalFields: { name: productName, real_quantity: quantity, unit_price: unitPrice, unit_of_measure: item.unit_of_measure },
+                            extraction: item.extraction || {},
+                            reviewedBy: userId,
+                            reviewedAt: new Date().toISOString(),
                             previousQuantity: 0,
                             newQuantity: quantity,
                             source: 'receipt_scan'

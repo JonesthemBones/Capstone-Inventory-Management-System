@@ -12,7 +12,7 @@ async function checkSupabaseConnection(timeout = 5000) {
         const sessionRes = await withTimeout(window.supabaseClient.auth.getSession(), timeout);
 
         try {
-            const { data, error } = await withTimeout(window.supabaseClient.from('products').select('id').limit(1), timeout);
+            const { data, error } = await withTimeout(window.supabaseClient.from('products').select('product_id').limit(1), timeout);
             if (error) {
                 const msg = String(error.message || error);
                 if (/relation ".+" does not exist|does not exist|not found/i.test(msg)) {

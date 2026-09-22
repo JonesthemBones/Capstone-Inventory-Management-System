@@ -4,6 +4,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const SESSION_CHECK_INTERVAL_MS = 10000;
 let sessionReplacementInProgress = false;
+let sessionRefreshPromise = null;
 
 // Keep open tabs consistent when a user signs out manually or times out elsewhere.
 supabaseClient.auth.onAuthStateChange((event) => {
@@ -23,6 +24,39 @@ supabaseClient.auth.onAuthStateChange((event) => {
 async function checkAuth() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     return session;
+}
+
+async function getValidAccessToken(forceRefresh = false) {
+    let { data: { session }, error } = await supabaseClient.auth.getSession();
+    if (error || !session) throw error || new Error('Your session has expired. Please sign in again.');
+
+    const expiresSoon = !session.expires_at || session.expires_at * 1000 <= Date.now() + 60_000;
+    if (!forceRefresh && !expiresSoon) return session.access_token;
+
+    if (!sessionRefreshPromise) {
+        sessionRefreshPromise = supabaseClient.auth.refreshSession({
+            refresh_token: session.refresh_token
+        }).finally(() => { sessionRefreshPromise = null; });
+    }
+    const refreshResult = await sessionRefreshPromise;
+    session = refreshResult.data.session;
+    if (refreshResult.error || !session?.access_token) {
+        window.__amacarLogoutReason = 'session_expired';
+        await supabaseClient.auth.signOut({ scope: 'local' });
+        throw refreshResult.error || new Error('Your session has expired. Please sign in again.');
+    }
+    return session.access_token;
+}
+
+async function authenticatedFetch(input, init = {}) {
+    const send = async forceRefresh => {
+        const headers = new Headers(init.headers || {});
+        headers.set('Authorization', `Bearer ${await getValidAccessToken(forceRefresh)}`);
+        return fetch(input, { ...init, headers });
+    };
+    let response = await send(false);
+    if (response.status === 401) response = await send(true);
+    return response;
 }
 
 async function claimCurrentSession() {
@@ -226,6 +260,8 @@ window.supabaseClient = supabaseClient;
 window.logAuditEvent = logAuditEvent;
 window.authHelpers = {
     checkAuth,
+    getValidAccessToken,
+    authenticatedFetch,
     claimCurrentSession,
     releaseCurrentSession,
     validateCurrentSession,
