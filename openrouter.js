@@ -1,3 +1,4 @@
+const receiptConfidence = require('./scripts/receipt-confidence');
 const express = require('express');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -556,6 +557,14 @@ router.post('/save-items-to-inventory', async (req, res) => {
         const acceptedItems = receiptItems.filter(item => item.accepted && !item.removed);
         const rejectedItems = receiptItems.filter(item => item.removed);
         const pendingItems = receiptItems.filter(item => !item.accepted && !item.removed);
+        const unresolved = acceptedItems.find(item => receiptConfidence.problems(item).length);
+        if (unresolved || pendingItems.length) {
+            return res.status(400).json({ error: 'Resolve pending items and enter valid required values before saving.' });
+        }
+        if (acceptedItems.some(item => receiptConfidence.number(item.selling_price) === null || Number(item.selling_price) < 0)) {
+            return res.status(400).json({ error: 'Enter a valid selling price for each accepted item.' });
+        }
+
         
         if (acceptedItems.length === 0) {
             await logReceiptAuditEvent({
@@ -615,7 +624,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
 
         const dedupedItems = acceptedItems.map(item => {
             const productName = (item.name || '').trim().toUpperCase();
-            const quantity = parseInt(item.real_quantity) || parseInt(item.receipt_quantity) || 1;
+            const quantity = Number(item.real_quantity);
             const price = parseFloat(item.price) || 0;
             const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
             const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
@@ -677,7 +686,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 const price = parseFloat(item.price) || 0;
                 const unitPrice = Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : price;
                 const sellingPrice = Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : unitPrice;
-                const quantity = parseInt(item.quantity) || 1;
+                const quantity = Number(item.quantity);
                 const comment = (item.comment || '').trim();
 
                 if (!productName || productName.length < 2) {
@@ -811,6 +820,12 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             categoryName: existingProduct.category_id ? 'Existing product category' : item.category_name,
                             comment,
                             decision: 'accepted',
+                            fieldConfidence: item.field_confidence || {},
+                            originalFields: item.original_fields || {},
+                            finalFields: { name: productName, real_quantity: quantity, unit_price: unitPrice, unit_of_measure: item.unit_of_measure },
+                            extraction: item.extraction || {},
+                            reviewedBy: userId,
+                            reviewedAt: new Date().toISOString(),
                             previousQuantity,
                             newQuantity,
                             source: 'receipt_scan'
@@ -900,6 +915,12 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             categoryName: item.category_name,
                             comment,
                             decision: 'accepted',
+                            fieldConfidence: item.field_confidence || {},
+                            originalFields: item.original_fields || {},
+                            finalFields: { name: productName, real_quantity: quantity, unit_price: unitPrice, unit_of_measure: item.unit_of_measure },
+                            extraction: item.extraction || {},
+                            reviewedBy: userId,
+                            reviewedAt: new Date().toISOString(),
                             previousQuantity: 0,
                             newQuantity: quantity,
                             source: 'receipt_scan'

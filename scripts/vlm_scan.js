@@ -368,9 +368,9 @@ async function mergeWithExistingProductDefaults(items) {
 
             return {
                 ...item,
-                unit_price: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : Number(product.unit_price) || item.unit_price,
+                unit_price: item.unit_price,
                 selling_price: Number.isFinite(Number(product.selling_price)) ? Number(product.selling_price) : item.selling_price,
-                unit_of_measure: String(product.unit_of_measure || item.unit_of_measure || 'unit').trim() || 'unit',
+                unit_of_measure: item.unit_of_measure,
                 category_id: product.category_id || item.category_id || null,
                 category_name: product.category_id
                     ? currentCategories.find(category => category.category_id === product.category_id)?.category_name || item.category_name
@@ -455,16 +455,13 @@ function normalizeItemsFromReceipt(rawReceipt) {
     }
 
     return items.map((item, idx) => {
-        const name = item.name || item.item || item.description || `Item ${idx + 1}`;
-        const price = Number(item.price ?? item.amount ?? item.receipt_amount ?? 0);
-        const receiptQuantity = Number(item.receipt_quantity ?? item.quantity ?? item.qty ?? 1);
-        const realQuantity = item.real_quantity !== undefined && item.real_quantity !== null
-            ? Number(item.real_quantity)
-            : receiptQuantity;
-        const unitPrice = Number.isFinite(price) ? price : 0;
-        const sellingPriceValue = item.selling_price ?? item.sale_price ?? unitPrice;
-        const sellingPrice = Number.isFinite(Number(sellingPriceValue)) ? Number(sellingPriceValue) : unitPrice;
-        const unitOfMeasure = String(item.unit_of_measure ?? item.unit ?? 'unit').trim();
+        const name = item.name ?? item.item ?? item.description ?? '';
+        const price = ReceiptConfidence.number(item.price ?? item.unit_price);
+        const receiptQuantity = ReceiptConfidence.number(item.receipt_quantity ?? item.quantity);
+        const realQuantity = ReceiptConfidence.number(item.real_quantity ?? receiptQuantity);
+        const unitPrice = price;
+        const sellingPrice = ReceiptConfidence.number(item.selling_price ?? item.sale_price ?? unitPrice);
+        const unitOfMeasure = String(item.unit_of_measure ?? item.unit ?? '').trim();
         const confidenceValue = item.confidence ?? item.confidence_score ?? item.score ?? item.confidenceScore;
         const confidence = Number.isFinite(Number(confidenceValue)) ? Number(confidenceValue) : null;
         const comment = item.comment ?? item.notes ?? '';
@@ -475,13 +472,16 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const accepted = item.accepted === true;
         return {
             id: `vlm-item-${idx}`,
+            field_confidence: item.field_confidence || {},
+            original_fields: item.original_fields || { name, real_quantity: realQuantity, unit_price: unitPrice, unit_of_measure: unitOfMeasure },
+            extraction: rawReceipt._extraction || {},
             name,
             original_name: item.original_name ?? name,
             name_was_edited: false,
             price,
             unit_price: unitPrice,
             selling_price: sellingPrice,
-            unit_of_measure: unitOfMeasure || 'unit',
+            unit_of_measure: unitOfMeasure,
             receipt_quantity: receiptQuantity,
             real_quantity: realQuantity,
             confidence,
@@ -683,6 +683,14 @@ async function saveSupplierDetailsToSupabase() {
     }
 }
 
+function renderFieldConfidence(item, field) {
+    const state = ReceiptConfidence.state(item, field);
+    const score = state.score === null ? '' : ` (${Math.round(state.score * 100)}%)`;
+    return `<div class="vlm-field-confidence confidence-${state.level}" data-confidence-field="${field}" title="${escapeHtml(state.issue || 'VLM confidence is an estimate, not measured accuracy.')}">
+        <span>${escapeHtml(state.label + score)}</span>
+    </div>`;
+}
+
 function renderItems(items) {
     const grid = document.getElementById('vlm-items-grid');
     if (!grid) return;
@@ -716,7 +724,7 @@ function renderItems(items) {
             ? 'Existing product category'
             : item.category_source === 'system_rule'
                 ? `System matched from product name (${formatConfidence(item.category_confidence)})`
-                : `AI confidence: ${formatConfidence(item.category_confidence)}`;
+                : `VLM confidence: ${formatConfidence(item.category_confidence)}`;
 
         return `
             <article class="vlm-card-item ${removedClass} ${acceptedClass} ${pendingClass}" data-index="${index}">
@@ -728,9 +736,9 @@ function renderItems(items) {
                         <div class="vlm-item-name-field">
                             <label for="vlm-item-name-${index}">Product Name</label>
                             <input id="vlm-item-name-${index}" type="text" maxlength="100" value="${escapeHtml(item.name)}" data-field="name" data-index="${index}">
+                            ${renderFieldConfidence(item, 'name')}
                             ${item.name_was_edited ? '<small class="vlm-name-edited"><i class="fas fa-pen"></i> Edited from extracted name</small>' : ''}
                         </div>
-                        <p class="vlm-card-item-meta">Cost per Unit: <strong>₱${Number.isFinite(item.unit_price) ? item.unit_price.toFixed(2) : '0.00'}</strong> | Quantity on Receipt: <strong>${item.receipt_quantity}</strong> | Scan Confidence: <strong>${escapeHtml(formatConfidence(item.confidence))}</strong></p>
                         <span class="vlm-item-status ${statusClass}">${statusLabel}</span>
                     </div>
                 </div>
@@ -745,15 +753,22 @@ function renderItems(items) {
                     </div>
                     <div class="vlm-card-item-field">
                         <label>Unit</label>
-                        <input type="text" value="${escapeHtml(item.unit_of_measure || 'unit')}" data-field="unit_of_measure" data-index="${index}">
+                        <input type="text" value="${escapeHtml(item.unit_of_measure || '')}" data-field="unit_of_measure" data-index="${index}">
+                        ${renderFieldConfidence(item, 'unit_of_measure')}
+                    </div>
+                    <div class="vlm-card-item-field">
+                        <label>Cost per Unit</label>
+                        <input type="number" step="0.01" min="0" value="${item.unit_price ?? ''}" data-field="unit_price" data-index="${index}">
+                        ${renderFieldConfidence(item, 'unit_price')}
                     </div>
                     <div class="vlm-card-item-field">
                         <label>Selling Price</label>
-                        <input type="number" step="0.01" min="0" value="${Number.isFinite(item.selling_price) ? item.selling_price.toFixed(2) : '0.00'}" data-field="selling_price" data-index="${index}">
+                        <input type="number" step="0.01" min="0" value="${Number.isFinite(item.selling_price) ? item.selling_price.toFixed(2) : ''}" data-field="selling_price" data-index="${index}">
                     </div>
                     <div class="vlm-card-item-field">
                         <label>Real Quantity</label>
-                        <input type="number" step="1" min="0" value="${item.real_quantity}" data-field="real_quantity" data-index="${index}">
+                        <input type="number" step="1" min="0" value="${item.real_quantity ?? ''}" data-field="real_quantity" data-index="${index}">
+                        ${renderFieldConfidence(item, 'real_quantity')}
                     </div>
                     <div class="vlm-card-item-field vlm-card-item-field-wide">
                         <label>Comment</label>
@@ -949,13 +964,8 @@ function handleVlmItemGridInput(event) {
     if (!field || Number.isNaN(index)) return;
 
     let value;
-    if (field === 'real_quantity') {
-        value = Number(target.value);
-    } else if (field === 'selling_price') {
-        value = Number(target.value);
-        if (!Number.isFinite(value)) {
-            value = 0;
-        }
+    if (['real_quantity', 'unit_price', 'selling_price'].includes(field)) {
+        value = ReceiptConfidence.number(target.value);
     } else if (field === 'unit_of_measure') {
         value = target.value.trim();
     } else if (field === 'category_id') {
@@ -971,6 +981,22 @@ function handleVlmItemGridInput(event) {
         value = target.value;
     }
     currentItems[index][field] = value;
+    if (field === 'unit_price') currentItems[index].price = value;
+    currentItems[index].accepted = false;
+    const card = target.closest('.vlm-card-item');
+    if (card && !currentItems[index].removed) {
+        card.classList.remove('vlm-card-accepted');
+        card.classList.add('vlm-card-pending');
+        const badge = card.querySelector('.vlm-item-status');
+        if (badge) { badge.textContent = 'Pending'; badge.className = 'vlm-item-status vlm-item-status-pending'; }
+        const accept = card.querySelector('[data-action="toggle-accept"]');
+        if (accept) accept.innerHTML = '<i class="fas fa-check"></i> Accept';
+    }
+    if (ReceiptConfidence.fields.includes(field)) {
+        const indicator = target.closest('.vlm-card-item').querySelector(`[data-confidence-field="${field}"]`);
+        if (indicator) indicator.outerHTML = renderFieldConfidence(currentItems[index], field);
+    }
+    updateSaveButton();
 }
 
 function handleVlmItemGridClick(event) {
@@ -989,6 +1015,10 @@ function handleVlmItemGridClick(event) {
     }
 
     if (action === 'toggle-accept') {
+        if (!currentItems[index].accepted && ReceiptConfidence.problems(currentItems[index]).length) {
+            setStatus('Enter valid required values before accepting this item.', 'danger');
+            return;
+        }
         if (currentItems[index].removed) {
             return;
         }
@@ -1023,6 +1053,9 @@ function downloadJsonFile() {
             receipt_quantity: item.receipt_quantity,
             real_quantity: item.real_quantity,
             confidence: item.confidence,
+            field_confidence: item.field_confidence,
+            original_fields: item.original_fields,
+            extraction: item.extraction,
             category_id: item.category_id,
             category_name: item.category_name,
             category_slug: item.category_slug,
@@ -1168,10 +1201,10 @@ function setAllAccepted() {
         alert('No items available to accept. Scan a receipt first.');
         return;
     }
-    currentItems = currentItems.map(item => ({ ...item, accepted: true, removed: false }));
+    currentItems = currentItems.map(item => ({ ...item, accepted: ReceiptConfidence.problems(item).length === 0, removed: false }));
     renderItems(currentItems);
     updateSaveButton();
-    setStatus('All items marked as accepted.', 'success');
+    setStatus('Items with valid required values accepted. Complete missing or invalid values in the remaining items.', 'neutral');
 }
 
 async function removeAllItems() {
@@ -1212,7 +1245,7 @@ function updateSaveButton() {
         reviewSummary.innerHTML = `<span><strong>${totalCount}</strong> found</span><span><strong>${acceptedCount}</strong> ready</span><span><strong>${pendingCount}</strong> need review</span><span><strong>${rejectedCount}</strong> removed</span>`;
     }
 
-    const noPendingAndHasDecisions = pendingCount === 0 && hasDecisions;
+    const noPendingAndHasDecisions = pendingCount === 0 && hasDecisions && !currentItems.some(item => item.accepted && !item.removed && ReceiptConfidence.problems(item).length);
     saveBtn.disabled = !noPendingAndHasDecisions;
     saveBtn.style.display = 'inline-flex';
 
@@ -1235,6 +1268,10 @@ function updateSaveButton() {
 }
 
 async function saveAcceptedItemsToInventory() {
+    if (currentItems.some(item => !item.removed && (!item.accepted || ReceiptConfidence.problems(item).length))) {
+        setStatus('Resolve pending items and enter valid required values before saving.', 'danger');
+        return;
+    }
     const saveBtn = document.getElementById('save-to-inventory-btn');
     if (saveBtn) saveBtn.disabled = true;
 

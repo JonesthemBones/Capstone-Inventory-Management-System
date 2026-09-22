@@ -1,3 +1,4 @@
+import math
 import base64
 import json
 import os
@@ -35,28 +36,21 @@ def normalize_item(item):
         return None
 
     name = str(item.get('name') or item.get('product_name') or item.get('item_name') or '').strip()
-    if not name:
-        return None
+    name = re.sub(r'\s+', ' ', name)[:100].strip()
 
-    name = re.sub(r'\s+', ' ', name)
-    name = re.sub(r'[^\w\s\(\)\-\/#&.,]', '', name)
-    name = name[:100].strip()
-    if len(name) < 2 or re.match(r'^\d+$', name):
-        return None
+    def numeric(value):
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            result = float(str(value).replace(',', ''))
+            return result if math.isfinite(result) else None
+        except (ValueError, TypeError):
+            return None
 
-    quantity_value = item.get('real_quantity', item.get('receipt_quantity', item.get('quantity', 1)))
-    try:
-        receipt_quantity = int(float(quantity_value))
-    except Exception:
-        receipt_quantity = 1
-    if receipt_quantity < 1:
-        receipt_quantity = 1
-
-    price_value = item.get('price', item.get('unit_price', item.get('amount', 0)))
-    try:
-        price = round(float(price_value), 2)
-    except Exception:
-        price = 0.0
+    receipt_quantity = numeric(item.get('quantity', item.get('receipt_quantity')))
+    price = numeric(item.get('price', item.get('unit_price')))
+    if price is not None:
+        price = round(price, 2)
 
     unit_value = item.get('unit_of_measure') or item.get('unit') or ''
     if isinstance(unit_value, str):
@@ -81,8 +75,22 @@ def normalize_item(item):
         'removed': bool(item.get('removed', False))
     }
 
-    if unit_value:
-        normalized_item['unit_of_measure'] = unit_value
+    normalized_item['unit_of_measure'] = unit_value
+    metadata = item.get('field_confidence')
+    metadata = metadata if isinstance(metadata, dict) else {}
+    normalized_item['field_confidence'] = {}
+    for field, alias in [('name', 'name'), ('real_quantity', 'quantity'), ('unit_price', 'price'), ('unit_of_measure', 'unit_of_measure')]:
+        entry = metadata.get(field, metadata.get(alias, {}))
+        entry = entry if isinstance(entry, dict) else {}
+        score = numeric(entry.get('confidence'))
+        normalized_item['field_confidence'][field] = {
+            'confidence': score if score is not None and 0 <= score <= 1 else None,
+            'issue': str(entry.get('issue') or '')[:500]
+        }
+    normalized_item['original_fields'] = {
+        'name': name, 'real_quantity': receipt_quantity,
+        'unit_price': price, 'unit_of_measure': unit_value
+    }
 
     confidence = item.get('confidence')
     if confidence is not None:
@@ -327,11 +335,13 @@ Rules:
 1. Extract ONLY product/item lines (things that were bought)
 2. SKIP totals, subtotals, taxes, discounts, payment methods, and customer information
 3. For each item, include name, quantity, price, unit_of_measure, and confidence
-4. If quantity is missing, use 1
-5. If price is missing, use 0.0
-6. If unit_of_measure is missing, use "unit" or "N/A"
+4. If quantity is missing or unreadable, use null; never guess or default to 1
+5. price means the printed UNIT price, never the line amount. If missing or unreadable, use null
+6. If unit_of_measure is missing or unreadable, use an empty string
 7. confidence must be a number between 0 and 1
-8. Do not include markdown, code fences, explanations, or extra keys
+8. Do not include markdown or code fences. Add field_confidence to EVERY item:
+"field_confidence":{"name":{"confidence":0.0,"issue":null},"real_quantity":{"confidence":0.0,"issue":null},"unit_price":{"confidence":0.0,"issue":null},"unit_of_measure":{"confidence":0.0,"issue":null}}
+Assess each field independently; these are self-reported confidence estimates, not measured accuracy. Use a number from 0 to 1, or null when unavailable. In issue, briefly describe faint text, ambiguous digits, handwriting, crossed-out alternatives, or other uncertainty; otherwise use null. Always flag handwritten corrections or conflicting values even if confident. Missing values must have an issue. Never output user confirmation or review status. Preserve rows with unreadable names using an empty name. Support invoices, packing lists, delivery and consignment receipts.
 9. category_slug must exactly match one slug from Allowed categories
 10. Classify by the product's purpose and the category descriptions. Use "uncategorized" only when none of the listed categories reasonably applies
 11. category_confidence must be a number between 0 and 1
@@ -401,6 +411,7 @@ Example:
         return
 
     parsed = parse_receipt_response(content)
+    parsed['_extraction'] = {'model': model, 'prompt_version': 'field-confidence-v1'}
     if not parsed or not parsed.get('items'):
         print('{}', file=sys.stderr)
         parsed = {'items': []}
