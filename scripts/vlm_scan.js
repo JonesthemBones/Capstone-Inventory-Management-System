@@ -207,6 +207,25 @@ async function prepareReceiptImage(file) {
     return canvas.toDataURL('image/jpeg', 0.9);
 }
 
+async function prepareReceiptTableImage(receiptImage) {
+    const source = receiptImage.file || await (await fetch(receiptImage.dataUrl)).blob();
+    const bitmap = await createImageBitmap(source);
+    try {
+        const left = Math.round(bitmap.width * 0.04);
+        const top = Math.round(bitmap.height * 0.22);
+        const width = Math.round(bitmap.width * 0.92);
+        const height = Math.round(bitmap.height * 0.60);
+        const scale = Math.min(1, 2400 / Math.max(width, height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        canvas.getContext('2d').drawImage(bitmap, left, top, width, height, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.93);
+    } finally {
+        bitmap.close();
+    }
+}
+
 function openReceiptImagePreview() {
     const modal = document.getElementById('receipt-image-modal');
     const modalImage = document.getElementById('receipt-image-modal-img');
@@ -463,12 +482,13 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const sellingPrice = ReceiptConfidence.number(item.selling_price ?? item.sale_price ?? unitPrice);
         const unitOfMeasure = String(item.unit_of_measure ?? item.unit ?? '').trim();
         const confidenceValue = item.confidence ?? item.confidence_score ?? item.score ?? item.confidenceScore;
-        const confidence = Number.isFinite(Number(confidenceValue)) ? Number(confidenceValue) : null;
+        const confidence = confidenceValue !== null && confidenceValue !== undefined && confidenceValue !== '' && Number.isFinite(Number(confidenceValue))
+            ? Number(confidenceValue) : null;
         const comment = item.comment ?? item.notes ?? '';
         const categoryConfidenceValue = item.category_confidence;
-        const categoryConfidence = Number.isFinite(Number(categoryConfidenceValue))
+        const categoryConfidence = categoryConfidenceValue !== null && categoryConfidenceValue !== undefined && categoryConfidenceValue !== '' && Number.isFinite(Number(categoryConfidenceValue))
             ? Math.max(0, Math.min(1, Number(categoryConfidenceValue)))
-            : 0;
+            : null;
         const accepted = item.accepted === true;
         return {
             id: `vlm-item-${idx}`,
@@ -1128,10 +1148,11 @@ async function processReceiptImage() {
 
         setReceiptLoadingStage('read', 'Reading receipt…');
 
+        const tableImageDataUrl = await prepareReceiptTableImage(currentReceiptImage);
         const productResponse = await window.authHelpers.authenticatedFetch(VLM_API_ENDPOINT, {
             method: 'POST',
             headers: authHeaders,
-            body: JSON.stringify({ imageDataUrl })
+            body: JSON.stringify({ imageDataUrl, tableImageDataUrl })
         });
         const productBody = await productResponse.text();
         let productResult = null;
@@ -1171,6 +1192,16 @@ async function processReceiptImage() {
             removed: false,
             confidence: item.confidence ?? null,
         }));
+
+        if (currentItems.length === 0) {
+            currentItems = [];
+            currentSupplierDetails = {};
+            renderItems(currentItems);
+            updateSaveButton();
+            renderSupplierDetailsPanel({});
+            setStatus('No product items were found. This may not be a supplier receipt, or the item table may be unreadable. Try a clearer image.', 'danger');
+            return;
+        }
 
         setReceiptLoadingStage('load', 'Loading results…');
         currentItems = await mergeWithExistingProductDefaults(currentItems);
