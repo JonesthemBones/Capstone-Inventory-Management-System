@@ -130,7 +130,7 @@ def parse_receipt_response(text):
             if normalized:
                 items.append(normalized)
         supplier = payload.get('supplier') if isinstance(payload.get('supplier'), dict) else {}
-        return {'items': items, 'supplier': supplier}
+        return {'items': items, 'supplier': supplier, 'is_supplier_receipt': payload.get('is_supplier_receipt') is True}
 
     if isinstance(payload, list):
         items = []
@@ -259,7 +259,7 @@ def get_api_key():
     return os.getenv('DEEPSEEK_API_KEY')
 
 
-def image_to_text(image_path, api_key, model, task='product'):
+def image_to_text(image_path, api_key, model, task='product', table_image_path=None):
     # Read file bytes and build a data URL
     try:
         with open(image_path, 'rb') as f:
@@ -278,6 +278,13 @@ def image_to_text(image_path, api_key, model, task='product'):
         mime_type = 'image/webp'
 
     data_url = f'data:{mime_type};base64,{base64.b64encode(image_bytes).decode("utf-8")}'
+    table_data_url = data_url
+    if table_image_path:
+        with open(table_image_path, 'rb') as table_file:
+            table_bytes = table_file.read()
+        table_ext = os.path.splitext(table_image_path)[1].lower()
+        table_mime = 'image/png' if table_ext == '.png' else 'image/webp' if table_ext == '.webp' else 'image/jpeg'
+        table_data_url = f'data:{table_mime};base64,{base64.b64encode(table_bytes).decode("utf-8")}'
 
     try:
         categories = json.loads(os.getenv('VLM_CATEGORIES_JSON') or '[]')
@@ -316,7 +323,7 @@ def image_to_text(image_path, api_key, model, task='product'):
             'messages': [
                 {
                     'role': 'system',
-                    'content': 'You are a receipt extraction, supplier extraction, and product-classification engine. Return ONLY valid JSON. Extract the supplier and purchased products, and select exactly one category_slug from the category list supplied by the user. Never invent a category. Use uncategorized when no listed category fits. Skip totals, taxes, and payment information.'
+                    'content': 'You are a receipt extraction, supplier extraction, and product-classification engine. Return ONLY valid JSON. Extract purchased products from supplier receipts, invoices, packing lists, delivery receipts, and consignment receipts, including old, faded, handwritten, or partially photographed documents. A printed item table with quantities and product descriptions is evidence of a supplier document even when the heading or supplier name is hard to read. Set is_supplier_receipt to false only for clearly unrelated images such as portraits or scenery. Never extract products from unrelated images. Select exactly one category_slug from the category list supplied by the user. Never invent a category. Use uncategorized when no listed category fits. Skip totals, taxes, and payment information.'
                 },
                 {
                     'role': 'user',
@@ -326,13 +333,14 @@ def image_to_text(image_path, api_key, model, task='product'):
                             'text': '''Extract all purchased items from this receipt ONLY and return JSON only.
 
 Use exactly this schema:
-{"supplier":{"supplier_name":"string","contact_name":"string","phone":"string","email":"string","address":"string","tin":"string","vat":"string","website":"string","notes":"string"},"items":[{"name":"string","quantity":1,"price":0.0,"unit_of_measure":"string","confidence":0.0,"category_slug":"string","category_confidence":0.0}]}
+{"is_supplier_receipt":true,"supplier":{"supplier_name":"string","contact_name":"string","phone":"string","email":"string","address":"string","tin":"string","vat":"string","website":"string","notes":"string"},"items":[{"name":"string","quantity":1,"price":0.0,"unit_of_measure":"string","confidence":0.0,"category_slug":"string","category_confidence":0.0,"field_confidence":{"name":{"confidence":0.0,"issue":null},"real_quantity":{"confidence":0.0,"issue":null},"unit_price":{"confidence":0.0,"issue":null},"unit_of_measure":{"confidence":0.0,"issue":null}}}]}
 
 Allowed categories:
 ''' + category_options + '''
 
 Rules:
 1. Extract ONLY product/item lines (things that were bought)
+If the image is clearly unrelated to a supplier document, return {"is_supplier_receipt":false,"supplier":{},"items":[]}. If it shows an item table on a supplier document, extract its rows even if the document is old, faded, cropped, or marked "invoice to follow". Do not extract items from photos of products, unrelated documents, or customer sales receipts.
 2. SKIP totals, subtotals, taxes, discounts, payment methods, and customer information
 3. For each item, include name, quantity, price, unit_of_measure, and confidence
 4. If quantity is missing or unreadable, use null; never guess or default to 1
@@ -349,7 +357,7 @@ Assess each field independently; these are self-reported confidence estimates, n
 13. Examples: cement, rebar, plywood, tie wire, sand, and gravel are construction-materials; PVC pipe is plumbing; nails are fasteners; cutting discs are power-tools; safety gloves are safety-equipment
 
 Example:
-{"supplier":{"supplier_name":"Acme Hardware","contact_name":"","phone":"","email":"","address":"","tin":"","vat":"","website":"","notes":""},"items":[{"name":"GI Elbow","quantity":2,"price":100.0,"unit_of_measure":"PCS","confidence":0.92,"category_slug":"plumbing","category_confidence":0.96}]}'''
+{"is_supplier_receipt":true,"supplier":{"supplier_name":"Acme Hardware","contact_name":"","phone":"","email":"","address":"","tin":"","vat":"","website":"","notes":""},"items":[{"name":"GI Elbow","quantity":2,"price":100.0,"unit_of_measure":"PCS","confidence":0.92,"category_slug":"plumbing","category_confidence":0.96,"field_confidence":{"name":{"confidence":0.92,"issue":null},"real_quantity":{"confidence":0.94,"issue":null},"unit_price":{"confidence":0.91,"issue":null},"unit_of_measure":{"confidence":0.95,"issue":null}}}]}'''
                         },
                         {
                             'type': 'image_url',
@@ -373,17 +381,23 @@ Example:
 
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode('utf-8'),
-        headers=headers,
-        method='POST'
-    )
+    def request_completion(request_payload):
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(request_payload).encode('utf-8'),
+            headers=headers,
+            method='POST'
+        )
+        with urllib.request.urlopen(request, context=ssl_context, timeout=120) as response:
+            response_data = json.loads(response.read().decode('utf-8'))
+        choices = response_data.get('choices') or []
+        if not choices:
+            raise ValueError('No choices returned from DeepSeek')
+        message = choices[0].get('message') or {}
+        return response_data, message.get('content') if message else choices[0].get('text')
 
     try:
-        with urllib.request.urlopen(request, context=ssl_context, timeout=120) as response:
-            raw = response.read().decode('utf-8')
-            data = json.loads(raw)
+        data, content = request_completion(payload)
     except urllib.error.HTTPError as http_err:
         err_body = http_err.read().decode('utf-8', errors='ignore')
         print(f'HTTP Error {http_err.code}: {err_body}', file=sys.stderr)
@@ -395,14 +409,6 @@ Example:
         print(f'Unexpected error: {exc}', file=sys.stderr)
         sys.exit(1)
 
-    choices = data.get('choices') or []
-    if not choices:
-        print('No choices returned from DeepSeek', file=sys.stderr)
-        sys.exit(1)
-
-    message = choices[0].get('message') or {}
-    content = message.get('content') if message else data.get('choices', [])[0].get('text')
-
     if task == 'supplier':
         parsed = parse_supplier_response(content)
         if not parsed:
@@ -411,10 +417,30 @@ Example:
         return
 
     parsed = parse_receipt_response(content)
+    if not parsed.get('items'):
+        retry_payload = {
+            **payload,
+            'messages': [
+                {'role': 'system', 'content': 'Read the image as a document. Return JSON only with keys supplier, items, and is_supplier_receipt. Look carefully for tabular product rows with quantity, unit, description, unit price, and amount. Consignment receipts, packing lists, and delivery documents count even if faded or marked invoice to follow. Extract each visible product row; use null for unreadable values. For every item, report separate field_confidence scores from 0 to 1 for name, real_quantity, unit_price, and unit_of_measure, with an issue for uncertain or corrected text. These are self-reported estimates, not measured accuracy. If there is no document with product rows, return {"supplier":{},"items":[],"is_supplier_receipt":false}. Do not invent rows or confidence scores for unreadable fields.'},
+                {'role': 'user', 'content': [
+                    {'type': 'text', 'text': 'Read the item table in this image carefully. Return {"is_supplier_receipt":true,"supplier":{"supplier_name":""},"items":[{"name":"Example product","quantity":2,"price":100.0,"unit_of_measure":"PCS","field_confidence":{"name":{"confidence":0.9,"issue":null},"real_quantity":{"confidence":0.9,"issue":null},"unit_price":{"confidence":0.9,"issue":null},"unit_of_measure":{"confidence":0.9,"issue":null}}}]}. Replace example values with the actual image values. Price is the unit price, not the line amount. Include only rows actually visible. If this is a portrait, scenery, or another image without a supplier item table, return empty items.'},
+                    {'type': 'image_url', 'image_url': {'url': table_data_url}}
+                ]}
+            ]
+        }
+        try:
+            retry_data, retry_content = request_completion(retry_payload)
+            retry_parsed = parse_receipt_response(retry_content)
+            if retry_parsed.get('items'):
+                parsed = retry_parsed
+                if not parsed.get('supplier'):
+                    parsed['supplier'] = parse_receipt_response(content).get('supplier', {})
+                data = retry_data
+        except Exception as retry_error:
+            print(f'Focused receipt retry failed: {retry_error}', file=sys.stderr)
     parsed['_extraction'] = {'model': model, 'prompt_version': 'field-confidence-v1'}
     if not parsed or not parsed.get('items'):
-        print('{}', file=sys.stderr)
-        parsed = {'items': []}
+        parsed = {'items': [], 'is_supplier_receipt': parsed.get('is_supplier_receipt') is True if isinstance(parsed, dict) else False}
 
     if isinstance(data.get('usage'), dict):
         parsed['_usage'] = data['usage']
@@ -437,7 +463,7 @@ if __name__ == '__main__':
         sys.exit(1)
     model = get_env_model()
     try:
-        image_to_text(sys.argv[1], api_key, model, task=task)
+        image_to_text(sys.argv[1], api_key, model, task=task, table_image_path=sys.argv[3] if len(sys.argv) > 3 else None)
     except Exception as e:
         print(f'Error: {e}', file=sys.stderr)
         import traceback

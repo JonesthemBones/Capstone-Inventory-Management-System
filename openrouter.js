@@ -80,15 +80,16 @@ function resolveCategory(item, categories) {
     const shouldUseRule = !requestedCategory || requestedCategory.category_slug === 'uncategorized';
     const matchedCategory = shouldUseRule && inferredCategory ? inferredCategory : requestedCategory;
     const category = matchedCategory || fallback;
-    const rawConfidence = Number(item.category_confidence);
+    const rawConfidence = item.category_confidence === null || item.category_confidence === undefined || item.category_confidence === ''
+        ? null : Number(item.category_confidence);
 
     return {
         category,
         confidence: shouldUseRule && inferredCategory
             ? 0.9
-            : matchedCategory && Number.isFinite(rawConfidence)
+            : matchedCategory && rawConfidence !== null && Number.isFinite(rawConfidence)
                 ? Math.max(0, Math.min(1, rawConfidence))
-                : 0,
+                : null,
         source: shouldUseRule && inferredCategory ? 'system_rule' : matchedCategory ? 'vlm' : 'fallback'
     };
 }
@@ -311,7 +312,7 @@ function imageExtension(mediaType) {
     }
 }
 
-async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
+async function runUnifiedVLMExtraction({ imageDataUrl, tableImageDataUrl, task, taskLabel }) {
     if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
         throw new Error(`Invalid ${taskLabel} image data URL.`);
     }
@@ -334,6 +335,15 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
     const tempFile = path.join(tempDir, `${task}.${imageExtension(parsedImage.mediaType)}`);
     fs.writeFileSync(tempFile, Buffer.from(parsedImage.base64Data, 'base64'));
 
+    let tableFile = null;
+    if (task === 'product' && tableImageDataUrl) {
+        const parsedTable = parseDataUrl(tableImageDataUrl);
+        if (parsedTable) {
+            tableFile = path.join(tempDir, `table.${imageExtension(parsedTable.mediaType)}`);
+            fs.writeFileSync(tableFile, Buffer.from(parsedTable.base64Data, 'base64'));
+        }
+    }
+
     try {
         const pythonEnv = {
             ...process.env,
@@ -348,7 +358,7 @@ async function runUnifiedVLMExtraction({ imageDataUrl, task, taskLabel }) {
             })))
         };
 
-        const child = spawn(PYTHON_BINARY, [PYTHON_SCRIPT, tempFile, task], {
+        const child = spawn(PYTHON_BINARY, [PYTHON_SCRIPT, tempFile, task, ...(tableFile ? [tableFile] : [])], {
             env: pythonEnv,
             stdio: ['ignore', 'pipe', 'pipe']
         });
@@ -403,9 +413,14 @@ router.post('/vlm-scan', async (req, res) => {
 
         const { parsed, categories, stdout, stderr } = await runUnifiedVLMExtraction({
             imageDataUrl,
+            tableImageDataUrl: req.body?.tableImageDataUrl,
             task: 'product',
             taskLabel: 'product'
         });
+
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            return res.status(422).json({ error: 'No product items were found. This may not be a supplier receipt, or the item table may be unreadable. Try a clearer image.' });
+        }
 
         return res.json({
             success: true,
@@ -426,6 +441,8 @@ router.post('/vlm-scan', async (req, res) => {
         });
     }
 });
+
+require('./category-api')(router, supabaseClient, requireRoles);
 
 router.get('/categories', async (req, res) => {
     const operator = await requireRoles(req, res, ['admin', 'staff'], 'Category access required.');

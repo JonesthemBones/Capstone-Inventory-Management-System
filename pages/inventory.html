@@ -59,9 +59,9 @@
                     </div>
 
                     <div class="inventory-filter-panel" aria-label="Inventory filters">
-                        <label class="inventory-filter-field"><span>Category</span><select id="category-filter" class="inventory-filter-control">
+                        <div class="inventory-filter-field inventory-category-field"><label for="category-filter">Category</label><div class="category-filter-controls"><select id="category-filter" class="inventory-filter-control">
                             <option value="">All Categories</option>
-                        </select></label>
+                        </select><button type="button" class="category-manage-button role-requires-staff-or-admin" id="manage-categories-btn" aria-label="Manage categories" title="Manage categories" aria-haspopup="dialog"><i class="fas fa-tags" aria-hidden="true"></i><span>Manage</span></button></div></div>
                         <label class="inventory-filter-field"><span>Stock Status</span><select id="status-filter" class="inventory-filter-control">
                             <option value="">All Statuses</option><option value="in_stock">In Stock</option><option value="low_stock">Low Stock</option><option value="critical">Critical</option><option value="out_of_stock">Out of Stock</option><option value="overstocked">Overstocked</option>
                         </select></label>
@@ -149,6 +149,36 @@
             <div class="modal-actions">
                 <button type="button" class="btn" id="cancel-reorder-btn">Close</button>
                 <button type="button" class="btn btn-primary" id="print-reorder-btn"><i class="fas fa-print"></i>Print Restock List</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="category-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="category-modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div><h2 id="category-modal-title">Manage Categories</h2><p class="category-subtitle">Organize products so they’re easier to find.</p></div>
+                <button type="button" class="modal-close" id="close-category-modal" aria-label="Close categories"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="category-modal-body">
+                <p id="category-message" role="status" aria-live="polite"></p>
+                <div class="category-workspace">
+                <form id="category-form">
+                    <h3 id="category-form-title">Create Category</h3>
+                    <p class="category-hint">Give related products a clear, shared name.</p>
+                    <div class="form-group"><label for="category-name">Category Name *</label><input id="category-name" required maxlength="100" autocomplete="off" placeholder="e.g. Plumbing Supplies"></div>
+                    <div class="form-group"><label for="category-description">Description <span class="category-optional">(optional)</span></label><textarea id="category-description" maxlength="1000" rows="3" placeholder="What belongs in this category?"></textarea></div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn" id="category-reset">Clear Form</button>
+                        <button type="submit" class="btn btn-primary" id="category-save">Create Category</button>
+                    </div>
+                </form>
+                <section class="category-library" aria-labelledby="category-list-title">
+                <div class="category-list-heading"><h3 id="category-list-title">Active Categories</h3><span id="category-count" class="category-count">0</span></div>
+                <label class="category-search"><i class="fas fa-search" aria-hidden="true"></i><input type="search" id="category-search" placeholder="Find a category…" aria-label="Search categories"></label>
+                <div id="category-list"></div>
+                <p class="category-hint category-archive-hint"><i class="fas fa-info-circle" aria-hidden="true"></i> Reassign active products before archiving a category.</p>
+                </section>
+                </div>
             </div>
         </div>
     </div>
@@ -553,6 +583,7 @@
     </div>
 
     <script src="../scripts/inventory.js"></script>
+    <script src="../scripts/categories.js"></script>
     <script src="../scripts/outbound.js"></script>
 </body>
 </html>
