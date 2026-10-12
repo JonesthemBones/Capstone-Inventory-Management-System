@@ -1,0 +1,42 @@
+/* Shared wave background for sign in, sign up, and password recovery. */
+body {
+    background-color: #dcece4;
+    background-image: url('img/auth-waves.svg');
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
+}
+
+.auth-card {
+    position: relative;
+    background: var(--bg-white);
+    border: 1px solid rgba(81, 137, 104, 0.15);
+    box-shadow: 0 20px 56px rgba(35, 80, 56, 0.16);
+}
+
+.dark-mode body {
+    background-color: #111d25;
+    background-image: url('img/auth-waves-dark.svg');
+}
+
+.dark-mode .page {
+    background: transparent;
+}
+
+.dark-mode .auth-card {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+@media (max-width: 640px) {
+    body,
+    .dark-mode body {
+        background-position: center;
+        background-attachment: scroll;
+    }
+
+    .auth-card {
+        box-shadow: 0 16px 40px rgba(8, 24, 17, 0.26);
+    }
+}
