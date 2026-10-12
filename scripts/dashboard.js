@@ -5,34 +5,8 @@ let supplierFrequencyChart = null;
 let dashboardRole = 'guest';
 let dashboardUserId = null;
 
-const LOW_STOCK_PERCENTAGE = 0.25;
-const CRITICAL_STOCK_PERCENTAGE = 0.10;
-
-function getStockThresholds(product = {}) {
-    const maximumStock = Number(product.maximum_stock || 0);
-    const reorderLevel = Math.max(0, Number(product.reorder_level || 0));
-
-    if (maximumStock > 0) {
-        return {
-            low: Math.ceil(maximumStock * LOW_STOCK_PERCENTAGE),
-            critical: Math.ceil(maximumStock * CRITICAL_STOCK_PERCENTAGE)
-        };
-    }
-
-    return {
-        low: reorderLevel,
-        critical: reorderLevel > 0 ? Math.max(1, Math.ceil(reorderLevel * (CRITICAL_STOCK_PERCENTAGE / LOW_STOCK_PERCENTAGE))) : 0
-    };
-}
-
 function getDashboardStockStatus(quantity, product = {}) {
-    const currentQuantity = Number(quantity || 0);
-    const thresholds = getStockThresholds(product);
-
-    if (currentQuantity <= 0) return 'out_of_stock';
-    if (thresholds.critical > 0 && currentQuantity <= thresholds.critical) return 'critical';
-    if (thresholds.low > 0 && currentQuantity <= thresholds.low) return 'low_stock';
-    return 'in_stock';
+    return getInventoryStockStatus(quantity, product);
 }
 
 function formatProductNames(items, limit = 3) {
@@ -173,36 +147,22 @@ async function loadCashierDashboard() {
 
 async function loadDashboardStats() {
     try {
-        const { count: totalProducts } = await supabaseClient
+        const { data: products, error: stockError } = await supabaseClient
             .from('products')
-            .select('*', { count: 'exact', head: true });
-        const { count: activeProductCount } = await supabaseClient
-            .from('products')
-            .select('*', { count: 'exact', head: true })
-            .eq('is_active', true);
-        const { data: stockData, error: stockError } = await supabaseClient
-            .from('inventory_stock')
-            .select(`
-                quantity,
-                product:products(unit_price, selling_price, reorder_level, maximum_stock, is_active)
-            `);
-        
-        if (stockError) {
-            console.error('Error fetching stock data:', stockError);
-            throw stockError;
-        }
-        
-        console.log('Stock data loaded:', stockData);
+            .select('product_id, unit_price, reorder_level, maximum_stock, inventory_stock!inventory_stock_product_id_fkey(quantity)')
+            .eq('is_active', true)
+            .order('product_name');
+        if (stockError) throw stockError;
         
         let inStock = 0;
         let lowStock = 0;
         let totalValue = 0;
         let outOfStock = 0;
 
-        for (const item of stockData || []) {
-            const quantity = item.quantity || 0;
-    
-            const status = getDashboardStockStatus(quantity, item.product);
+        for (const product of products || []) {
+            const stock = product.inventory_stock?.[0] || product.inventory_stock || {};
+            const quantity = Number(stock.quantity || 0);
+            const status = getDashboardStockStatus(quantity, product);
             if (status === 'out_of_stock') {
                 outOfStock++;
             } else if (status === 'in_stock') {
@@ -211,12 +171,12 @@ async function loadDashboardStats() {
                 lowStock++;
             }
 
-            const unitPrice = item.product?.unit_price || 0;
+            const unitPrice = Number(product.unit_price || 0);
             totalValue += quantity * unitPrice;
         }
         
-        console.log('Dashboard stats:', { totalProducts, inStock, lowStock, totalValue });
-        animateValue('total-products', 0, dashboardRole === 'staff' ? (activeProductCount || 0) : (totalProducts || 0), 1000);
+        console.log('Dashboard stats:', { totalProducts: products?.length || 0, inStock, lowStock, totalValue });
+        animateValue('total-products', 0, products?.length || 0, 1000);
         animateValue('in-stock', 0, inStock, 1000);
         animateValue('low-stock', 0, lowStock, 1000);
         animateValue('total-value', 0, dashboardRole === 'staff' ? outOfStock : totalValue, 1000, dashboardRole !== 'staff');
@@ -764,9 +724,10 @@ async function updateSupplierFrequencyChart() {
 
 async function updateStockDistributionChart() {
     try {
-        const { data: stockData, error } = await supabaseClient
-            .from('inventory_stock')
-            .select('quantity, product:products(reorder_level, maximum_stock, is_active)');
+        const { data: products, error } = await supabaseClient
+            .from('products')
+            .select('reorder_level, maximum_stock, inventory_stock!inventory_stock_product_id_fkey(quantity)')
+            .eq('is_active', true);
         
         if (error) throw error;
         
@@ -774,10 +735,10 @@ async function updateStockDistributionChart() {
         let lowStock = 0;
         let outOfStock = 0;
         
-        stockData?.forEach(item => {
-            if (item.product?.is_active === false) return;
-            const quantity = Number(item.quantity || 0);
-            const status = getDashboardStockStatus(quantity, item.product);
+        products?.forEach(product => {
+            const stock = product.inventory_stock?.[0] || product.inventory_stock || {};
+            const quantity = Number(stock.quantity || 0);
+            const status = getDashboardStockStatus(quantity, product);
             if (status === 'in_stock') inStock++;
             else if (status === 'out_of_stock') outOfStock++;
             else lowStock++;

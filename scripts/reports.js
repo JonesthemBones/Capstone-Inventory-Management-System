@@ -415,6 +415,42 @@ function reportPeriod(fromDate, toDate) {
     };
 }
 
+function formatReportTerm(value, kind = 'general') {
+    if (!value) return 'N/A';
+    const term = String(value).trim().toLowerCase();
+    const labels = {
+        movement: {
+            inbound: 'Stock Added',
+            outbound: 'Stock Removed',
+            adjustment: 'Stock Adjusted'
+        },
+        source: {
+            outbound_order: 'Stock Removal',
+            receipt_scan: 'Receipt Scan',
+            manual_adjustment: 'Manual Adjustment'
+        },
+        payment: {
+            cash: 'Cash',
+            bank_transfer: 'QR / E-wallet'
+        }
+    };
+    return labels[kind]?.[term] || term.replace(/[_-]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function createReportPdf(orientation) {
+    const Pdf = window.jspdf?.jsPDF || window.jsPDF;
+    const doc = orientation ? new Pdf(orientation) : new Pdf();
+    const autoTable = doc.autoTable.bind(doc);
+    doc.autoTable = options => autoTable({
+        ...options,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2.5, lineColor: [170, 170, 170], lineWidth: 0.1, fillColor: [255, 255, 255], textColor: [0, 0, 0], ...(options.styles || {}) },
+        headStyles: { ...(options.headStyles || {}), fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineColor: [100, 100, 100], lineWidth: 0.2 },
+        alternateRowStyles: { fillColor: [255, 255, 255] }
+    });
+    return doc;
+}
+
 async function fetchPosTransactions(fromDate, toDate, active, cashierId = null) {
     const { start, end } = reportPeriod(fromDate, toDate);
     let query = window.supabaseClient
@@ -437,7 +473,7 @@ async function generateSalesSummaryReport(fromDate, toDate) {
     const payments = {};
     const daily = {};
     rows.forEach(row => {
-        const method = row.payment_method === 'bank_transfer' ? 'QR / E-wallet' : (row.payment_method || 'Cash');
+        const method = formatReportTerm(row.payment_method || 'cash', 'payment');
         payments[method] ||= { count: 0, total: 0 };
         payments[method].count++;
         payments[method].total += Number(row.total_amount || 0);
@@ -446,7 +482,7 @@ async function generateSalesSummaryReport(fromDate, toDate) {
         daily[day].count++;
         daily[day].total += Number(row.total_amount || 0);
     });
-    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    const doc = createReportPdf();
     let y = addReportHeader(doc, 'POS SALES SUMMARY REPORT', 20);
     y = addSectionHeader(doc, 'PERFORMANCE SUMMARY', y + 10);
     doc.autoTable({ startY: y, body: [
@@ -460,7 +496,7 @@ async function generateSalesSummaryReport(fromDate, toDate) {
     y = addSectionHeader(doc, 'PAYMENT METHOD BREAKDOWN', doc.lastAutoTable.finalY + 12);
     doc.autoTable({ startY: y, head: [['Payment Method', 'Transactions', 'Amount']], body: Object.entries(payments).map(([method, v]) => [method, String(v.count), formatPeso(v.total)]), theme: 'striped' });
     y = addSectionHeader(doc, 'TRANSACTION REGISTER', doc.lastAutoTable.finalY + 12);
-    doc.autoTable({ startY: y, head: [['Transaction', 'Date/Time', 'Payment', 'Discount', 'Total']], body: rows.map(r => [r.transaction_number || 'N/A', new Date(r.transaction_datetime).toLocaleString('en-PH'), r.payment_method || 'cash', formatPeso(Number(r.discount_amount || 0)), formatPeso(Number(r.total_amount || 0))]), styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.autoTable({ startY: y, head: [['Date/Time', 'Payment', 'Discount', 'Total']], body: rows.map(r => [new Date(r.transaction_datetime).toLocaleString('en-PH'), formatReportTerm(r.payment_method || 'cash', 'payment'), formatPeso(Number(r.discount_amount || 0)), formatPeso(Number(r.total_amount || 0))]), styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
     doc.save(`POS-Sales-Summary-${fromDate}-to-${toDate}.pdf`);
 }
 
@@ -477,7 +513,7 @@ async function generateProductSalesReport(fromDate, toDate, cashierId = null, fi
     }));
     const ranked = Object.values(products).sort((a, b) => b.revenue - a.revenue);
     const totalRevenue = ranked.reduce((sum, item) => sum + item.revenue, 0);
-    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    const doc = createReportPdf();
     let y = addReportHeader(doc, 'PRODUCT SALES PERFORMANCE REPORT', 20);
     y = addSectionHeader(doc, 'PRODUCT RANKING', y + 10);
     doc.autoTable({ startY: y, head: [['Rank', 'Product', 'Units Sold', 'Line Sales', 'Sales Share']], body: ranked.map((item, i) => [String(i + 1), item.name, String(item.units), formatPeso(item.revenue), totalRevenue ? `${(item.revenue / totalRevenue * 100).toFixed(1)}%` : '0.0%']), theme: 'striped', styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
@@ -510,7 +546,7 @@ async function generateCashierPerformanceReport(fromDate, toDate) {
         else item.cash += sale;
     });
     const ranked = Object.entries(stats).sort((a, b) => b[1].sales - a[1].sales);
-    const doc = new (window.jspdf?.jsPDF || window.jsPDF)('landscape');
+    const doc = createReportPdf('landscape');
     let y = addReportHeader(doc, 'SALES BY CASHIER REPORT', 20);
     y = addSectionHeader(doc, 'CASHIER PERFORMANCE RANKING', y + 10);
     doc.autoTable({ startY: y, head: [['Rank', 'Cashier', 'Transactions', 'Units', 'Net Sales', 'Average Sale', 'Discounts', 'Cash', 'QR / E-wallet']], body: ranked.map(([id, v], index) => [String(index + 1), names[id] || 'Unknown cashier', String(v.transactions), String(v.units), formatPeso(v.sales), formatPeso(v.sales / v.transactions), formatPeso(v.discounts), formatPeso(v.cash), formatPeso(v.digital)]), styles: { fontSize: 8 }, theme: 'striped', didDrawPage: data => addPageFooter(doc, data.pageNumber) });
@@ -528,7 +564,7 @@ async function generateCashierPaymentReport(fromDate, toDate) {
     let discounts = 0;
     let tax = 0;
     rows.forEach(row => {
-        const method = row.payment_method === 'bank_transfer' ? 'QR / E-wallet' : (row.payment_method || 'Cash');
+        const method = formatReportTerm(row.payment_method || 'cash', 'payment');
         payments[method] ||= { count: 0, amount: 0 };
         payments[method].count++;
         payments[method].amount += Number(row.total_amount || 0);
@@ -541,7 +577,7 @@ async function generateCashierPaymentReport(fromDate, toDate) {
         discounts += Number(row.discount_amount || 0);
         tax += Number(row.tax_amount || 0);
     });
-    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    const doc = createReportPdf();
     let y = addReportHeader(doc, 'MY PAYMENT AND DISCOUNT SUMMARY', 20);
     y = addSectionHeader(doc, 'RECONCILIATION SUMMARY', y + 10);
     doc.autoTable({ startY: y, body: [
@@ -573,14 +609,14 @@ async function generateOutboundActivityReport(fromDate, toDate) {
     });
     const units = rows.reduce((sum, row) => sum + Math.abs(Number(row.quantity_change || 0)), 0);
     const products = new Set(rows.map(row => row.products?.product_code).filter(Boolean)).size;
-    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    const doc = createReportPdf();
     let y = addReportHeader(doc, 'STOCK REMOVAL REPORT', 20);
     y = addSectionHeader(doc, 'STOCK REMOVAL SUMMARY', y + 10);
     doc.autoTable({ startY: y, body: [['Transactions', String(rows.length)], ['Units Dispatched', String(units)], ['Unique Products', String(products)]], theme: 'grid' });
     y = addSectionHeader(doc, 'OUTBOUND BY REASON', doc.lastAutoTable.finalY + 12);
     doc.autoTable({ startY: y, head: [['Reason', 'Units']], body: Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([reason, count]) => [reason, String(count)]), theme: 'striped' });
     y = addSectionHeader(doc, 'DISPATCH REGISTER', doc.lastAutoTable.finalY + 12);
-    doc.autoTable({ startY: y, head: [['Date', 'Product', 'Reference', 'Qty', 'Performed By', 'Notes']], body: rows.map(row => [new Date(row.movement_date).toLocaleString('en-PH'), `${row.products?.product_code || ''} ${row.products?.product_name || 'Unknown'}`.trim(), row.reference_id || 'N/A', String(Math.abs(Number(row.quantity_change || 0))), names[row.performed_by] || 'System', row.notes || '']), styles: { fontSize: 7 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.autoTable({ startY: y, head: [['Date', 'Product', 'Qty', 'Performed By', 'Notes']], body: rows.map(row => [new Date(row.movement_date).toLocaleString('en-PH'), row.products?.product_name || 'Unknown', String(Math.abs(Number(row.quantity_change || 0))), names[row.performed_by] || 'System', row.notes || '']), styles: { fontSize: 7 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
     doc.save(`Outbound-Activity-${fromDate}-to-${toDate}.pdf`);
 }
 
@@ -588,12 +624,12 @@ async function generateVoidedSalesReport(fromDate, toDate) {
     const { rows } = await fetchPosTransactions(fromDate, toDate, false);
     if (!rows.length) throw new Error('No voided POS transactions found for the selected period');
     const value = rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
-    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    const doc = createReportPdf();
     let y = addReportHeader(doc, 'VOIDED POS TRANSACTIONS REPORT', 20);
     y = addSectionHeader(doc, 'VOID SUMMARY', y + 10);
     doc.autoTable({ startY: y, body: [['Voided Transactions', String(rows.length)], ['Cancelled Sales Value', formatPeso(value)]], theme: 'grid' });
     y = addSectionHeader(doc, 'VOID REGISTER', doc.lastAutoTable.finalY + 12);
-    doc.autoTable({ startY: y, head: [['Transaction', 'Date/Time', 'Payment', 'Amount', 'Reason']], body: rows.map(r => [r.transaction_number || 'N/A', new Date(r.transaction_datetime).toLocaleString('en-PH'), r.payment_method || 'cash', formatPeso(Number(r.total_amount || 0)), r.void_reason || 'Not provided']), styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
+    doc.autoTable({ startY: y, head: [['Date/Time', 'Payment', 'Amount', 'Reason']], body: rows.map(r => [new Date(r.transaction_datetime).toLocaleString('en-PH'), formatReportTerm(r.payment_method || 'cash', 'payment'), formatPeso(Number(r.total_amount || 0)), r.void_reason || 'Not provided']), styles: { fontSize: 8 }, didDrawPage: data => addPageFooter(doc, data.pageNumber) });
     doc.save(`Voided-POS-Transactions-${fromDate}-to-${toDate}.pdf`);
 }
 
@@ -619,7 +655,7 @@ async function generateCashierSalesReport(fromDate, toDate) {
     const totalSales = data.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
     const itemsSold = data.reduce((sum, row) => sum +
         (row.pos_transaction_items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0), 0);
-    const doc = new (window.jspdf?.jsPDF || window.jsPDF)();
+    const doc = createReportPdf();
     let yPos = addReportHeader(doc, 'CASHIER SALES REPORT', 20);
     yPos = addSectionHeader(doc, 'CASHIER ACCOUNT SUMMARY', yPos + 10);
     doc.autoTable({
@@ -637,12 +673,11 @@ async function generateCashierSalesReport(fromDate, toDate) {
     yPos = addSectionHeader(doc, 'TRANSACTION HISTORY', yPos);
     doc.autoTable({
         startY: yPos + 5,
-        head: [['Transaction', 'Date/Time', 'Items', 'Payment', 'Total']],
+        head: [['Date/Time', 'Items', 'Payment', 'Total']],
         body: data.map(row => [
-            row.transaction_number || 'N/A',
             new Date(row.transaction_datetime).toLocaleString(),
             String((row.pos_transaction_items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0)),
-            row.payment_method || 'cash',
+            formatReportTerm(row.payment_method || 'cash', 'payment'),
             formatPeso(Number(row.total_amount || 0))
         ]),
         styles: { fontSize: 8 }
@@ -667,6 +702,7 @@ async function generateCompleteInventoryReport() {
             unit_price,
             selling_price,
             reorder_level,
+            maximum_stock,
             inventory_stock!inventory_stock_product_id_fkey(quantity)
         `)
         .eq('is_active', true)
@@ -682,8 +718,7 @@ async function generateCompleteInventoryReport() {
     const metrics = calculateInventoryMetrics(products);
     
     // Create PDF
-    const jsPDFConstructor = window.jspdf?.jsPDF || window.jsPDF;
-    const doc = new jsPDFConstructor();
+    const doc = createReportPdf();
     let yPos = 20;
     
     // Header with company info
@@ -725,16 +760,15 @@ async function generateCompleteInventoryReport() {
     
     const productData = products.map(p => {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
-        const quantity = stock?.quantity || 0;
+        const quantity = Number(stock?.quantity || 0);
         
-        let status = 'In Stock';
-        if (quantity === 0) status = 'Out of Stock';
-        else if (quantity <= (p.reorder_level || 10)) status = 'Low Stock';
+        const stockStatus = getInventoryStockStatus(quantity, p);
+        const status = stockStatus === 'out_of_stock' ? 'Out of Stock' :
+            stockStatus === 'in_stock' ? 'In Stock' : 'Low Stock';
         
         const value = quantity * (p.unit_price || 0);
         
         return [
-            p.product_code || 'N/A',
             p.product_name || 'N/A',
             quantity.toString(),
             p.unit_of_measure || 'pcs',
@@ -746,19 +780,18 @@ async function generateCompleteInventoryReport() {
     
     doc.autoTable({
         startY: yPos,
-        head: [['Code', 'Product Name', 'Qty', 'Unit', 'Status', 'Unit Price', 'Total Value']],
+        head: [['Product Name', 'Qty', 'Unit', 'Status', 'Unit Price', 'Total Value']],
         body: productData,
         theme: 'striped',
-        headStyles: { fillColor: [37, 99, 235], fontSize: 8 },
+        headStyles: { fontSize: 8 },
         styles: { fontSize: 8, cellPadding: 2 },
         columnStyles: {
-            0: { cellWidth: 20 },
-            1: { cellWidth: 50 },
+            0: { cellWidth: 65 },
+            1: { halign: 'center', cellWidth: 15 },
             2: { halign: 'center', cellWidth: 15 },
-            3: { halign: 'center', cellWidth: 15 },
-            4: { halign: 'center', cellWidth: 22 },
-            5: { halign: 'right', cellWidth: 25 },
-            6: { halign: 'right', cellWidth: 30 }
+            3: { halign: 'center', cellWidth: 22 },
+            4: { halign: 'right', cellWidth: 26 },
+            5: { halign: 'right', cellWidth: 39 }
         },
         didDrawPage: (data) => {
             addPageFooter(doc, data.pageNumber);
@@ -785,6 +818,7 @@ async function generateLowStockReport() {
             unit_price,
             selling_price,
             reorder_level,
+            maximum_stock,
             inventory_stock!inventory_stock_product_id_fkey(quantity)
         `)
         .eq('is_active', true)
@@ -797,16 +831,14 @@ async function generateLowStockReport() {
     const lowStockItems = products.filter(p => {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
         const quantity = stock?.quantity || 0;
-        const reorder = p.reorder_level || 10;
-        return quantity > 0 && quantity <= reorder;
+        return ['low_stock', 'critical'].includes(getInventoryStockStatus(quantity, p));
     });
     
     if (lowStockItems.length === 0) {
         throw new Error('No low stock items found');
     }
     
-    const jsPDFConstructor = window.jspdf?.jsPDF || window.jsPDF;
-    const doc = new jsPDFConstructor();
+    const doc = createReportPdf();
     let yPos = 20;
     
     yPos = addReportHeader(doc, 'LOW STOCK ALERT REPORT', yPos);
@@ -857,7 +889,6 @@ async function generateLowStockReport() {
             const reorderCost = suggestedQty * (p.unit_price || 0);
             
             return [
-                p.product_code || 'N/A',
                 p.product_name || 'N/A',
                 quantity.toString(),
                 reorderLevel.toString(),
@@ -869,19 +900,18 @@ async function generateLowStockReport() {
     
     doc.autoTable({
         startY: yPos,
-        head: [['Code', 'Product', 'Current', 'Reorder Lvl', 'Suggested Qty', 'Unit Price', 'Est. Cost']],
+        head: [['Product', 'Current', 'Reorder Lvl', 'Suggested Qty', 'Unit Price', 'Est. Cost']],
         body: reorderData,
         theme: 'striped',
-        headStyles: { fillColor: [220, 38, 38], fontSize: 8 },
+        headStyles: { fontSize: 8 },
         styles: { fontSize: 8, cellPadding: 2 },
         columnStyles: {
-            0: { cellWidth: 20 },
-            1: { cellWidth: 55 },
-            2: { halign: 'center', cellWidth: 18 },
-            3: { halign: 'center', cellWidth: 20 },
-            4: { halign: 'center', cellWidth: 22 },
-            5: { halign: 'right', cellWidth: 26 },
-            6: { halign: 'right', cellWidth: 28 }
+            0: { cellWidth: 68 },
+            1: { halign: 'center', cellWidth: 18 },
+            2: { halign: 'center', cellWidth: 20 },
+            3: { halign: 'center', cellWidth: 22 },
+            4: { halign: 'right', cellWidth: 26 },
+            5: { halign: 'right', cellWidth: 28 }
         },
         didDrawPage: (data) => {
             addPageFooter(doc, data.pageNumber);
@@ -906,6 +936,7 @@ async function generateValuationReport() {
             unit_of_measure,
             unit_price,
             selling_price,
+            maximum_stock,
             inventory_stock!inventory_stock_product_id_fkey(quantity)
         `)
         .eq('is_active', true)
@@ -922,8 +953,8 @@ async function generateValuationReport() {
     products.forEach(p => {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
         const quantity = stock?.quantity || 0;
-        const costValue = quantity * (p.unit_price || 0);
-        const sellingValue = quantity * (p.selling_price || 0);
+        const costValue = quantity * Number(p.unit_price || 0);
+        const sellingValue = quantity * Number(p.selling_price || 0);
         
         totalCost += costValue;
         totalSelling += sellingValue;
@@ -932,8 +963,7 @@ async function generateValuationReport() {
     const potentialProfit = totalSelling - totalCost;
     const profitMargin = totalCost > 0 ? (potentialProfit / totalCost * 100) : 0;
     
-    const jsPDFConstructor = window.jspdf?.jsPDF || window.jsPDF;
-    const doc = new jsPDFConstructor();
+    const doc = createReportPdf();
     let yPos = 20;
     
     yPos = addReportHeader(doc, 'INVENTORY VALUATION REPORT', yPos);
@@ -971,7 +1001,6 @@ async function generateValuationReport() {
         const profit = sellingValue - costValue;
         
         return [
-            p.product_code || 'N/A',
             p.product_name || 'N/A',
             quantity.toString(),
             formatPeso(p.unit_price || 0),
@@ -984,20 +1013,19 @@ async function generateValuationReport() {
     
     doc.autoTable({
         startY: yPos,
-        head: [['Code', 'Product', 'Qty', 'Cost', 'Selling', 'Cost Value', 'Selling Value', 'Profit']],
+        head: [['Product', 'Qty', 'Cost', 'Selling', 'Cost Value', 'Selling Value', 'Profit']],
         body: productData,
         theme: 'striped',
-        headStyles: { fillColor: [37, 99, 235], fontSize: 8 },
+        headStyles: { fontSize: 8 },
         styles: { fontSize: 8, cellPadding: 2 },
         columnStyles: {
-            0: { cellWidth: 18 },
-            1: { cellWidth: 50 },
-            2: { halign: 'center', cellWidth: 15 },
+            0: { cellWidth: 58 },
+            1: { halign: 'center', cellWidth: 15 },
+            2: { halign: 'right', cellWidth: 20 },
             3: { halign: 'right', cellWidth: 20 },
-            4: { halign: 'right', cellWidth: 20 },
+            4: { halign: 'right', cellWidth: 23 },
             5: { halign: 'right', cellWidth: 23 },
-            6: { halign: 'right', cellWidth: 23 },
-            7: { halign: 'right', cellWidth: 23 }
+            6: { halign: 'right', cellWidth: 23 }
         },
         didDrawPage: (data) => {
             addPageFooter(doc, data.pageNumber);
@@ -1075,8 +1103,7 @@ async function generateMovementReport(fromDate, toDate) {
         }
     });
     
-    const jsPDFConstructor = window.jspdf?.jsPDF || window.jsPDF;
-    const doc = new jsPDFConstructor();
+    const doc = createReportPdf();
     let yPos = 20;
     
     yPos = addReportHeader(doc, 'STOCK CHANGE REPORT', yPos);
@@ -1112,7 +1139,7 @@ async function generateMovementReport(fromDate, toDate) {
     const typeData = Object.entries(stats.byType)
         .sort((a, b) => b[1] - a[1])
         .map(([type, count]) => [
-            type.charAt(0).toUpperCase() + type.slice(1),
+            formatReportTerm(type, 'movement'),
             count.toString(),
             ((count / stats.totalMovements) * 100).toFixed(1) + '%'
         ]);
@@ -1122,7 +1149,7 @@ async function generateMovementReport(fromDate, toDate) {
         head: [['Movement Type', 'Count', '% of Total']],
         body: typeData,
         theme: 'striped',
-        headStyles: { fillColor: [37, 99, 235], fontSize: 9 },
+        headStyles: { fontSize: 9 },
         styles: { fontSize: 9, cellPadding: 3 },
         columnStyles: {
             1: { halign: 'center' },
@@ -1147,31 +1174,29 @@ async function generateMovementReport(fromDate, toDate) {
         return [
             date.toLocaleDateString('en-PH', { month: '2-digit', day: '2-digit', year: '2-digit' }),
             date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false }),
-            m.products?.product_code || 'N/A',
             m.products?.product_name || 'N/A',
-            m.movement_type || 'N/A',
-            (m.reference_type || '') + (m.reference_id ? ': ' + m.reference_id : ''),
+            formatReportTerm(m.movement_type, 'movement'),
+            formatReportTerm(m.reference_type, 'source'),
             change,
-            (m.quantity_after || 'N/A').toString()
+            (m.quantity_after ?? 'N/A').toString()
         ];
     });
     
     doc.autoTable({
         startY: yPos,
-        head: [['Date', 'Time', 'Code', 'Product', 'Type', 'Reference', 'Change', 'Balance']],
+        head: [['Date', 'Time', 'Product', 'Type', 'Source', 'Change', 'Balance']],
         body: transactionData,
         theme: 'striped',
-        headStyles: { fillColor: [37, 99, 235], fontSize: 7 },
+        headStyles: { fontSize: 7 },
         styles: { fontSize: 7, cellPadding: 2 },
         columnStyles: {
             0: { cellWidth: 20 },
             1: { cellWidth: 16 },
-            2: { cellWidth: 18 },
-            3: { cellWidth: 40 },
-            4: { cellWidth: 22 },
-            5: { cellWidth: 30 },
-            6: { halign: 'center', cellWidth: 16 },
-            7: { halign: 'center', cellWidth: 16 }
+            2: { cellWidth: 59 },
+            3: { cellWidth: 22 },
+            4: { cellWidth: 29 },
+            5: { halign: 'center', cellWidth: 18 },
+            6: { halign: 'center', cellWidth: 18 }
         },
         didDrawPage: (data) => {
             addPageFooter(doc, data.pageNumber);
@@ -1223,7 +1248,7 @@ function addReportHeader(doc, title, yPos) {
 function addSectionHeader(doc, title, yPos) {
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.setTextColor(37, 99, 235);
+    doc.setTextColor(0, 0, 0);
     doc.text(title, 14, yPos);
     doc.setTextColor(0, 0, 0);
     doc.setFont(undefined, 'normal');
@@ -1262,17 +1287,18 @@ function calculateInventoryMetrics(products) {
     
     products.forEach(p => {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
-        const quantity = stock?.quantity || 0;
-        const costValue = quantity * (p.unit_price || 0);
-        const sellingValue = quantity * (p.selling_price || 0);
+        const quantity = Number(stock?.quantity || 0);
+        const costValue = quantity * Number(p.unit_price || 0);
+        const sellingValue = quantity * Number(p.selling_price || 0);
         
         metrics.totalCostValue += costValue;
         metrics.totalSellingValue += sellingValue;
         
         // Stock status
-        if (quantity === 0) {
+        const status = getInventoryStockStatus(quantity, p);
+        if (status === 'out_of_stock') {
             metrics.outOfStock++;
-        } else if (quantity <= (p.reorder_level || 10)) {
+        } else if (status !== 'in_stock') {
             metrics.lowStock++;
         } else {
             metrics.inStock++;

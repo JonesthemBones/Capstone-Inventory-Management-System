@@ -5,6 +5,20 @@ function formatCurrency(amount) {
     }).format(amount);
 }
 
+function getInventoryStockStatus(quantity, product = {}) {
+    const current = Number(quantity || 0);
+    const maximum = Number(product?.maximum_stock || 0);
+    const reorder = Math.max(0, Number(product?.reorder_level || 0));
+    const low = maximum > 0 ? Math.ceil(maximum * 0.25) : reorder;
+    const critical = maximum > 0 ? Math.ceil(maximum * 0.10) :
+        (reorder > 0 ? Math.max(1, Math.ceil(reorder * 0.4)) : 0);
+
+    if (current <= 0) return 'out_of_stock';
+    if (critical > 0 && current <= critical) return 'critical';
+    if (low > 0 && current <= low) return 'low_stock';
+    return 'in_stock';
+}
+
 function formatDate(dateString, includeTime = false) {
     const date = new Date(dateString);
     const options = {
