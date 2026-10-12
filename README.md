@@ -10,7 +10,7 @@ The current development focus is interface refinement, data consistency, product
 
 ## Current features
 
-- Dashboard metrics for inventory, sales, recent transactions, stock movements, top products by value, supplier receipt frequency, and an admin overview
+- Role-specific dashboards: staff stock alerts and movements, cashier sales and transactions, and admin sales, inventory value, and supplier receipt frequency
 - Product inventory management with categories, images, pricing, stock thresholds, audited adjustments, inbound batch history, reversible archive/restore, filtering, and pagination
 - Inbound inventory through VLM-assisted receipt extraction and product matching
 - Manual outbound transactions for sales, returns, damage/disposal, transfers, and other stock-outs
@@ -27,6 +27,7 @@ The current development focus is interface refinement, data consistency, product
 
 ## Recent progress and interface changes
 
+- Simplified the staff dashboard for inventory monitoring. Summary cards show active, healthy, low-stock, and out-of-stock product counts; a compact, scrollable alert list highlights products needing attention; recent stock changes and a seven-day received/released chart follow. The stock-health and supplier-frequency charts are hidden for staff because the cards and alerts already cover immediate stock status.
 - Added an admin overview with today's sales, transaction count, units sold, average sale, active out-of-stock products, seven-day payment-method counts, stock-movement trends, and recent stock activity. Sales metrics refresh on transaction changes and every two minutes.
 - Added a supplier-frequency chart showing the top five suppliers by distinct successfully extracted receipts in the current year, grouping supplier names without regard to capitalization.
 - Redesigned Remove Stock with product-name/code search, category filtering, a selected-product summary, and a remaining-stock preview. Submission rejects empty, non-positive, fractional, and excessive quantities and prevents duplicate submissions while processing.
@@ -200,6 +201,8 @@ The final constraint permits only `admin`, `cashier`, and `staff`. The SQL has n
 | `admin` | Full business administration, including account management, audit logs, inventory archive/restore, reports, scanning, and POS |
 | `cashier` | Dashboard, POS, and cashier-focused sales reports |
 | `staff` | Dashboard, reports, VLM extraction, reorder lists, routine stock adjustments and removals, and product creation/editing; existing pricing, archive/restore, backup/restore remain restricted |
+
+The staff dashboard puts inventory counts first, followed by scrollable stock alerts, recent stock changes, and a seven-day stock-change chart. The admin dashboard retains the broader sales, valuation, and supplier charts; the cashier dashboard focuses on that cashier's sales and transactions.
 
 The UI hides unauthorized navigation, while sensitive server endpoints validate the Supabase access token and role. Supabase Row Level Security should still be configured for every exposed table.
 

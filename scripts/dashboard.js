@@ -49,8 +49,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 function configureDashboardForRole(role) {
     const title = document.querySelector('.page-title');
     const subtitle = document.querySelector('.page-subtitle');
-    const statTitles = [...document.querySelectorAll('.stat-title')];
-    const statChanges = [...document.querySelectorAll('.stat-change span')];
+    const statTitles = [...document.querySelectorAll('.page > .stats-grid .stat-title')];
+    const statChanges = [...document.querySelectorAll('.page > .stats-grid .stat-change span')];
     const panels = document.querySelectorAll('[data-dashboard-panel]');
     const alerts = document.querySelector('.alerts-section');
     const activityTitle = document.getElementById('activity-title');
@@ -64,6 +64,9 @@ function configureDashboardForRole(role) {
         panels.forEach(panel => {
             panel.hidden = !visiblePanels.includes(panel.dataset.dashboardPanel);
             panel.classList.remove('dashboard-panel-wide');
+        });
+        document.querySelectorAll('.page > .charts-grid').forEach(grid => {
+            grid.hidden = !grid.querySelector('[data-dashboard-panel]:not([hidden])');
         });
     };
 
@@ -86,6 +89,7 @@ function configureDashboardForRole(role) {
         distributionTitle.textContent = 'Payment Methods';
         distributionSubtitle.textContent = 'How customers paid during the last 7 days';
     } else if (role === 'staff') {
+        document.body.classList.add('staff-dashboard');
         title.textContent = 'Staff Inventory Dashboard';
         subtitle.textContent = 'Priorities for receiving, counting, and keeping stock accurate';
         ['Active Products', 'Healthy Stock', 'Low Stock', 'Out of Stock'].forEach((label, index) => {
@@ -94,7 +98,15 @@ function configureDashboardForRole(role) {
         ['Products in the catalog', 'Items above reorder level', 'Items at or below reorder level', 'Items needing immediate attention'].forEach((label, index) => {
             if (statChanges[index]) statChanges[index].textContent = label;
         });
-        setPanelVisibility(['sales-trend', 'stock-distribution', 'recent-activity', 'supplier-frequency']);
+        setPanelVisibility(['sales-trend', 'recent-activity']);
+        const recentActivity = document.querySelector('[data-dashboard-panel="recent-activity"]');
+        const movementChart = document.querySelector('[data-dashboard-panel="sales-trend"]');
+        const activityGrid = recentActivity.parentElement;
+        const movementGrid = movementChart.parentElement;
+        activityGrid.before(alerts);
+        activityGrid.append(movementChart);
+        activityGrid.classList.add('staff-activity-grid');
+        movementGrid.hidden = true;
         activityTitle.textContent = 'Recent Stock Changes';
         activitySubtitle.textContent = 'Latest receiving and stock adjustments';
         trendTitle.textContent = 'Stock Change Activity';
@@ -181,11 +193,7 @@ async function loadDashboardStats() {
         animateValue('low-stock', 0, lowStock, 1000);
         animateValue('total-value', 0, dashboardRole === 'staff' ? outOfStock : totalValue, 1000, dashboardRole !== 'staff');
         if (dashboardRole === 'staff') {
-            await Promise.all([
-                updateStockDistributionChart(),
-                updateStaffMovementTrend(),
-                updateSupplierFrequencyChart()
-            ]);
+            await updateStaffMovementTrend();
         } else {
             await updateAllCharts();
             await loadOverallDashboard();
@@ -863,7 +871,9 @@ function setupRealtimeSubscriptions() {
         .channel('supplier_extraction_changes')
         .on('postgres_changes',
             { event: '*', schema: 'public', table: 'vlm_extractions' },
-            () => updateSupplierFrequencyChart()
+            () => {
+                if (dashboardRole === 'admin') updateSupplierFrequencyChart();
+            }
         )
         .subscribe();
 }

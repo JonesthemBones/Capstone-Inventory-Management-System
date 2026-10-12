@@ -170,6 +170,45 @@
     width: 100%;
 }
 
+.staff-dashboard .alerts-section {
+    margin: 0 0 24px;
+}
+
+.staff-dashboard #low-stock-alerts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 6px;
+    align-content: start;
+}
+
+.staff-dashboard .alert-item {
+    min-width: 0;
+    margin: 0;
+}
+
+.staff-dashboard .staff-activity-grid {
+    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+    align-items: start;
+}
+
+.staff-dashboard .staff-activity-grid .chart-card {
+    min-width: 0;
+}
+
+.staff-dashboard .staff-activity-grid [data-dashboard-panel="sales-trend"] > div:last-child {
+    height: 240px !important;
+}
+
+@media (max-width: 1100px) {
+    .staff-dashboard .staff-activity-grid,
+    .staff-dashboard #low-stock-alerts {
+        grid-template-columns: 1fr;
+    }
+}
+
 .chart-card.supplier-frequency-panel {
     grid-column: 1 / -1;
     width: 100%;
