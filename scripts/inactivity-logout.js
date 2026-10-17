@@ -456,10 +456,9 @@ class InactivityLogout {
     }
 }
 
-// Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {    
     window.inactivityLogout = new InactivityLogout({
-        timeout: 10 * 60 * 1000, // Sign out after 10 minutes of inactivity.
+        timeout: 10 * 60 * 1000,
         warningTime: 10 * 1000,
         checkInterval: 1000             
     });

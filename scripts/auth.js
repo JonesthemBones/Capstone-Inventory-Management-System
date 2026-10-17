@@ -126,8 +126,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (session) {
         const activityKey = 'amacar:last-activity';
         const lastActivity = Number(localStorage.getItem(activityKey));
-        // Keep this consistent with inactivity-logout.js. A shorter value here
-        // can discard an otherwise valid Supabase session when auth.html loads.
         const sessionTimedOut = Number.isFinite(lastActivity) && lastActivity > 0
             && Date.now() - lastActivity >= 10 * 60 * 1000;
 
