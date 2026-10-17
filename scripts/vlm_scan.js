@@ -388,7 +388,7 @@ async function mergeWithExistingProductDefaults(items) {
             return {
                 ...item,
                 unit_price: item.unit_price,
-                selling_price: Number.isFinite(Number(product.selling_price)) ? Number(product.selling_price) : item.selling_price,
+                selling_price: getSellingPriceFromCost(item.unit_price),
                 unit_of_measure: item.unit_of_measure,
                 category_id: product.category_id || item.category_id || null,
                 category_name: product.category_id
@@ -479,7 +479,8 @@ function normalizeItemsFromReceipt(rawReceipt) {
         const receiptQuantity = ReceiptConfidence.number(item.receipt_quantity ?? item.quantity);
         const realQuantity = ReceiptConfidence.number(item.real_quantity ?? receiptQuantity);
         const unitPrice = price;
-        const sellingPrice = ReceiptConfidence.number(item.selling_price ?? item.sale_price ?? unitPrice);
+        const suggestedSellingPrice = unitPrice === null ? null : Math.round((unitPrice * 1.20 + Number.EPSILON) * 100) / 100;
+        const sellingPrice = suggestedSellingPrice;
         const unitOfMeasure = String(item.unit_of_measure ?? item.unit ?? '').trim();
         const confidenceValue = item.confidence ?? item.confidence_score ?? item.score ?? item.confidenceScore;
         const confidence = confidenceValue !== null && confidenceValue !== undefined && confidenceValue !== '' && Number.isFinite(Number(confidenceValue))
@@ -783,7 +784,7 @@ function renderItems(items) {
                     </div>
                     <div class="vlm-card-item-field">
                         <label>Selling Price</label>
-                        <input type="number" step="0.01" min="0" value="${Number.isFinite(item.selling_price) ? item.selling_price.toFixed(2) : ''}" data-field="selling_price" data-index="${index}">
+                        <input type="number" step="0.01" min="0" value="${Number.isFinite(item.selling_price) ? item.selling_price.toFixed(2) : ''}" data-field="selling_price" data-index="${index}" readonly>
                     </div>
                     <div class="vlm-card-item-field">
                         <label>Real Quantity</label>
@@ -1001,7 +1002,12 @@ function handleVlmItemGridInput(event) {
         value = target.value;
     }
     currentItems[index][field] = value;
-    if (field === 'unit_price') currentItems[index].price = value;
+    if (field === 'unit_price') {
+        currentItems[index].price = value;
+        currentItems[index].selling_price = value === null ? null : getSellingPriceFromCost(value);
+        const sellingInput = target.closest('.vlm-card-item')?.querySelector('[data-field="selling_price"]');
+        if (sellingInput) sellingInput.value = currentItems[index].selling_price?.toFixed(2) ?? '';
+    }
     currentItems[index].accepted = false;
     const card = target.closest('.vlm-card-item');
     if (card && !currentItems[index].removed) {

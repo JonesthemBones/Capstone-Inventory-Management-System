@@ -3,6 +3,7 @@ let currentAdjustingProductId = null;
 let currentUserRole = null;
 const INVENTORY_LOW_STOCK_PERCENTAGE = 0.25;
 const INVENTORY_CRITICAL_STOCK_PERCENTAGE = 0.10;
+const DEFAULT_SELLING_MARKUP = 0.20;
 let lastGeneratedProductCode = '';
 
 function updateAutomaticProductCode() {
@@ -218,7 +219,7 @@ function filterAndSortInventory(products, filters) {
     const hasNumber = value => value !== '' && value !== null && value !== undefined;
     const result = (products || []).filter(product => {
         const quantity = getInventoryQuantity(product);
-        const price = Number(product.selling_price || 0);
+        const price = getSellingPriceFromCost(product.unit_price);
         const isActive = product.is_active !== false;
         if (filters.category && String(product.category_id || '') !== String(filters.category)) return false;
         if (filters.status && getProductStockStatus(product) !== filters.status) return false;
@@ -237,8 +238,8 @@ function filterAndSortInventory(products, filters) {
         name_desc: (a, b) => String(b.product_name || '').localeCompare(String(a.product_name || '')),
         quantity_asc: (a, b) => getInventoryQuantity(a) - getInventoryQuantity(b),
         quantity_desc: (a, b) => getInventoryQuantity(b) - getInventoryQuantity(a),
-        price_asc: (a, b) => Number(a.selling_price || 0) - Number(b.selling_price || 0),
-        price_desc: (a, b) => Number(b.selling_price || 0) - Number(a.selling_price || 0),
+        price_asc: (a, b) => getSellingPriceFromCost(a.unit_price) - getSellingPriceFromCost(b.unit_price),
+        price_desc: (a, b) => getSellingPriceFromCost(b.unit_price) - getSellingPriceFromCost(a.unit_price),
         value_desc: (a, b) => (getInventoryQuantity(b) * Number(b.unit_price || 0)) - (getInventoryQuantity(a) * Number(a.unit_price || 0))
     };
     return result.sort(sorters[filters.sort] || sorters.name_asc);
@@ -511,7 +512,7 @@ function displayInventory(products) {
         const inventory = product.inventory_stock?.[0] || product.inventory_stock || product.inventory?.[0] || {};
         const quantity = inventory.quantity || 0;
         const totalValue = quantity * (product.unit_price || 0);
-        const latestSellingPrice = product.inbound_movements?.[0]?.selling_price ?? product.selling_price ?? 0;
+        const latestSellingPrice = getSellingPriceFromCost(product.unit_price);
         const priceMismatch = detectInboundPriceMismatch(product.inbound_movements);
         const unitCostMismatchBadge = priceMismatch.fields.includes('unit_price')
             ? '<span class="price-mismatch-badge unit-cost-mismatch-badge" title="Inbound batches have different unit costs"><i class="fas fa-triangle-exclamation"></i> Unit cost varies</span>'
@@ -678,7 +679,7 @@ function renderMobileInventoryCards(products) {
     grid.innerHTML = products.map(product => {
         const quantity = getInventoryQuantity(product);
         const unitPrice = Number(product.unit_price || 0);
-        const sellingPrice = Number(product.inbound_movements?.[0]?.selling_price ?? product.selling_price ?? 0);
+        const sellingPrice = getSellingPriceFromCost(product.unit_price);
         const totalValue = quantity * unitPrice;
         const status = getInventoryStatusMeta(product);
         const safeId = escapeInventoryHTML(product.product_id);
@@ -796,6 +797,12 @@ function setupEventListeners() {
     document.getElementById('reorder-table-body')?.addEventListener('change', updateReorderQuantity);
 
     document.getElementById('product-form').addEventListener('submit', saveProduct);
+    document.getElementById('product-price').addEventListener('input', () => {
+        const cost = Number(document.getElementById('product-price').value);
+        document.getElementById('selling-price').value = document.getElementById('product-price').value !== '' && Number.isFinite(cost) && cost >= 0
+            ? (Math.round((cost * (1 + DEFAULT_SELLING_MARKUP) + Number.EPSILON) * 100) / 100).toFixed(2)
+            : '';
+    });
     document.getElementById('product-name').addEventListener('change', updateAutomaticProductCode);
     document.getElementById('maximum-stock').addEventListener('input', updateProductStockThresholds);
     document.getElementById('new-product-thumbnail-input')?.addEventListener('change', handleNewProductThumbnailSelect);
@@ -1288,7 +1295,7 @@ async function saveProduct(e) {
         category_id: document.getElementById('product-category').value,
         unit_of_measure: normalizeUnit(document.getElementById('product-unit').value),
         unit_price: parseFloat(document.getElementById('product-price').value),
-        selling_price: parseFloat(document.getElementById('selling-price').value),
+        selling_price: getSellingPriceFromCost(document.getElementById('product-price').value),
         reorder_level: Math.ceil(maximumStock * INVENTORY_LOW_STOCK_PERCENTAGE),
         maximum_stock: maximumStock,
         description: document.getElementById('product-description').value || null
@@ -1388,7 +1395,7 @@ async function editProduct(productId) {
         document.getElementById('product-category').value = product.category_id || '';
         setProductUnitValue(product.unit_of_measure);
         document.getElementById('product-price').value = product.unit_price || 0;
-        document.getElementById('selling-price').value = product.selling_price || 0;
+        document.getElementById('selling-price').value = getSellingPriceFromCost(product.unit_price).toFixed(2);
         document.getElementById('product-price').disabled = currentUserRole === 'staff';
         document.getElementById('selling-price').disabled = currentUserRole === 'staff';
         document.getElementById('maximum-stock').value = product.maximum_stock || '';
@@ -1525,7 +1532,7 @@ async function exportToCSV() {
                 product.unit_of_measure || '',
                 quantity,
                 product.unit_price || 0,
-                product.selling_price || 0,
+                getSellingPriceFromCost(product.unit_price),
                 totalValue.toFixed(2),
                 product.reorder_level || 0,
                 product.maximum_stock || '',
@@ -1616,7 +1623,7 @@ async function exportBackup() {
                     product_code: product.product_code,
                     unit_of_measure: product.unit_of_measure,
                     unit_price: product.unit_price,
-                    selling_price: product.selling_price,
+                    selling_price: getSellingPriceFromCost(product.unit_price),
                     reorder_level: product.reorder_level,
                     maximum_stock: product.maximum_stock,
                     description: product.description,

@@ -303,7 +303,7 @@ function renderProductGrid(products) {
             <button class="product-card-grid" type="button"
                 data-product-id="${escapeHTML(product.product_id)}"
                 data-product-name="${safeName}"
-                data-price="${Number(product.selling_price || 0)}"
+                data-price="${getSellingPriceFromCost(product.unit_price)}"
                 data-available-quantity="${quantity}"
                 ${quantity <= 0 ? 'disabled aria-disabled="true"' : ''}>
                 <div class="product-card-image ${imageUrl ? '' : 'placeholder'}">
@@ -314,7 +314,7 @@ function renderProductGrid(products) {
                     <div class="product-card-name">${safeName}</div>
                     <div class="product-card-code">${safeUnit} &bull; ${safeCode}</div>
                     <div class="product-card-footer">
-                        <div class="product-card-price">₱${Number(product.selling_price || 0).toFixed(2)}</div>
+                        <div class="product-card-price">₱${getSellingPriceFromCost(product.unit_price).toFixed(2)}</div>
                         <span class="product-card-add" aria-hidden="true"><i class="fas fa-plus"></i></span>
                     </div>
                 </div>
@@ -349,6 +349,7 @@ async function handleProductSearch(e) {
                 product_name,
                 category_id,
                 selling_price,
+                unit_price,
                 image_url,
                 image_path,
                 unit_of_measure,
@@ -369,7 +370,7 @@ async function handleProductSearch(e) {
         updatePOSUnitOptions(products);
         const filteredProducts = (products || []).filter(product => {
             const quantity = getPOSProductQuantity(product);
-            const price = Number(product.selling_price || 0);
+            const price = getSellingPriceFromCost(product.unit_price);
             const status = getPOSStockStatus(product);
             if (categoryFilter && String(product.category_id || '') !== String(categoryFilter)) return false;
             if (filterValue === 'available' && quantity <= 0) return false;
@@ -383,8 +384,8 @@ async function handleProductSearch(e) {
         const sorters = {
             name_asc: (a, b) => String(a.product_name || '').localeCompare(String(b.product_name || '')),
             name_desc: (a, b) => String(b.product_name || '').localeCompare(String(a.product_name || '')),
-            price_asc: (a, b) => Number(a.selling_price || 0) - Number(b.selling_price || 0),
-            price_desc: (a, b) => Number(b.selling_price || 0) - Number(a.selling_price || 0),
+            price_asc: (a, b) => getSellingPriceFromCost(a.unit_price) - getSellingPriceFromCost(b.unit_price),
+            price_desc: (a, b) => getSellingPriceFromCost(b.unit_price) - getSellingPriceFromCost(a.unit_price),
             stock_desc: (a, b) => getPOSProductQuantity(b) - getPOSProductQuantity(a)
         };
         filteredProducts.sort(sorters[sortValue] || sorters.name_asc);

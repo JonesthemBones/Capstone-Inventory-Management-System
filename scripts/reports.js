@@ -954,7 +954,7 @@ async function generateValuationReport() {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
         const quantity = stock?.quantity || 0;
         const costValue = quantity * Number(p.unit_price || 0);
-        const sellingValue = quantity * Number(p.selling_price || 0);
+        const sellingValue = quantity * getSellingPriceFromCost(p.unit_price);
         
         totalCost += costValue;
         totalSelling += sellingValue;
@@ -997,14 +997,14 @@ async function generateValuationReport() {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
         const quantity = stock?.quantity || 0;
         const costValue = quantity * (p.unit_price || 0);
-        const sellingValue = quantity * (p.selling_price || 0);
+        const sellingValue = quantity * getSellingPriceFromCost(p.unit_price);
         const profit = sellingValue - costValue;
         
         return [
             p.product_name || 'N/A',
             quantity.toString(),
             formatPeso(p.unit_price || 0),
-            formatPeso(p.selling_price || 0),
+            formatPeso(getSellingPriceFromCost(p.unit_price)),
             formatPeso(costValue),
             formatPeso(sellingValue),
             formatPeso(profit)
@@ -1289,7 +1289,7 @@ function calculateInventoryMetrics(products) {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
         const quantity = Number(stock?.quantity || 0);
         const costValue = quantity * Number(p.unit_price || 0);
-        const sellingValue = quantity * Number(p.selling_price || 0);
+        const sellingValue = quantity * getSellingPriceFromCost(p.unit_price);
         
         metrics.totalCostValue += costValue;
         metrics.totalSellingValue += sellingValue;

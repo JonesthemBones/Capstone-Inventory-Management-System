@@ -803,6 +803,7 @@ async function updateProductValueChart() {
             .select(`
                 product_name,
                 selling_price,
+                unit_price,
                 inventory_stock!inventory_stock_product_id_fkey(quantity)
             `);
         
@@ -814,7 +815,7 @@ async function updateProductValueChart() {
                 ? p.inventory_stock[0] 
                 : p.inventory_stock;
             const quantity = inventory?.quantity || 0;
-            const value = (p.selling_price || 0) * quantity;
+            const value = getSellingPriceFromCost(p.unit_price) * quantity;
             return {
                 name: p.product_name,
                 value: value
