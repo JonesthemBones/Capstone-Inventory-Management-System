@@ -1099,6 +1099,8 @@ function displayReceipt(transaction) {
     // from a fresh checkout or from re-opening one in Today's Transactions.
     currentTransaction = transaction;
 
+    closeMobileCart();
+    document.body.classList.add('pos-receipt-open');
     const modal = document.getElementById('receipt-modal');
     modal.style.display = 'flex';
     document.getElementById('receipt-content').innerHTML = ReceiptPrinter.generateHTML(transaction);
@@ -1106,6 +1108,7 @@ function displayReceipt(transaction) {
 
 function closeReceiptModal() {
     document.getElementById('receipt-modal').style.display = 'none';
+    document.body.classList.remove('pos-receipt-open');
 }
 
 // ============================================================
