@@ -5,6 +5,7 @@ let historyFilters = new URLSearchParams({ limit: '20' });
 let historyRequest = 0;
 let currentReceiptImage = null;
 let currentItems = [];
+let existingProductsByName = new Map();
 let currentSupplierDetails = {};
 let currentCategories = [];
 let receiptCameraStream = null;
@@ -357,6 +358,7 @@ function normalizeProductName(text) {
 }
 
 async function mergeWithExistingProductDefaults(items) {
+    existingProductsByName = new Map();
     if (!window.supabaseClient || !items || items.length === 0) {
         return items;
     }
@@ -371,12 +373,16 @@ async function mergeWithExistingProductDefaults(items) {
         }
 
         const productMap = new Map();
+        const ambiguousNames = new Set();
         products.forEach(product => {
             const key = normalizeProductName(product.product_name);
             if (key) {
-                productMap.set(key, product);
+                if (productMap.has(key)) ambiguousNames.add(key);
+                else productMap.set(key, product);
             }
         });
+        ambiguousNames.forEach(key => productMap.delete(key));
+        existingProductsByName = productMap;
 
         return items.map(item => {
             const key = normalizeProductName(item.name);
@@ -387,6 +393,7 @@ async function mergeWithExistingProductDefaults(items) {
 
             return {
                 ...item,
+                existing_product_unit_price: ReceiptConfidence.number(product.unit_price),
                 unit_price: item.unit_price,
                 selling_price: getSellingPriceFromCost(item.unit_price),
                 unit_of_measure: item.unit_of_measure,
@@ -404,6 +411,13 @@ async function mergeWithExistingProductDefaults(items) {
         console.warn('Unable to merge VLM items with existing product defaults:', error);
         return items;
     }
+}
+
+function renderPriceDiscrepancy(item) {
+    const current = ReceiptConfidence.number(item.existing_product_unit_price);
+    const scanned = ReceiptConfidence.number(item.unit_price);
+    if (current === null || scanned === null || current < 0 || scanned < 0 || Math.round(current * 100) === Math.round(scanned * 100)) return '';
+    return `<div class="vlm-price-discrepancy" role="status"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Cost differs from inventory: current ₱${current.toFixed(2)}, scanned ₱${scanned.toFixed(2)}. Review before accepting.</div>`;
 }
 
 async function lookupThumbnails(extractedItems) {
@@ -781,6 +795,7 @@ function renderItems(items) {
                         <label>Cost per Unit</label>
                         <input type="number" step="0.01" min="0" value="${item.unit_price ?? ''}" data-field="unit_price" data-index="${index}">
                         ${renderFieldConfidence(item, 'unit_price')}
+                        <div data-price-discrepancy>${renderPriceDiscrepancy(item)}</div>
                     </div>
                     <div class="vlm-card-item-field">
                         <label>Selling Price</label>
@@ -998,6 +1013,8 @@ function handleVlmItemGridInput(event) {
     } else if (field === 'name') {
         value = target.value;
         currentItems[index].name_was_edited = normalizeProductName(value) !== normalizeProductName(currentItems[index].original_name);
+        const product = existingProductsByName.get(normalizeProductName(value));
+        currentItems[index].existing_product_unit_price = product ? ReceiptConfidence.number(product.unit_price) : null;
     } else {
         value = target.value;
     }
@@ -1021,6 +1038,10 @@ function handleVlmItemGridInput(event) {
     if (ReceiptConfidence.fields.includes(field)) {
         const indicator = target.closest('.vlm-card-item').querySelector(`[data-confidence-field="${field}"]`);
         if (indicator) indicator.outerHTML = renderFieldConfidence(currentItems[index], field);
+    }
+    if (field === 'name' || field === 'unit_price') {
+        const priceNotice = card?.querySelector('[data-price-discrepancy]');
+        if (priceNotice) priceNotice.innerHTML = renderPriceDiscrepancy(currentItems[index]);
     }
     updateSaveButton();
 }

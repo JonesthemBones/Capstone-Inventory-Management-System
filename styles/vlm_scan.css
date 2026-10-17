@@ -922,6 +922,23 @@
   color: var(--text-secondary);
   background: var(--bg-light);
 }
+
+.vlm-price-discrepancy {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d97706;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.vlm-price-discrepancy i { margin-right: 4px; }
+.dark-mode .vlm-price-discrepancy {
+  background: rgba(245, 158, 11, .12);
+  color: #fde68a;
+  border-color: #b45309;
+}
 .dark-mode .vlm-field-confidence.confidence-high {
   color: #6ee7b7;
   background: rgba(16, 185, 129, .12);

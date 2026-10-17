@@ -720,7 +720,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 // Check if product already exists (case-insensitive, punctuation-insensitive)
                 const { data: allProducts } = await supabaseClient
                     .from('products')
-                    .select('product_id, product_name, product_code, category_id');
+                    .select('product_id, product_name, product_code, category_id, maximum_stock');
 
                 const existingProduct = allProducts?.find(p => 
                     normalizeProductName(p.product_name) === normalizedName
@@ -754,6 +754,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                     const currentStock = currentStockArray && currentStockArray.length > 0 ? currentStockArray[0] : null;
                     previousQuantity = currentStock?.quantity || 0;
                     const newQuantity = previousQuantity + quantity;
+                    const maximumStock = Math.max(Number(existingProduct.maximum_stock) || 0, newQuantity);
 
                     if (currentStock) {
                         const { error: updateError } = await supabaseClient
@@ -784,7 +785,9 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             unit_price: unitPrice,
                             selling_price: sellingPrice,
                             unit_of_measure: item.unit_of_measure || 'unit',
-                            category_id: existingProduct.category_id || item.category_id || null
+                            category_id: existingProduct.category_id || item.category_id || null,
+                            maximum_stock: maximumStock,
+                            reorder_level: Math.ceil(maximumStock * 0.25)
                         })
                         .eq('product_id', productId);
 
@@ -851,7 +854,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                 } else {
                     // Product doesn't exist - create new and generate a unique product code
                     const productCode = await findUniqueProductCode(productName);
-                    const reorderLevel = Math.max(5, Math.ceil(Number(quantity) / 2));
+                    const reorderLevel = Math.ceil(quantity * 0.25);
                     const { data: newProduct, error: insertError } = await supabaseClient
                         .from('products')
                         .insert([{
@@ -861,8 +864,8 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             selling_price: Number.isFinite(Number(item.selling_price)) ? Number(item.selling_price) : price,
                             unit_of_measure: item.unit_of_measure || 'unit',
                             description: comment || `Imported from receipt scan. Qty: ${item.receipt_quantity}`,
-                            reorder_level: Number.isFinite(reorderLevel) ? reorderLevel : 5,
-                            maximum_stock: null,
+                            reorder_level: reorderLevel,
+                            maximum_stock: quantity,
                             category_id: item.category_id || null,
                             image_url: item.thumbnailUrl || null
                         }])
