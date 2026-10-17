@@ -711,12 +711,17 @@ textarea {
     align-items: center;
     gap: 10px;
     padding: 9px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid var(--border-color);
     border-radius: 16px;
-    background: #172033;
+    background: var(--bg-white);
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.34);
-    color: #fff;
+    color: var(--text-primary);
     text-align: left;
+  }
+
+  body.pos-receipt-open .pos-mobile-cart-bar,
+  body.mobile-nav-open .pos-mobile-cart-bar {
+    display: none;
   }
 
   .pos-mobile-cart-count {
@@ -745,13 +750,15 @@ textarea {
     padding: 8px 10px;
     border-radius: 10px;
     background: var(--primary-color);
+    color: #fff;
     font-size: 0.76rem;
     font-weight: 700;
     white-space: nowrap;
   }
 
   .pos-mobile-cart-bar:not(.has-items) .pos-mobile-cart-action {
-    background: #475569;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
   }
 }
 
