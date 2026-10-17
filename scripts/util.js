@@ -5,6 +5,13 @@ function formatCurrency(amount) {
     }).format(amount);
 }
 
+function getSellingPriceFromCost(unitCost) {
+    const cost = Number(unitCost);
+    return Number.isFinite(cost) && cost >= 0
+        ? Math.round((cost * 1.20 + Number.EPSILON) * 100) / 100
+        : 0;
+}
+
 function getInventoryStockStatus(quantity, product = {}) {
     const current = Number(quantity || 0);
     const maximum = Number(product?.maximum_stock || 0);
