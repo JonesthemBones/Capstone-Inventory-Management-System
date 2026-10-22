@@ -139,9 +139,17 @@
                 <button class="modal-close" id="close-reorder-modal" aria-label="Close restock list"><i class="fas fa-times"></i></button>
             </div>
             <div class="reorder-summary" id="reorder-summary"></div>
+            <div class="reorder-filters" aria-label="Restock list filters">
+                <label>Search product or code<input id="reorder-search" type="search" placeholder="Search products"></label>
+                <label>Supplier<select id="reorder-supplier-filter"><option value="">All suppliers</option></select></label>
+                <label>Stock status<select id="reorder-status-filter"><option value="">All statuses</option><option value="out_of_stock">Out of Stock</option><option value="critical">Critical</option><option value="low_stock">Low Stock</option></select></label>
+                <label>Sort by<select id="reorder-sort"><option value="priority">Priority</option><option value="name">Product name</option><option value="supplier">Supplier</option></select></label>
+                <button type="button" class="btn" id="reorder-reset-filters">Clear filters</button>
+            </div>
+            <p class="reorder-supplier-note">“Unknown” means no supplier is linked to this product’s inbound stock history. A shown supplier is the last linked supplier, not necessarily the source of the units currently on hand.</p>
             <div class="reorder-table-wrap">
                 <table class="data-table reorder-table">
-                    <thead><tr><th>Product</th><th>Code</th><th>Status</th><th>On Hand</th><th>Target</th><th>Order Qty</th><th>Est. Cost</th></tr></thead>
+                    <thead><tr><th>Product</th><th>Code</th><th>Last known supplier</th><th>Status</th><th>On Hand</th><th>Target</th><th>Order Qty</th><th>Est. Cost</th></tr></thead>
                     <tbody id="reorder-table-body"></tbody>
                 </table>
             </div>

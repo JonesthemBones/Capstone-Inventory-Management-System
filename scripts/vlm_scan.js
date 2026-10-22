@@ -7,6 +7,7 @@ let currentReceiptImage = null;
 let currentItems = [];
 let existingProductsByName = new Map();
 let currentSupplierDetails = {};
+let currentSavedSupplierExtractionId = null;
 let currentCategories = [];
 let receiptCameraStream = null;
 let isReceiptProcessing = false;
@@ -38,7 +39,7 @@ function renderExtractionHistory(history) {
         return;
     }
 
-    list.innerHTML = history.map((entry, index) => {
+    list.innerHTML = history.map(entry => {
         const items = Array.isArray(entry.items) ? entry.items : [];
         const itemRows = items.map(item => `
             <tr>
@@ -49,10 +50,10 @@ function renderExtractionHistory(history) {
                 <td>${item.inventoryAction === 'created' ? 'New product' : 'Stock updated'}</td>
             </tr>`).join('');
         return `
-            <details class="vlm-history-entry" ${index === 0 ? 'open' : ''}>
+            <details class="vlm-history-entry">
                 <summary>
-                    <span><strong>${escapeHtml(formatHistoryDate(entry.savedAt))}</strong><small>Saved by ${escapeHtml(entry.savedBy || 'Unknown user')}</small></span>
-                    <span class="vlm-history-count">${items.length} item${items.length === 1 ? '' : 's'}</span>
+                    <span class="vlm-history-summary-main"><strong>${escapeHtml(formatHistoryDate(entry.savedAt))}</strong><small>Saved by ${escapeHtml(entry.savedBy || 'Unknown user')}</small></span>
+                    <span class="vlm-history-summary-action"><span class="vlm-history-count">${items.length} item${items.length === 1 ? '' : 's'}</span><span class="vlm-history-toggle-label" aria-hidden="true"></span><i class="fas fa-chevron-down vlm-history-chevron" aria-hidden="true"></i></span>
                 </summary>
                 <div class="vlm-history-table-wrap">
                     <table class="vlm-history-table">
@@ -308,6 +309,7 @@ function clearReceiptSelection() {
     }
     currentReceiptImage = null;
     currentSupplierDetails = {};
+    currentSavedSupplierExtractionId = null;
     setPreviewImage(null);
     setStatus('No receipt selected. Choose or capture a receipt to begin.');
     document.getElementById('vlm-items-grid').innerHTML = '<div class="vlm-empty-state"><i class="fas fa-receipt"></i><strong>Your scanned items will appear here</strong><span>Add a clear receipt photo, then choose Scan Receipt.</span></div>';
@@ -643,6 +645,7 @@ function handleSupplierFieldInput(event) {
     if (!target || !target.dataset.supplierField) return;
     const field = target.dataset.supplierField;
     currentSupplierDetails[field] = target.value;
+    currentSavedSupplierExtractionId = null;
     updateSupplierSaveButton();
 }
 
@@ -697,13 +700,16 @@ async function saveSupplierDetailsToSupabase() {
             throw new Error('Your session has expired. Please sign in again.');
         }
 
-        const { error: insertError } = await window.supabaseClient
+        const { data: savedSupplier, error: insertError } = await window.supabaseClient
             .from('vlm_extractions')
-            .insert([payload]);
+            .insert([payload])
+            .select('extraction_id')
+            .single();
 
         if (insertError) {
             throw insertError;
         }
+        currentSavedSupplierExtractionId = savedSupplier.extraction_id;
 
         setStatus('Supplier details saved to vlm_extractions.', 'success');
         saveBtn.innerHTML = '<i class="fas fa-check"></i> Supplier saved';
@@ -1165,6 +1171,7 @@ async function processReceiptImage() {
     setStatus('Scanning receipt… Please keep this page open.', 'warning');
     currentItems = [];
     currentSupplierDetails = {};
+    currentSavedSupplierExtractionId = null;
     updateSaveButton();
     renderSupplierDetailsPanel({});
     document.getElementById('vlm-items-grid').innerHTML = '';
@@ -1339,7 +1346,11 @@ async function saveAcceptedItemsToInventory() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ items: currentItems })
+            body: JSON.stringify({
+                items: currentItems,
+                supplierDetails: normalizeSupplierDetails(currentSupplierDetails),
+                supplierExtractionId: currentSavedSupplierExtractionId
+            })
         });
 
         const result = await response.json();
@@ -1364,47 +1375,7 @@ async function saveAcceptedItemsToInventory() {
             statusMessage += ` (${failedCount} failed)`;
         }
 
-        const supplierPayload = normalizeSupplierDetails(currentSupplierDetails);
-        const hasSupplierData = Object.keys(supplierPayload).length > 0;
-
-        if (hasSupplierData) {
-            const supplierName = String(supplierPayload.supplier_name || '').trim();
-            if (supplierName) {
-                const supplierInsertPayload = {
-                    image_id: currentReceiptImage?.image_id || currentReceiptImage?.imageId || null,
-                    supplier_name: supplierName,
-                    supplier_address: String(supplierPayload.address || '').trim() || null,
-                    supplier_phone: String(supplierPayload.phone || '').trim() || null,
-                    supplier_tax_id: String(supplierPayload.tin || '').trim() || null,
-                    overall_confidence: null,
-                    extraction_status: 'success',
-                    raw_response: JSON.stringify({
-                        supplier_name: supplierName,
-                        contact_name: String(supplierPayload.contact_name || '').trim() || null,
-                        email: String(supplierPayload.email || '').trim() || null,
-                        vat: String(supplierPayload.vat || '').trim() || null,
-                        website: String(supplierPayload.website || '').trim() || null,
-                        notes: String(supplierPayload.notes || '').trim() || null,
-                        phone: String(supplierPayload.phone || '').trim() || null,
-                        address: String(supplierPayload.address || '').trim() || null,
-                        tin: String(supplierPayload.tin || '').trim() || null
-                    }),
-                    processing_time_ms: 0,
-                    created_at: new Date().toISOString()
-                };
-
-                const { error: supplierError } = await window.supabaseClient
-                    .from('vlm_extractions')
-                    .insert([supplierInsertPayload]);
-
-                if (supplierError) {
-                    console.warn('Supplier save via main inventory save failed:', supplierError);
-                    statusMessage += ' | Supplier save pending due to DB policy/constraint issues';
-                } else {
-                    statusMessage += ' | Supplier details saved';
-                }
-            }
-        }
+        if (result.supplierName) statusMessage += ` | Supplier: ${result.supplierName}`;
 
         setStatus(statusMessage, 'success');
         

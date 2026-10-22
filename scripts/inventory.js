@@ -271,7 +271,7 @@ async function loadInventory(filters = {}) {
 
         const { data: inboundMovements, error: movementsError } = await supabaseClient
             .from('stock_movements')
-            .select('movement_id, product_id, quantity_change, unit_price, selling_price, movement_date, reference_type, notes')
+            .select('movement_id, product_id, quantity_change, unit_price, selling_price, movement_date, reference_type, notes, supplier_extraction_id')
             .eq('movement_type', 'inbound')
             .order('movement_date', { ascending: false });
 
@@ -279,6 +279,22 @@ async function loadInventory(filters = {}) {
             console.error('Stock Movements Query Error:', movementsError);
             throw movementsError;
         }
+
+        const supplierIds = [...new Set((inboundMovements || []).map(m => m.supplier_extraction_id).filter(Boolean))];
+        const suppliersById = {};
+        if (supplierIds.length) {
+            const { data: suppliers, error: supplierError } = await supabaseClient
+                .from('vlm_extractions')
+                .select('extraction_id, supplier_name')
+                .in('extraction_id', supplierIds);
+            if (supplierError) throw supplierError;
+            (suppliers || []).forEach(supplier => {
+                suppliersById[supplier.extraction_id] = supplier.supplier_name;
+            });
+        }
+        (inboundMovements || []).forEach(movement => {
+            movement.supplier_name = suppliersById[movement.supplier_extraction_id] || null;
+        });
 
         const inboundMovementsByProductId = (inboundMovements || []).reduce((lookup, movement) => {
             if (!lookup[movement.product_id]) {
@@ -411,6 +427,7 @@ function renderInboundBatchHistory(product, batchRow) {
                 <tr>
                     <th>Date Added</th>
                     <th>Source</th>
+                    <th>Supplier</th>
                     <th>Quantity</th>
                     <th>Cost per Unit</th>
                     <th>Selling Price</th>
@@ -430,6 +447,7 @@ function renderInboundBatchHistory(product, batchRow) {
                         <tr data-movement-id="${movement.movement_id}">
                             <td>${dateAdded}</td>
                             <td>${movement.reference_type || 'N/A'}</td>
+                            <td>${escapeInventoryHTML(movement.supplier_name || 'Unknown')}</td>
                             <td>${movement.quantity_change ?? 0}</td>
                             <td class="${unitPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.unit_price || 0)}</td>
                             <td class="${sellingPriceMismatch ? 'batch-price-mismatch' : ''}">${formatCurrency(movement.selling_price || 0)}</td>
@@ -795,6 +813,16 @@ function setupEventListeners() {
     document.getElementById('cancel-reorder-btn')?.addEventListener('click', closeReorderModal);
     document.getElementById('print-reorder-btn')?.addEventListener('click', printReorderList);
     document.getElementById('reorder-table-body')?.addEventListener('change', updateReorderQuantity);
+    ['reorder-search', 'reorder-supplier-filter', 'reorder-status-filter', 'reorder-sort'].forEach(id => {
+        document.getElementById(id)?.addEventListener(id === 'reorder-search' ? 'input' : 'change', renderReorderList);
+    });
+    document.getElementById('reorder-reset-filters')?.addEventListener('click', () => {
+        ['reorder-search', 'reorder-supplier-filter', 'reorder-status-filter'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+        document.getElementById('reorder-sort').value = 'priority';
+        renderReorderList();
+    });
 
     document.getElementById('product-form').addEventListener('submit', saveProduct);
     document.getElementById('product-price').addEventListener('input', () => {
@@ -959,7 +987,8 @@ function buildReorderItems() {
                 onHand,
                 target,
                 quantity: Math.max(0, target - onHand),
-                unitCost: Math.max(0, Number(product.unit_price || 0))
+                unitCost: Math.max(0, Number(product.unit_price || 0)),
+                supplier: product.inbound_movements?.find(movement => movement.supplier_name)?.supplier_name || 'Unknown'
             };
         })
         .filter(item => item.quantity > 0)
@@ -974,26 +1003,68 @@ function formatPeso(value) {
     return `\u20B1${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function populateReorderSupplierFilter() {
+    const select = document.getElementById('reorder-supplier-filter');
+    const suppliers = new Map();
+    generatedReorderItems.forEach(item => {
+        if (item.supplier !== 'Unknown') {
+            const key = item.supplier.toLocaleLowerCase();
+            if (!suppliers.has(key)) suppliers.set(key, item.supplier);
+        }
+    });
+    select.replaceChildren(new Option('All suppliers', ''));
+    [...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([key, name]) => {
+        select.add(new Option(name, key));
+    });
+    if (generatedReorderItems.some(item => item.supplier === 'Unknown')) {
+        select.add(new Option('Unknown supplier', '__unknown__'));
+    }
+}
+
+function getVisibleReorderItems() {
+    const search = document.getElementById('reorder-search').value.trim().toLocaleLowerCase();
+    const supplier = document.getElementById('reorder-supplier-filter').value;
+    const status = document.getElementById('reorder-status-filter').value;
+    const sort = document.getElementById('reorder-sort').value;
+    const priority = { out_of_stock: 0, critical: 1, low_stock: 2 };
+    const visible = generatedReorderItems.map((item, index) => ({ item, index })).filter(({ item }) => {
+        const matchesSearch = !search || `${item.name} ${item.code}`.toLocaleLowerCase().includes(search);
+        const matchesSupplier = !supplier || (supplier === '__unknown__'
+            ? item.supplier === 'Unknown'
+            : item.supplier.toLocaleLowerCase() === supplier);
+        return matchesSearch && matchesSupplier && (!status || item.status === status);
+    });
+    visible.sort((a, b) => {
+        if (sort === 'name') return a.item.name.localeCompare(b.item.name);
+        if (sort === 'supplier') return a.item.supplier.localeCompare(b.item.supplier) || a.item.name.localeCompare(b.item.name);
+        return priority[a.item.status] - priority[b.item.status] || a.item.name.localeCompare(b.item.name);
+    });
+    return visible;
+}
+
 function renderReorderList() {
     const body = document.getElementById('reorder-table-body');
     const empty = document.getElementById('reorder-empty');
     const printButton = document.getElementById('print-reorder-btn');
-    const total = generatedReorderItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-    const totalUnits = generatedReorderItems.reduce((sum, item) => sum + item.quantity, 0);
+    const visible = getVisibleReorderItems();
+    const total = visible.reduce((sum, { item }) => sum + (item.quantity * item.unitCost), 0);
+    const totalUnits = visible.reduce((sum, { item }) => sum + item.quantity, 0);
 
-    body.innerHTML = generatedReorderItems.map((item, index) => `
+    body.innerHTML = visible.map(({ item, index }) => `
         <tr>
             <td data-label="Product"><strong>${escapeInventoryHTML(item.name)}</strong><small class="reorder-unit">${escapeInventoryHTML(item.unit)}</small></td>
             <td data-label="Code" class="reorder-code">${escapeInventoryHTML(item.code)}</td>
+            <td data-label="Last known supplier">${escapeInventoryHTML(item.supplier)}</td>
             <td data-label="Status"><span class="status-badge status-${item.status === 'low_stock' ? 'low' : item.status === 'critical' ? 'critical' : 'out'}">${reorderStatusLabel(item.status)}</span></td>
             <td data-label="On hand">${item.onHand}</td><td data-label="Target">${item.target}</td>
             <td data-label="Order qty"><input class="reorder-quantity" type="number" min="0" step="1" value="${item.quantity}" data-index="${index}" aria-label="Order quantity for ${escapeInventoryHTML(item.name)}"></td>
             <td data-label="Est. cost"><strong>${formatPeso(item.quantity * item.unitCost)}</strong></td>
         </tr>`).join('');
-    empty.hidden = generatedReorderItems.length > 0;
-    document.querySelector('.reorder-table-wrap').hidden = generatedReorderItems.length === 0;
-    printButton.disabled = generatedReorderItems.length === 0;
-    document.getElementById('reorder-summary').innerHTML = `<span><strong>${generatedReorderItems.length}</strong> products</span><span><strong>${totalUnits}</strong> units to order</span><span>Estimated total <strong>${formatPeso(total)}</strong></span>`;
+    empty.hidden = visible.length > 0;
+    empty.textContent = generatedReorderItems.length ? 'No products match these filters.' : 'No products currently require reordering.';
+    document.querySelector('.reorder-table-wrap').hidden = visible.length === 0;
+    printButton.disabled = !visible.some(({ item }) => item.quantity > 0);
+    document.getElementById('reorder-summary').innerHTML = `<span><strong>${visible.length}</strong> of ${generatedReorderItems.length} products</span><span><strong>${totalUnits}</strong> units to order</span><span>Estimated total <strong>${formatPeso(total)}</strong></span>`;
 }
 
 function openReorderModal() {
@@ -1002,6 +1073,9 @@ function openReorderModal() {
         return;
     }
     generatedReorderItems = buildReorderItems();
+    ['reorder-search', 'reorder-status-filter'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('reorder-sort').value = 'priority';
+    populateReorderSupplierFilter();
     renderReorderList();
     document.getElementById('reorder-modal').classList.add('active');
     document.body.classList.add('modal-open');
@@ -1021,14 +1095,14 @@ function updateReorderQuantity(event) {
 }
 
 function printReorderList() {
-    const items = generatedReorderItems.filter(item => item.quantity > 0);
+    const items = getVisibleReorderItems().map(({ item }) => item).filter(item => item.quantity > 0);
     if (!items.length) return;
     const estimatedTotal = items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
     const documentNumber = `RO-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`;
-    const rows = items.map(item => `<tr><td>${escapeInventoryHTML(item.name)}</td><td>${escapeInventoryHTML(item.code)}</td><td>${reorderStatusLabel(item.status)}</td><td>${item.onHand} ${escapeInventoryHTML(item.unit)}</td><td>${item.quantity} ${escapeInventoryHTML(item.unit)}</td><td>${formatPeso(item.unitCost)}</td><td>${formatPeso(item.quantity * item.unitCost)}</td></tr>`).join('');
+    const rows = items.map(item => `<tr><td>${escapeInventoryHTML(item.name)}</td><td>${escapeInventoryHTML(item.code)}</td><td>${escapeInventoryHTML(item.supplier)}</td><td>${reorderStatusLabel(item.status)}</td><td>${item.onHand} ${escapeInventoryHTML(item.unit)}</td><td>${item.quantity} ${escapeInventoryHTML(item.unit)}</td><td>${formatPeso(item.unitCost)}</td><td>${formatPeso(item.quantity * item.unitCost)}</td></tr>`).join('');
     const printWindow = window.open('', '_blank', 'width=1000,height=750');
     if (!printWindow) return alert('Allow pop-ups to print the restock list.');
-    printWindow.document.write(`<!doctype html><html><head><title>${documentNumber}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{margin:0}header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px}.meta{text-align:right;font-size:13px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#eee}.total{text-align:right;font-size:16px;font-weight:bold;margin-top:18px}.signatures{display:flex;justify-content:space-between;margin-top:70px}.signature{width:220px;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>AMACAR HARDWARE</h1><p>Inventory Restock List</p></div><div class="meta"><strong>${documentNumber}</strong><br>${new Date().toLocaleString('en-PH')}<br>Prepared by: ${escapeInventoryHTML(String(currentUserRole).toUpperCase())}</div></header><table><thead><tr><th>Product</th><th>Code</th><th>Priority</th><th>In Stock</th><th>Order Quantity</th><th>Cost per Unit</th><th>Estimated Cost</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Estimated Total: ${formatPeso(estimatedTotal)}</p><div class="signatures"><div class="signature">Prepared by</div><div class="signature">Approved by</div><div class="signature">Supplier acknowledgment</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head><title>${documentNumber}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{margin:0}header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:16px;margin-bottom:24px}.meta{text-align:right;font-size:13px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#eee}.total{text-align:right;font-size:16px;font-weight:bold;margin-top:18px}.signatures{display:flex;justify-content:space-between;margin-top:70px}.signature{width:220px;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>AMACAR HARDWARE</h1><p>Inventory Restock List</p></div><div class="meta"><strong>${documentNumber}</strong><br>${new Date().toLocaleString('en-PH')}<br>Stock snapshot as of: ${new Date().toLocaleString('en-PH')}<br>Prepared by: ${escapeInventoryHTML(String(currentUserRole).toUpperCase())}</div></header><table><thead><tr><th>Product</th><th>Code</th><th>Last known supplier</th><th>Priority</th><th>In Stock</th><th>Order Quantity</th><th>Cost per Unit</th><th>Estimated Cost</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Estimated Total: ${formatPeso(estimatedTotal)}</p><div class="signatures"><div class="signature">Prepared by</div><div class="signature">Approved by</div><div class="signature">Supplier acknowledgment</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
     printWindow.document.close();
 }
 

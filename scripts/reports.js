@@ -1,6 +1,14 @@
 console.log('=== PROFESSIONAL REPORTS SCRIPT LOADING ===');
 let reportsRole = 'guest';
 let reportsUserId = null;
+const DATE_RANGE_REPORT_TYPES = new Set(['complete', 'low-stock', 'valuation', 'movement', 'outbound-activity', 'sales-summary', 'product-sales', 'cashier-performance', 'voided-sales', 'cashier-sales', 'cashier-products', 'cashier-payments']);
+let reportCoverageLabel = '';
+
+function getReportCoverageLabel(reportType, fromDate, toDate, generatedAt = new Date()) {
+    return DATE_RANGE_REPORT_TYPES.has(reportType)
+        ? `Date covered: ${fromDate} to ${toDate}`
+        : `Date covered: Current stock as of ${generatedAt.toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })}`;
+}
 
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('=== DOM CONTENT LOADED ===');
@@ -85,8 +93,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         console.log('Report params:', { reportType, fromDate, toDate });
         
-        const datedReports = ['movement', 'outbound-activity', 'sales-summary', 'product-sales', 'cashier-performance', 'voided-sales', 'cashier-sales', 'cashier-products', 'cashier-payments'];
-        if (datedReports.includes(reportType) && (!fromDate || !toDate)) {
+        if (DATE_RANGE_REPORT_TYPES.has(reportType) && (!fromDate || !toDate)) {
             alert('Please select both From and To dates for this report');
             return;
         }
@@ -167,7 +174,7 @@ function updateReportPreview() {
                 {
                     icon: 'fa-clipboard-check',
                     title: 'Stock Status Summary',
-                    desc: 'In stock, low stock, and out of stock counts'
+                    desc: 'Opening and closing stock for the selected date range'
                 }
             ]
         },
@@ -177,12 +184,12 @@ function updateReportPreview() {
                 {
                     icon: 'fa-exclamation-triangle',
                     title: 'Low Stock Alert Summary',
-                    desc: 'Total items requiring attention'
+                    desc: 'Products requiring attention at the end of the selected range'
                 },
                 {
                     icon: 'fa-list',
                     title: 'Priority Restock List',
-                    desc: 'Products at or below their low-stock alert level'
+                    desc: 'Out-of-stock, critical, and low-stock products with their last known supplier'
                 },
                 {
                     icon: 'fa-calculator',
@@ -302,19 +309,20 @@ async function generateReport(reportType, fromDate, toDate) {
     console.log('=== GENERATING REPORT ===');
     console.log('Type:', reportType);
     
+    reportCoverageLabel = getReportCoverageLabel(reportType, fromDate, toDate);
     try {
         switch (reportType) {
             case 'cashier-sales':
                 await generateCashierSalesReport(fromDate, toDate);
                 break;
             case 'complete':
-                await generateCompleteInventoryReport();
+                await generateCompleteInventoryReport(fromDate, toDate);
                 break;
             case 'low-stock':
-                await generateLowStockReport();
+                await generateLowStockReport(fromDate, toDate);
                 break;
             case 'valuation':
-                await generateValuationReport();
+                await generateValuationReport(fromDate, toDate);
                 break;
             case 'movement':
                 await generateMovementReport(fromDate, toDate);
@@ -346,6 +354,8 @@ async function generateReport(reportType, fromDate, toDate) {
     } catch (error) {
         console.error('Report generation error:', error);
         throw error;
+    } finally {
+        reportCoverageLabel = '';
     }
 }
 
@@ -593,7 +603,8 @@ async function generateCashierPaymentReport(fromDate, toDate) {
 }
 
 async function generateOutboundActivityReport(fromDate, toDate) {
-    const { data: rows, error } = await window.supabaseClient.from('stock_movements').select(`movement_date, reference_id, quantity_change, notes, performed_by, products(product_code, product_name)`).eq('movement_type', 'outbound').gte('movement_date', `${fromDate}T00:00:00`).lte('movement_date', `${toDate}T23:59:59.999`).order('movement_date', { ascending: false });
+    const { start, end } = reportPeriod(fromDate, toDate);
+    const { data: rows, error } = await window.supabaseClient.from('stock_movements').select(`movement_date, reference_id, quantity_change, notes, performed_by, products(product_code, product_name)`).eq('movement_type', 'outbound').gte('movement_date', start.toISOString()).lte('movement_date', end.toISOString()).order('movement_date', { ascending: false });
     if (error) throw error;
     if (!rows?.length) throw new Error('No stock removals found for the selected period');
     const userIds = [...new Set(rows.map(row => row.performed_by).filter(Boolean))];
@@ -689,27 +700,88 @@ function formatPeso(amount) {
     return 'PHP ' + amount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
+async function loadInventoryPeriod(fromDate, toDate) {
+    const start = new Date(`${fromDate}T00:00:00`);
+    const end = new Date(`${toDate}T23:59:59.999`);
+    const products = [];
+    const movements = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await window.supabaseClient.from('products')
+            .select('product_id, product_code, product_name, unit_of_measure, unit_price, selling_price, reorder_level, maximum_stock, created_at, inventory_stock!inventory_stock_product_id_fkey(quantity)')
+            .eq('is_active', true)
+            .order('product_id')
+            .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        products.push(...(data || []));
+        if (!data || data.length < pageSize) break;
+    }
+    for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await window.supabaseClient.from('stock_movements')
+            .select('movement_id, product_id, movement_date, quantity_change, quantity_after, movement_type, supplier_extraction_id')
+            .order('movement_date')
+            .order('movement_id')
+            .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        movements.push(...(data || []));
+        if (!data || data.length < pageSize) break;
+    }
+
+    const stateByProduct = new Map();
+    movements.forEach(movement => {
+        const state = stateByProduct.get(movement.product_id) || {
+            openingSnapshot: null,
+            closingSnapshot: null,
+            changesSinceStart: 0,
+            changesAfterEnd: 0,
+            supplierExtractionId: null
+        };
+        const movementTime = new Date(movement.movement_date);
+        const quantityAfter = movement.quantity_after == null ? NaN : Number(movement.quantity_after);
+        if (movementTime < start && Number.isFinite(quantityAfter)) state.openingSnapshot = quantityAfter;
+        if (movementTime <= end && Number.isFinite(quantityAfter)) state.closingSnapshot = quantityAfter;
+        if (movementTime >= start) state.changesSinceStart += Number(movement.quantity_change || 0);
+        if (movementTime > end) state.changesAfterEnd += Number(movement.quantity_change || 0);
+        if (movementTime <= end && movement.movement_type === 'inbound' && movement.supplier_extraction_id) {
+            state.supplierExtractionId = movement.supplier_extraction_id;
+        }
+        stateByProduct.set(movement.product_id, state);
+    });
+
+    return products
+        .filter(product => !product.created_at || new Date(product.created_at) <= end)
+        .map(product => {
+            const state = stateByProduct.get(product.product_id) || {};
+            const currentStock = Number((product.inventory_stock?.[0] || product.inventory_stock || {}).quantity || 0);
+            const opening = state.openingSnapshot ?? currentStock - (state.changesSinceStart || 0);
+            const closing = state.closingSnapshot ?? currentStock - (state.changesAfterEnd || 0);
+            return {
+                ...product,
+                inventory_stock: [{ quantity: closing }],
+                periodOpening: opening,
+                periodChange: closing - opening,
+                supplierExtractionId: state.supplierExtractionId || null,
+                quantityInferred: state.openingSnapshot == null || state.closingSnapshot == null
+            };
+        })
+        .sort((a, b) => a.product_name.localeCompare(b.product_name));
+}
+
+function addInventoryPeriodNote(doc, yPos, products) {
+    const inferredCount = products.filter(product => product.quantityInferred).length;
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'normal');
+    doc.text('Opening/closing quantities use recorded stock movements. Prices and alert thresholds use current product settings.', 14, yPos + 6);
+    if (inferredCount) {
+        doc.text(`${inferredCount} product(s) had a missing movement snapshot; their quantities were inferred from current stock and later movements.`, 14, yPos + 11);
+    }
+    return yPos + (inferredCount ? 15 : 10);
+}
+
 // ===== COMPLETE INVENTORY REPORT =====
-async function generateCompleteInventoryReport() {
+async function generateCompleteInventoryReport(fromDate, toDate) {
     console.log('Generating complete inventory report...');
-    let query = window.supabaseClient
-        .from('products')
-        .select(`
-            product_id,
-            product_code,
-            product_name,
-            unit_of_measure,
-            unit_price,
-            selling_price,
-            reorder_level,
-            maximum_stock,
-            inventory_stock!inventory_stock_product_id_fkey(quantity)
-        `)
-        .eq('is_active', true)
-        .order('product_name');
-    
-    const { data: products, error } = await query;
-    if (error) throw error;
+    const products = await loadInventoryPeriod(fromDate, toDate);
     if (!products || products.length === 0) throw new Error('No products found');
     
     console.log('Products loaded:', products.length);
@@ -718,17 +790,20 @@ async function generateCompleteInventoryReport() {
     const metrics = calculateInventoryMetrics(products);
     
     // Create PDF
-    const doc = createReportPdf();
+    const doc = createReportPdf('landscape');
     let yPos = 20;
     
     // Header with company info
     yPos = addReportHeader(doc, 'COMPLETE INVENTORY REPORT', yPos);
+    yPos = addInventoryPeriodNote(doc, yPos, products);
     
     // Executive Summary
     yPos = addSectionHeader(doc, 'EXECUTIVE SUMMARY', yPos + 10);
     
     const summaryData = [
         ['Total Products', metrics.totalProducts.toString()],
+        ['Opening Units', products.reduce((sum, product) => sum + product.periodOpening, 0).toString()],
+        ['Closing Units', products.reduce((sum, product) => sum + Number((product.inventory_stock?.[0] || {}).quantity || 0), 0).toString()],
         ['Total Stock Value (Cost)', formatPeso(metrics.totalCostValue)],
         ['Total Stock Value (Selling)', formatPeso(metrics.totalSellingValue)],
         ['Products In Stock', metrics.inStock.toString()],
@@ -764,13 +839,16 @@ async function generateCompleteInventoryReport() {
         
         const stockStatus = getInventoryStockStatus(quantity, p);
         const status = stockStatus === 'out_of_stock' ? 'Out of Stock' :
+            stockStatus === 'critical' ? 'Critical' :
             stockStatus === 'in_stock' ? 'In Stock' : 'Low Stock';
         
         const value = quantity * (p.unit_price || 0);
         
         return [
             p.product_name || 'N/A',
+            p.periodOpening.toString(),
             quantity.toString(),
+            p.periodChange.toString(),
             p.unit_of_measure || 'pcs',
             status,
             formatPeso(p.unit_price || 0),
@@ -780,18 +858,20 @@ async function generateCompleteInventoryReport() {
     
     doc.autoTable({
         startY: yPos,
-        head: [['Product Name', 'Qty', 'Unit', 'Status', 'Unit Price', 'Total Value']],
+        head: [['Product Name', 'Opening', 'Closing', 'Change', 'Unit', 'Status at To', 'Unit Price', 'Closing Value']],
         body: productData,
         theme: 'striped',
         headStyles: { fontSize: 8 },
         styles: { fontSize: 8, cellPadding: 2 },
         columnStyles: {
-            0: { cellWidth: 65 },
-            1: { halign: 'center', cellWidth: 15 },
-            2: { halign: 'center', cellWidth: 15 },
+            0: { cellWidth: 74 },
+            1: { halign: 'center', cellWidth: 22 },
+            2: { halign: 'center', cellWidth: 22 },
             3: { halign: 'center', cellWidth: 22 },
-            4: { halign: 'right', cellWidth: 26 },
-            5: { halign: 'right', cellWidth: 39 }
+            4: { halign: 'center', cellWidth: 22 },
+            5: { halign: 'center', cellWidth: 30 },
+            6: { halign: 'right', cellWidth: 34 },
+            7: { halign: 'right', cellWidth: 36 }
         },
         didDrawPage: (data) => {
             addPageFooter(doc, data.pageNumber);
@@ -805,43 +885,37 @@ async function generateCompleteInventoryReport() {
 }
 
 // ===== LOW STOCK REPORT =====
-async function generateLowStockReport() {
+async function generateLowStockReport(fromDate, toDate) {
     console.log('Generating low stock report...');
-    
-    let query = window.supabaseClient
-        .from('products')
-        .select(`
-            product_id,
-            product_code,
-            product_name,
-            unit_of_measure,
-            unit_price,
-            selling_price,
-            reorder_level,
-            maximum_stock,
-            inventory_stock!inventory_stock_product_id_fkey(quantity)
-        `)
-        .eq('is_active', true)
-        .order('product_name');
-    
-    const { data: products, error } = await query;
-    if (error) throw error;
+    const products = await loadInventoryPeriod(fromDate, toDate);
     
     // Filter low stock items
     const lowStockItems = products.filter(p => {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
         const quantity = stock?.quantity || 0;
-        return ['low_stock', 'critical'].includes(getInventoryStockStatus(quantity, p));
+        return ['low_stock', 'critical', 'out_of_stock'].includes(getInventoryStockStatus(quantity, p));
     });
     
     if (lowStockItems.length === 0) {
         throw new Error('No low stock items found');
     }
+
+    const extractionIds = [...new Set(lowStockItems.map(product => product.supplierExtractionId).filter(Boolean))];
+    const supplierNamesById = new Map();
+    if (extractionIds.length) {
+        const { data: suppliers, error: suppliersError } = await window.supabaseClient
+            .from('vlm_extractions')
+            .select('extraction_id, supplier_name')
+            .in('extraction_id', extractionIds);
+        if (suppliersError) throw suppliersError;
+        (suppliers || []).forEach(supplier => supplierNamesById.set(supplier.extraction_id, supplier.supplier_name));
+    }
     
-    const doc = createReportPdf();
+    const doc = createReportPdf('landscape');
     let yPos = 20;
     
     yPos = addReportHeader(doc, 'LOW STOCK ALERT REPORT', yPos);
+    yPos = addInventoryPeriodNote(doc, yPos, products);
     
     // Alert Summary
     yPos = addSectionHeader(doc, 'ALERT SUMMARY', yPos + 10);
@@ -849,14 +923,21 @@ async function generateLowStockReport() {
     const totalReorderCost = lowStockItems.reduce((sum, p) => {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
         const quantity = stock?.quantity || 0;
-        const reorderQty = Math.max((p.reorder_level || 10) - quantity + 10, 0);
+        const maximum = Math.max(0, Number(p.maximum_stock || 0));
+        const reorderLevel = Math.max(0, Number(p.reorder_level || 0));
+        const target = maximum > quantity ? maximum : Math.max(reorderLevel * 2, reorderLevel, quantity);
+        const reorderQty = Math.max(0, target - quantity);
         return sum + (reorderQty * (p.unit_price || 0));
     }, 0);
     
     const alertSummary = [
         ['Items Requiring Attention', lowStockItems.length.toString()],
+        ['Opening Units', lowStockItems.reduce((sum, product) => sum + product.periodOpening, 0).toString()],
+        ['Closing Units', lowStockItems.reduce((sum, product) => sum + Number((product.inventory_stock?.[0] || {}).quantity || 0), 0).toString()],
+        ['Out of Stock', lowStockItems.filter(p => getInventoryStockStatus((p.inventory_stock?.[0] || p.inventory_stock || {}).quantity, p) === 'out_of_stock').length.toString()],
+        ['Critical Stock', lowStockItems.filter(p => getInventoryStockStatus((p.inventory_stock?.[0] || p.inventory_stock || {}).quantity, p) === 'critical').length.toString()],
         ['Estimated Reorder Cost', formatPeso(totalReorderCost)],
-        ['Priority Level', 'HIGH - Immediate Action Required']
+        ['Supplier Basis', 'Last linked inbound supplier; Unknown if no linked record']
     ];
     
     doc.autoTable({
@@ -877,19 +958,27 @@ async function generateLowStockReport() {
     
     const reorderData = lowStockItems
         .sort((a, b) => {
+            const priority = { out_of_stock: 0, critical: 1, low_stock: 2 };
             const aStock = (a.inventory_stock?.[0] || a.inventory_stock || {}).quantity || 0;
             const bStock = (b.inventory_stock?.[0] || b.inventory_stock || {}).quantity || 0;
-            return aStock - bStock;
+            return priority[getInventoryStockStatus(aStock, a)] - priority[getInventoryStockStatus(bStock, b)] || aStock - bStock;
         })
         .map(p => {
             const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
             const quantity = stock?.quantity || 0;
-            const reorderLevel = p.reorder_level || 10;
-            const suggestedQty = Math.max(reorderLevel - quantity + 10, 0);
+            const reorderLevel = Math.max(0, Number(p.reorder_level || 0));
+            const maximum = Math.max(0, Number(p.maximum_stock || 0));
+            const target = maximum > quantity ? maximum : Math.max(reorderLevel * 2, reorderLevel, quantity);
+            const suggestedQty = Math.max(0, target - quantity);
             const reorderCost = suggestedQty * (p.unit_price || 0);
+            const supplierName = supplierNamesById.get(p.supplierExtractionId) || 'Unknown';
+            const status = getInventoryStockStatus(quantity, p);
             
             return [
                 p.product_name || 'N/A',
+                supplierName,
+                status === 'out_of_stock' ? 'Out of Stock' : status === 'critical' ? 'Critical' : 'Low Stock',
+                p.periodOpening.toString(),
                 quantity.toString(),
                 reorderLevel.toString(),
                 suggestedQty.toString(),
@@ -900,18 +989,21 @@ async function generateLowStockReport() {
     
     doc.autoTable({
         startY: yPos,
-        head: [['Product', 'Current', 'Reorder Lvl', 'Suggested Qty', 'Unit Price', 'Est. Cost']],
+        head: [['Product', 'Last supplier by To', 'Status at To', 'Opening', 'Closing', 'Reorder Lvl', 'Suggested Qty', 'Unit Price', 'Est. Cost']],
         body: reorderData,
         theme: 'striped',
         headStyles: { fontSize: 8 },
         styles: { fontSize: 8, cellPadding: 2 },
         columnStyles: {
-            0: { cellWidth: 68 },
-            1: { halign: 'center', cellWidth: 18 },
-            2: { halign: 'center', cellWidth: 20 },
-            3: { halign: 'center', cellWidth: 22 },
-            4: { halign: 'right', cellWidth: 26 },
-            5: { halign: 'right', cellWidth: 28 }
+            0: { cellWidth: 51 },
+            1: { cellWidth: 43 },
+            2: { cellWidth: 24 },
+            3: { halign: 'center', cellWidth: 18 },
+            4: { halign: 'center', cellWidth: 18 },
+            5: { halign: 'center', cellWidth: 20 },
+            6: { halign: 'center', cellWidth: 20 },
+            7: { halign: 'right', cellWidth: 31 },
+            8: { halign: 'right', cellWidth: 31 }
         },
         didDrawPage: (data) => {
             addPageFooter(doc, data.pageNumber);
@@ -924,31 +1016,15 @@ async function generateLowStockReport() {
 }
 
 // ===== VALUATION REPORT =====
-async function generateValuationReport() {
+async function generateValuationReport(fromDate, toDate) {
     console.log('Generating valuation report...');
-    
-    let query = window.supabaseClient
-        .from('products')
-        .select(`
-            product_id,
-            product_code,
-            product_name,
-            unit_of_measure,
-            unit_price,
-            selling_price,
-            maximum_stock,
-            inventory_stock!inventory_stock_product_id_fkey(quantity)
-        `)
-        .eq('is_active', true)
-        .order('product_name');
-    
-    const { data: products, error } = await query;
-    if (error) throw error;
+    const products = await loadInventoryPeriod(fromDate, toDate);
     if (!products || products.length === 0) throw new Error('No products found');
     
     // Calculate valuations
     let totalCost = 0;
     let totalSelling = 0;
+    let openingCost = 0;
     
     products.forEach(p => {
         const stock = p.inventory_stock?.[0] || p.inventory_stock || {};
@@ -958,21 +1034,25 @@ async function generateValuationReport() {
         
         totalCost += costValue;
         totalSelling += sellingValue;
+        openingCost += p.periodOpening * Number(p.unit_price || 0);
     });
     
     const potentialProfit = totalSelling - totalCost;
     const profitMargin = totalCost > 0 ? (potentialProfit / totalCost * 100) : 0;
     
-    const doc = createReportPdf();
+    const doc = createReportPdf('landscape');
     let yPos = 20;
     
     yPos = addReportHeader(doc, 'INVENTORY VALUATION REPORT', yPos);
+    yPos = addInventoryPeriodNote(doc, yPos, products);
     
     // Financial Summary
     yPos = addSectionHeader(doc, 'FINANCIAL SUMMARY', yPos + 10);
     
     const financialSummary = [
+        ['Opening Cost Value', formatPeso(openingCost)],
         ['Total Cost Value', formatPeso(totalCost)],
+        ['Cost Value Change', formatPeso(totalCost - openingCost)],
         ['Total Selling Value', formatPeso(totalSelling)],
         ['Total Products', products.length.toString()]
     ];
@@ -1002,6 +1082,7 @@ async function generateValuationReport() {
         
         return [
             p.product_name || 'N/A',
+            p.periodOpening.toString(),
             quantity.toString(),
             formatPeso(p.unit_price || 0),
             formatPeso(getSellingPriceFromCost(p.unit_price)),
@@ -1013,19 +1094,20 @@ async function generateValuationReport() {
     
     doc.autoTable({
         startY: yPos,
-        head: [['Product', 'Qty', 'Cost', 'Selling', 'Cost Value', 'Selling Value', 'Profit']],
+        head: [['Product', 'Opening', 'Closing', 'Cost', 'Selling', 'Closing Cost Value', 'Closing Selling Value', 'Potential Profit']],
         body: productData,
         theme: 'striped',
         headStyles: { fontSize: 8 },
         styles: { fontSize: 8, cellPadding: 2 },
         columnStyles: {
-            0: { cellWidth: 58 },
-            1: { halign: 'center', cellWidth: 15 },
-            2: { halign: 'right', cellWidth: 20 },
-            3: { halign: 'right', cellWidth: 20 },
-            4: { halign: 'right', cellWidth: 23 },
-            5: { halign: 'right', cellWidth: 23 },
-            6: { halign: 'right', cellWidth: 23 }
+            0: { cellWidth: 66 },
+            1: { halign: 'center', cellWidth: 18 },
+            2: { halign: 'center', cellWidth: 18 },
+            3: { halign: 'right', cellWidth: 26 },
+            4: { halign: 'right', cellWidth: 26 },
+            5: { halign: 'right', cellWidth: 38 },
+            6: { halign: 'right', cellWidth: 38 },
+            7: { halign: 'right', cellWidth: 38 }
         },
         didDrawPage: (data) => {
             addPageFooter(doc, data.pageNumber);
@@ -1040,6 +1122,7 @@ async function generateValuationReport() {
 // ===== STOCK MOVEMENT REPORT =====
 async function generateMovementReport(fromDate, toDate) {
     console.log('Generating movement report...');
+    const { start, end } = reportPeriod(fromDate, toDate);
     
     let query = window.supabaseClient
         .from('stock_movements')
@@ -1059,8 +1142,8 @@ async function generateMovementReport(fromDate, toDate) {
                 product_name
             )
         `)
-        .gte('movement_date', fromDate)
-        .lte('movement_date', toDate + 'T23:59:59')
+        .gte('movement_date', start.toISOString())
+        .lte('movement_date', end.toISOString())
         .order('movement_date', { ascending: false });
     
     const { data: movements, error } = await query;
@@ -1237,12 +1320,15 @@ function addReportHeader(doc, title, yPos) {
         hour12: true
     });
     doc.text(`Generated: ${dateStr} at ${timeStr}`, centerX, yPos + 14, { align: 'center' });
+    doc.setFont(undefined, 'bold');
+    doc.text(reportCoverageLabel || `Date covered: Current stock as of ${dateStr} at ${timeStr}`, centerX, yPos + 21, { align: 'center' });
+    doc.setFont(undefined, 'normal');
     
     // Divider line
     doc.setDrawColor(200, 200, 200);
-    doc.line(14, yPos + 18, pageWidth - 14, yPos + 18);
+    doc.line(14, yPos + 26, pageWidth - 14, yPos + 26);
     
-    return yPos + 18;
+    return yPos + 26;
 }
 
 function addSectionHeader(doc, title, yPos) {
@@ -1261,6 +1347,9 @@ function addPageFooter(doc, pageNumber) {
     const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
+    if (reportCoverageLabel) {
+        doc.text(reportCoverageLabel, pageWidth - 14, pageHeight - 16, { align: 'right' });
+    }
     doc.text(
         `Page ${pageNumber}`,
         pageWidth / 2,

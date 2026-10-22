@@ -619,6 +619,40 @@ router.post('/save-items-to-inventory', async (req, res) => {
             });
         }
 
+        // All movements from this reviewed scan share one supplier extraction.
+        // Older movements remain null until their source is verified.
+        const supplierDetails = req.body.supplierDetails && typeof req.body.supplierDetails === 'object'
+            ? req.body.supplierDetails : {};
+        const supplierName = String(supplierDetails.supplier_name || '').trim();
+        let supplierExtractionId = null;
+        if (req.body.supplierExtractionId) {
+            const { data: savedSupplier, error: lookupError } = await supabaseClient
+                .from('vlm_extractions')
+                .select('extraction_id, supplier_name')
+                .eq('extraction_id', req.body.supplierExtractionId)
+                .single();
+            if (lookupError || !savedSupplier || savedSupplier.supplier_name !== supplierName) {
+                return res.status(400).json({ error: 'The saved supplier details do not match this receipt.' });
+            }
+            supplierExtractionId = savedSupplier.extraction_id;
+        } else if (supplierName) {
+            const { data: savedSupplier, error: supplierError } = await supabaseClient
+                .from('vlm_extractions')
+                .insert([{
+                    supplier_name: supplierName,
+                    supplier_address: String(supplierDetails.address || '').trim() || null,
+                    supplier_phone: String(supplierDetails.phone || '').trim() || null,
+                    supplier_tax_id: String(supplierDetails.tin || '').trim() || null,
+                    extraction_status: 'success',
+                    raw_response: supplierDetails,
+                    processing_time_ms: 0
+                }])
+                .select('extraction_id')
+                .single();
+            if (supplierError) throw supplierError;
+            supplierExtractionId = savedSupplier.extraction_id;
+        }
+
         await logReceiptAuditEvent({
             userId,
             actionType: 'receipt_scan_decision',
@@ -803,6 +837,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             quantity_before: previousQuantity,
                             quantity_after: newQuantity,
                             reference_type: 'receipt_scan',
+                            supplier_extraction_id: supplierExtractionId,
                             movement_date: scanDate,
                             performed_by: userId,
                             unit_price: unitPrice,
@@ -898,6 +933,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
                             quantity_before: 0,
                             quantity_after: quantity,
                             reference_type: 'receipt_scan',
+                            supplier_extraction_id: supplierExtractionId,
                             movement_date: scanDate,
                             performed_by: userId,
                             unit_price: unitPrice,
@@ -982,6 +1018,7 @@ router.post('/save-items-to-inventory', async (req, res) => {
 
         res.json({
             success: true,
+            supplierName: supplierExtractionId ? supplierName : null,
             message: `Processed ${results.successful.length} item(s)`,
             results: results
         });

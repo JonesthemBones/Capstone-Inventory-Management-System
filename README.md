@@ -1,5 +1,7 @@
 # Amacar Hardware Inventory Management System
 
+Architecture, scalability, cloud deployment, and challenge documentation: [docs/ARCHITECTURE_AND_DEPLOYMENT.md](docs/ARCHITECTURE_AND_DEPLOYMENT.md).
+
 A Web-based inventory and point-of-sale system for Amacar Hardware. The application manages products, categories, stock, receipt extraction, and sales workflows.
 
 ## Project status
