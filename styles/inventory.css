@@ -51,6 +51,10 @@
 .reorder-summary span { display:grid; gap:3px; min-width:0; padding:13px 14px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-light); color:var(--text-secondary); font-size:12px; }
 .reorder-summary strong { color:var(--text-primary); }
 .reorder-summary span strong { font-size:16px; }
+.reorder-filters { display:grid; grid-template-columns:2fr repeat(3,minmax(0,1fr)) auto; gap:10px; align-items:end; padding:0 24px 10px; }
+.reorder-filters label { display:grid; gap:5px; min-width:0; color:var(--text-secondary); font-size:12px; font-weight:600; }
+.reorder-filters input,.reorder-filters select { width:100%; min-height:38px; padding:8px; border:1px solid var(--border-color); border-radius:7px; background:var(--bg-white); color:var(--text-primary); font:inherit; }
+.reorder-supplier-note { margin:0; padding:0 24px 12px; color:var(--text-secondary); font-size:12px; line-height:1.4; }
 .reorder-table-wrap { min-height:0; margin:0 24px; overflow:auto; border:1px solid var(--border-color); border-radius:10px; }
 .reorder-table { min-width:820px; }
 .reorder-table td { vertical-align:middle; }
@@ -101,6 +105,10 @@ body.modal-open { overflow:hidden; }
   .reorder-summary { grid-template-columns:1fr 1fr; gap:8px; padding:14px 16px; }
   .reorder-summary span { padding:10px; }
   .reorder-summary span:last-child { grid-column:1/-1; }
+  .reorder-filters { grid-template-columns:1fr 1fr; padding:0 16px 10px; }
+  .reorder-filters label:first-child { grid-column:1/-1; }
+  .reorder-filters button { grid-column:1/-1; }
+  .reorder-supplier-note { padding:0 16px 10px; }
   .reorder-table-wrap { margin:0 16px; border:0; border-radius:0; }
   .reorder-table { display:block; min-width:0; }
   .reorder-table thead { display:none; }
